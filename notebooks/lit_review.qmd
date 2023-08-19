@@ -15,81 +15,75 @@ theme: readable
 
 8/21-9/3/2023
 
-
 ### Overview
 
-In an effort to understand existing research related to this topic, the first two weeks will be dedicated to exploring existing research, code libraries/repositories, and data.	
-
+In an effort to understand existing research related to this topic, the first two weeks will be dedicated to exploring existing research, code libraries/repositories, and data.
 
 ### Deliverable
 
 A (somewhat informal) literature review citing 10-20 sources, covering each of the primary areas of interest in this project.
 
-------------
+------------------------------------------------------------------------
 
 ## Abstract
 
 ## Sources
 
-- [Using a Bayesian modelling approach (INLA‑SPDE) to predict the occurrence of the Spinetail Devil Ray (Mobular mobular)](https://www.nature.com/articles/s41598-020-73879-3)
-- [Mapping attributes of Canada’s forests at moderate resolution through kNN and MODIS imagery](https://cdnsciencepub.com/doi/10.1139/cjfr-2013-0401)
-- [Predictive performance of presence-only species distribution models: a benchmark study with reproducible code](https://doi.org/10.1002/ecm.1486)
-- [Conserving a moving target: planning protection for a migratory species as its distribution changes](https://doi.org/10.1111/j.1365-2664.2010.01905.x)
-- [The use of classification and regression algorithms using the random forests method with presence-only data to model species’ distribution](https://doi.org/10.1016/j.mex.2019.09.035)
-- [Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data](https://bmcecol.biomedcentral.com/articles/10.1186/1472-6785-9-8)
-- [Small-scale Collembola community composition in a pine forest soil – Overdispersion in functional traits indicates the importance of species interactions](https://doi.org/10.1016/j.soilbio.2016.08.006)
-- [Breeding density, fine-scale tracking, and large-scale modeling reveal the regional distribution of four seabird species](https://doi.org/10.1002/eap.1591)
-- [On pseudo-absence generation and machine learning for locust breeding ground prediction in Africa](https://arxiv.org/abs/2111.03904)
-- [Finite-sample equivalence in statistical models for presence-only data](https://arxiv.org/abs/1207.6950)
-- [High-dimensional Multi-class Classification with Presence-only Data](https://arxiv.org/abs/2304.09305)
-- [New spatial models for integrating standardized detection-nondetection and opportunistic presence-only data: application to estimating risk factors associated to powerline-induced death of birds](https://arxiv.org/abs/2303.02088)
-- [Automated surface feature selection using SALSA2D: An illustration using Elephant Mortality data in Etosha National Park](https://arxiv.org/abs/2202.07977)
-- [Integration of presence-only data from several sources. A case study on dolphins' spatial distribution](https://arxiv.org/abs/2103.16125)
-- [Presence-Only Geographical Priors for Fine-Grained Image Classification](https://arxiv.org/abs/1906.05272)
-- [Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data](https://arxiv.org/abs/1809.01322)
-- [Understanding the connections between species distribution models](https://arxiv.org/abs/1801.01326)
-- [PULasso: High-dimensional variable selection with presence-only data](https://arxiv.org/abs/1711.08129)
-- [Bias Correction in Species Distribution Models: Pooling Survey and Collection Data for Multiple Species](https://arxiv.org/abs/1403.7274)
-- [Bayesian Modeling and MCMC Computation in Linear Logistic Regression for Presence-only Data](https://arxiv.org/abs/1305.1232)
-- [Poisson point process models solve the "pseudo-absence problem" for presence-only data in ecology](https://arxiv.org/abs/1011.3319)
-- [Geostatistical Inference Under Preferential Sampling](https://doi.org/10.1111/j.1467-9876.2009.00701.x)
-- [Nondetection sampling bias in marked presence-only data](https://arxiv.org/abs/1308.2430)
-- [Predicting species distributions from museum and herbarium records using multiresponse models fitted with multivariate adaptive regression splines](https://doi.org/10.1111/j.1472-4642.2007.00340.x)
-- [Generalized linear and generalized additive models in studies of species distributions: setting the scene](https://doi.org/10.1016/S0304-3800(02)00204-1)
-- [Inference from presence-only data; the ongoing controversy](https://doi.org/10.1111/j.1600-0587.2013.00321.x)
-- [Sensitivity of species-distribution models to error, bias, and model design: An application to resource selection functions for woodland caribou](https://doi.org/10.1016/j.ecolmodel.2007.11.013)
-- [Toward the modeling of true species distributions](http://dx.doi.org/10.2307/20870118)
-- [The importance of correcting for sampling bias in MaxEnt species distribution models](https://doi.org/10.1111/ddi.12096)
-- [Strategy for Modelling Nonrandom Missing Data Mechanisms in Observational Studies Using Bayesian Methods](https://www.researchgate.net/publication/267971370_Strategy_for_Modelling_Nonrandom_Missing_Data_Mechanisms_in_Observational_Studies_Using_Bayesian_Methods)
-- [How long should we ignore imperfect detection of species in the marine environment when modelling their distribution?](https://doi.org/10.1111/faf.12039)
-- [Modelling distribution and abundance with presence-only data](https://doi.org/10.1111/j.1365-2664.2005.01112.x)
-- [Maximum entropy modeling of species geographic distributions](https://doi.org/10.1016/j.ecolmodel.2005.03.026)
-- [Sample selection bias and presence-only distribution models: implications for background and pseudo-absence data](https://doi.org/10.1890/07-2153.1)
-- [Equivalence of MAXENT and Poisson point process models for species distribution modeling in ecology](https://doi.org/10.1111/j.1541-0420.2012.01824.x)
-- [Does accounting for imperfect detection improve species distribution models?](https://doi.org/10.1111/j.1600-0587.2010.06433.x)
+-   [Using a Bayesian modelling approach (INLA‑SPDE) to predict the occurrence of the Spinetail Devil Ray (Mobular mobular)](https://www.nature.com/articles/s41598-020-73879-3)
+-   [Mapping attributes of Canada's forests at moderate resolution through kNN and MODIS imagery](https://cdnsciencepub.com/doi/10.1139/cjfr-2013-0401)
+-   [Predictive performance of presence-only species distribution models: a benchmark study with reproducible code](https://doi.org/10.1002/ecm.1486)
+-   [Conserving a moving target: planning protection for a migratory species as its distribution changes](https://doi.org/10.1111/j.1365-2664.2010.01905.x)
+-   [The use of classification and regression algorithms using the random forests method with presence-only data to model species' distribution](https://doi.org/10.1016/j.mex.2019.09.035)
+-   [Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data](https://bmcecol.biomedcentral.com/articles/10.1186/1472-6785-9-8)
+-   [Small-scale Collembola community composition in a pine forest soil -- Overdispersion in functional traits indicates the importance of species interactions](https://doi.org/10.1016/j.soilbio.2016.08.006)
+-   [Breeding density, fine-scale tracking, and large-scale modeling reveal the regional distribution of four seabird species](https://doi.org/10.1002/eap.1591)
+-   [On pseudo-absence generation and machine learning for locust breeding ground prediction in Africa](https://arxiv.org/abs/2111.03904)
+-   [Finite-sample equivalence in statistical models for presence-only data](https://arxiv.org/abs/1207.6950)
+-   [High-dimensional Multi-class Classification with Presence-only Data](https://arxiv.org/abs/2304.09305)
+-   [New spatial models for integrating standardized detection-nondetection and opportunistic presence-only data: application to estimating risk factors associated to powerline-induced death of birds](https://arxiv.org/abs/2303.02088)
+-   [Automated surface feature selection using SALSA2D: An illustration using Elephant Mortality data in Etosha National Park](https://arxiv.org/abs/2202.07977)
+-   [Integration of presence-only data from several sources. A case study on dolphins' spatial distribution](https://arxiv.org/abs/2103.16125)
+-   [Presence-Only Geographical Priors for Fine-Grained Image Classification](https://arxiv.org/abs/1906.05272)
+-   [Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data](https://arxiv.org/abs/1809.01322)
+-   [Understanding the connections between species distribution models](https://arxiv.org/abs/1801.01326)
+-   [PULasso: High-dimensional variable selection with presence-only data](https://arxiv.org/abs/1711.08129)
+-   [Bias Correction in Species Distribution Models: Pooling Survey and Collection Data for Multiple Species](https://arxiv.org/abs/1403.7274)
+-   [Bayesian Modeling and MCMC Computation in Linear Logistic Regression for Presence-only Data](https://arxiv.org/abs/1305.1232)
+-   [Poisson point process models solve the "pseudo-absence problem" for presence-only data in ecology](https://arxiv.org/abs/1011.3319)
+-   [Geostatistical Inference Under Preferential Sampling](https://doi.org/10.1111/j.1467-9876.2009.00701.x)
+-   [Nondetection sampling bias in marked presence-only data](https://arxiv.org/abs/1308.2430)
+-   [Predicting species distributions from museum and herbarium records using multiresponse models fitted with multivariate adaptive regression splines](https://doi.org/10.1111/j.1472-4642.2007.00340.x)
+-   [Generalized linear and generalized additive models in studies of species distributions: setting the scene](https://doi.org/10.1016/S0304-3800(02)00204-1)
+-   [Inference from presence-only data; the ongoing controversy](https://doi.org/10.1111/j.1600-0587.2013.00321.x)
+-   [Sensitivity of species-distribution models to error, bias, and model design: An application to resource selection functions for woodland caribou](https://doi.org/10.1016/j.ecolmodel.2007.11.013)
+-   [Toward the modeling of true species distributions](http://dx.doi.org/10.2307/20870118)
+-   [The importance of correcting for sampling bias in MaxEnt species distribution models](https://doi.org/10.1111/ddi.12096)
+-   [Strategy for Modelling Nonrandom Missing Data Mechanisms in Observational Studies Using Bayesian Methods](https://www.researchgate.net/publication/267971370_Strategy_for_Modelling_Nonrandom_Missing_Data_Mechanisms_in_Observational_Studies_Using_Bayesian_Methods)
+-   [How long should we ignore imperfect detection of species in the marine environment when modelling their distribution?](https://doi.org/10.1111/faf.12039)
+-   [Modelling distribution and abundance with presence-only data](https://doi.org/10.1111/j.1365-2664.2005.01112.x)
+-   [Maximum entropy modeling of species geographic distributions](https://doi.org/10.1016/j.ecolmodel.2005.03.026)
+-   [Sample selection bias and presence-only distribution models: implications for background and pseudo-absence data](https://doi.org/10.1890/07-2153.1)
+-   [Equivalence of MAXENT and Poisson point process models for species distribution modeling in ecology](https://doi.org/10.1111/j.1541-0420.2012.01824.x)
+-   [Does accounting for imperfect detection improve species distribution models?](https://doi.org/10.1111/j.1600-0587.2010.06433.x)
 
-
--------------
-
+------------------------------------------------------------------------
 
 #### Preferential Sampling Considerations
 
 Summary of the article, [Geostatistical Inference Under Preferential Sampling](https://doi.org/10.1111/j.1467-9876.2009.00701.x):
 
-1. Concept of Preferential Sampling: The article discusses the concept of preferential sampling, where the locations of data points are often selected with a preference for values of the process that are either unusually large or small. In your project, this could translate to the tendency to have more data from areas where bird species are more commonly found or are easier to observe. Understanding and accounting for this bias could improve the accuracy of your models.
-2. Model-Based Approach: The authors propose a model-based approach to geostatistical inference when the data are preferentially sampled. This methodology could potentially be applied in your project to account for any bias in the geographical distribution of your bird observation data.
-3. Likelihood-Based Approach to Inference: The authors present a likelihood-based approach to inference for the proposed model. This statistical approach could be useful in your project when you are comparing different machine learning algorithms for modeling bird species distribution.
-4. Bias Correction: The authors found that ignoring preferential sampling can lead to biased estimates of risk. In your project, this could translate to biased predictions of bird species presence. The methodology proposed in the article could potentially be used to correct this bias.
-5. Extension to Spatio-Temporal Processes: The authors suggest that their approach can be extended to spatio-temporal processes. This could be particularly relevant to your project, as bird species presence is likely to vary both spatially and temporally.
+1.  Concept of Preferential Sampling: The article discusses the concept of preferential sampling, where the locations of data points are often selected with a preference for values of the process that are either unusually large or small. In your project, this could translate to the tendency to have more data from areas where bird species are more commonly found or are easier to observe. Understanding and accounting for this bias could improve the accuracy of your models.
+2.  Model-Based Approach: The authors propose a model-based approach to geostatistical inference when the data are preferentially sampled. This methodology could potentially be applied in your project to account for any bias in the geographical distribution of your bird observation data.
+3.  Likelihood-Based Approach to Inference: The authors present a likelihood-based approach to inference for the proposed model. This statistical approach could be useful in your project when you are comparing different machine learning algorithms for modeling bird species distribution.
+4.  Bias Correction: The authors found that ignoring preferential sampling can lead to biased estimates of risk. In your project, this could translate to biased predictions of bird species presence. The methodology proposed in the article could potentially be used to correct this bias.
+5.  Extension to Spatio-Temporal Processes: The authors suggest that their approach can be extended to spatio-temporal processes. This could be particularly relevant to your project, as bird species presence is likely to vary both spatially and temporally.
 
 Ideas for implementation:
 
-* Pre-Processing - Observation Data Pre-Processing: During the pre-processing of your bird observation data, you could consider whether there is any bias in the locations of your data points. For example, are there more data points in areas where bird species are more commonly found or easier to observe? If so, you might need to account for this bias in your models. This could involve adjusting the weights of your points or using a model-based approach to account for preferential sampling.
-* Sampling and Splitting - Pseudo-Absence Selection: When selecting pseudo-absence points, you could consider whether the locations of these are independent of the bird species presence process. If not, you might need to adjust your selection process to account for this dependence. This could involve using a likelihood-based approach to inference, as suggested in the article.
-* Modeling: When comparing different machine learning algorithms for modeling bird species distribution, you could consider whether any of these algorithms are more or less susceptible to bias due to preferential sampling. If so, you might need to adjust your model selection process accordingly. This could involve using a model-based approach to account for preferential sampling, as suggested in the article.
-* Prediction: When making predictions on the presence of each bird species across the entire US, you could consider whether your predictions are biased due to preferential sampling. If so, you might need to adjust your prediction process to correct this bias. This could involve using a model-based approach to account for preferential sampling, as suggested in the article.
-
-
+-   Pre-Processing - Observation Data Pre-Processing: During the pre-processing of your bird observation data, you could consider whether there is any bias in the locations of your data points. For example, are there more data points in areas where bird species are more commonly found or easier to observe? If so, you might need to account for this bias in your models. This could involve adjusting the weights of your points or using a model-based approach to account for preferential sampling.
+-   Sampling and Splitting - Pseudo-Absence Selection: When selecting pseudo-absence points, you could consider whether the locations of these are independent of the bird species presence process. If not, you might need to adjust your selection process to account for this dependence. This could involve using a likelihood-based approach to inference, as suggested in the article.
+-   Modeling: When comparing different machine learning algorithms for modeling bird species distribution, you could consider whether any of these algorithms are more or less susceptible to bias due to preferential sampling. If so, you might need to adjust your model selection process accordingly. This could involve using a model-based approach to account for preferential sampling, as suggested in the article.
+-   Prediction: When making predictions on the presence of each bird species across the entire US, you could consider whether your predictions are biased due to preferential sampling. If so, you might need to adjust your prediction process to correct this bias. This could involve using a model-based approach to account for preferential sampling, as suggested in the article.
 
 #### Pseudo-Absence Generation Considerations
 
@@ -111,20 +105,19 @@ In light of this, the authors conclude that a simpler ML approach such as logist
 
 Ideas for implementation:
 
-1. Pseudo-Absence Selection
-    * In your project, you are generating pseudo-absence points by selecting points where other bird species have been observed but not the target species. However, the paper suggests that more advanced pseudo-absence generation methods, such as environmental profiling, can improve model performance. You could consider implementing environmental profiling in your pseudo-absence selection process. This would involve selecting pseudo-absence points based on the environmental characteristics of the areas where the target species has not been observed. For example, if a certain bird species is known to prefer forested areas, pseudo-absence points could be selected from non-forested areas.
-    * Implementation: Research and implement environmental profiling for pseudo-absence selection. This might involve adjusting your current pseudo-absence selection mechanism to select points based on environmental characteristics rather than just the absence of the target species.
-2. Model Selection
-    * Your project involves a comparative analysis of several machine learning algorithms. The paper found that a simpler machine learning approach, such as logistic regression, performed significantly better than more sophisticated ensemble methods when combined with advanced pseudo-absence generation. Therefore, you might want to give more consideration to simpler models like logistic regression in your analysis.
-    * Implementation: Include logistic regression in your comparative analysis of machine learning algorithms. Evaluate its performance in combination with your new pseudo-absence selection method.
-3. Model Evaluation
-    * The paper used prediction accuracy and F1 score to evaluate model performance. In addition to the performance metrics you are currently using (partial ROC, F1, precision, recall, and accuracy), you might consider using other metrics that are more suitable for imbalanced datasets, such as the Area Under the Precision-Recall Curve (AUPRC).
-    * Implementation: Incorporate additional performance metrics suitable for imbalanced datasets, such as AUPRC, into your model evaluation process.
-4. Data Pre-processing
-    * The paper emphasizes the importance of proper data pre-processing, especially when dealing with presence-only data. You might want to review your data pre-processing steps to ensure that they are suitable for your presence-only bird species data.
-    * Implementation: Review your data pre-processing steps to ensure they are suitable for presence-only data. Make any necessary adjustments based on best practices for dealing with presence-only data.
-    
-    
+1.  Pseudo-Absence Selection
+    -   In your project, you are generating pseudo-absence points by selecting points where other bird species have been observed but not the target species. However, the paper suggests that more advanced pseudo-absence generation methods, such as environmental profiling, can improve model performance. You could consider implementing environmental profiling in your pseudo-absence selection process. This would involve selecting pseudo-absence points based on the environmental characteristics of the areas where the target species has not been observed. For example, if a certain bird species is known to prefer forested areas, pseudo-absence points could be selected from non-forested areas.
+    -   Implementation: Research and implement environmental profiling for pseudo-absence selection. This might involve adjusting your current pseudo-absence selection mechanism to select points based on environmental characteristics rather than just the absence of the target species.
+2.  Model Selection
+    -   Your project involves a comparative analysis of several machine learning algorithms. The paper found that a simpler machine learning approach, such as logistic regression, performed significantly better than more sophisticated ensemble methods when combined with advanced pseudo-absence generation. Therefore, you might want to give more consideration to simpler models like logistic regression in your analysis.
+    -   Implementation: Include logistic regression in your comparative analysis of machine learning algorithms. Evaluate its performance in combination with your new pseudo-absence selection method.
+3.  Model Evaluation
+    -   The paper used prediction accuracy and F1 score to evaluate model performance. In addition to the performance metrics you are currently using (partial ROC, F1, precision, recall, and accuracy), you might consider using other metrics that are more suitable for imbalanced datasets, such as the Area Under the Precision-Recall Curve (AUPRC).
+    -   Implementation: Incorporate additional performance metrics suitable for imbalanced datasets, such as AUPRC, into your model evaluation process.
+4.  Data Pre-processing
+    -   The paper emphasizes the importance of proper data pre-processing, especially when dealing with presence-only data. You might want to review your data pre-processing steps to ensure that they are suitable for your presence-only bird species data.
+    -   Implementation: Review your data pre-processing steps to ensure they are suitable for presence-only data. Make any necessary adjustments based on best practices for dealing with presence-only data.
+
 #### Bayesian Methods
 
 Sumary of the article, [Bayesian Modeling and MCMC Computation in Linear Logistic Regression for Presence-only Data](https://arxiv.org/abs/1305.1232):
@@ -145,11 +138,11 @@ The authors conclude by discussing the advantages and potential limitations of t
 
 Ideas for implementation:
 
-1. Model Selection: You mentioned that you plan to compare several machine learning algorithms, including Logistic Regression, LightGBM, XGBoost, KNN, Random Forest, Maximum Entropy, MCMC, and SPDE/INLA. The Bayesian modeling and MCMC computation approach can be used to enhance your logistic regression model. This approach can provide a more nuanced understanding of the underlying data and can be particularly useful when dealing with complex models and limited data.
-2. Handling Presence-Only Data: Your project involves dealing with presence-only data, which is a common challenge in ecological studies. The Bayesian modeling and MCMC computation approach can be used to handle this type of data more effectively. Specifically, the approach can be used to estimate the parameters of interest in your logistic regression model, providing a more robust and reliable estimation.
-3. Pseudo-Absence Selection: The Bayesian modeling and MCMC computation approach can be used to improve your pseudo-absence selection mechanism. Specifically, the approach can be used to estimate the distribution of pseudo-absence points, which can help to address the inherent challenge of absence data in presence-only datasets.
-4. Model Evaluation: The Bayesian modeling and MCMC computation approach can also be used to evaluate the performance of your models. Specifically, the approach can be used to estimate the posterior distributions of your performance metrics, providing a more comprehensive evaluation of your models.
-5. Predictive Modeling: Lastly, the Bayesian modeling and MCMC computation approach can be used to enhance your predictive modeling. Specifically, the approach can be used to estimate the probabilities of bird species presence across the entire US, providing a more accurate and reliable prediction.
+1.  Model Selection: You mentioned that you plan to compare several machine learning algorithms, including Logistic Regression, LightGBM, XGBoost, KNN, Random Forest, Maximum Entropy, MCMC, and SPDE/INLA. The Bayesian modeling and MCMC computation approach can be used to enhance your logistic regression model. This approach can provide a more nuanced understanding of the underlying data and can be particularly useful when dealing with complex models and limited data.
+2.  Handling Presence-Only Data: Your project involves dealing with presence-only data, which is a common challenge in ecological studies. The Bayesian modeling and MCMC computation approach can be used to handle this type of data more effectively. Specifically, the approach can be used to estimate the parameters of interest in your logistic regression model, providing a more robust and reliable estimation.
+3.  Pseudo-Absence Selection: The Bayesian modeling and MCMC computation approach can be used to improve your pseudo-absence selection mechanism. Specifically, the approach can be used to estimate the distribution of pseudo-absence points, which can help to address the inherent challenge of absence data in presence-only datasets.
+4.  Model Evaluation: The Bayesian modeling and MCMC computation approach can also be used to evaluate the performance of your models. Specifically, the approach can be used to estimate the posterior distributions of your performance metrics, providing a more comprehensive evaluation of your models.
+5.  Predictive Modeling: Lastly, the Bayesian modeling and MCMC computation approach can be used to enhance your predictive modeling. Specifically, the approach can be used to estimate the probabilities of bird species presence across the entire US, providing a more accurate and reliable prediction.
 
 In summary, the Bayesian modeling and MCMC computation approach can be used to enhance various aspects of your project, from model selection and handling presence-only data to pseudo-absence selection, model evaluation, and predictive modeling. By incorporating this approach into your project, you can potentially improve the accuracy and reliability of your results, providing a more nuanced understanding of avian habitat tendencies.
 
@@ -165,12 +158,12 @@ The paper also discusses the challenges of sampling bias in presence-only studie
 
 Ideas for implementation:
 
-1. Model Selection and Interpretation: The article suggests that the inhomogeneous Poisson process (IPP) model and maximum entropy (Maxent) modeling yield the same estimates for density in finite samples. This could influence your choice of models to compare in your project. If computational resources are limited, you might choose to focus on one of these two models, rather than both, given their equivalence in finite samples.
-2. Logistic Regression Adjustments: The authors propose an "infinitely weighted logistic regression," which is exactly equivalent to the IPP in finite samples. If you're using logistic regression in your project, you might consider adjusting it to this infinitely weighted version for better equivalence with the IPP and Maxent models.
-3. Handling Sampling Bias: The paper discusses the challenges of sampling bias in presence-only studies and proposes a model for the sightings process as an occurrence process thinned by incomplete observation. You might consider incorporating this approach into your data pre-processing steps, particularly when selecting pseudo-absence points. For example, you could adjust the selection mechanism to account for potential sampling bias in the Project FeederWatch Observation Data.
-4. Extending Logistic Regression: The authors suggest that many already-implemented methods extending logistic regression can also extend the Maxent and IPP models in directly analogous ways. This could be particularly useful if you're considering extending your models to account for additional complexities in the data. For example, you might consider using regularized logistic regression or other extensions to better handle high-dimensional feature spaces.
-5. Asymptotic Behavior: The paper discusses the different asymptotic limits of logistic regression and the IPP when the model is misspecified. If you're working with large data sets, you might want to consider the potential implications of these different asymptotic behaviors on your model's performance and robustness.
-6. Model Evaluation: The authors' findings about the equivalence of certain models in finite samples could also influence your model evaluation strategy. For example, you might choose to focus on comparing the performance of models that are not equivalent in finite samples, such as logistic regression and the IPP.
+1.  Model Selection and Interpretation: The article suggests that the inhomogeneous Poisson process (IPP) model and maximum entropy (Maxent) modeling yield the same estimates for density in finite samples. This could influence your choice of models to compare in your project. If computational resources are limited, you might choose to focus on one of these two models, rather than both, given their equivalence in finite samples.
+2.  Logistic Regression Adjustments: The authors propose an "infinitely weighted logistic regression," which is exactly equivalent to the IPP in finite samples. If you're using logistic regression in your project, you might consider adjusting it to this infinitely weighted version for better equivalence with the IPP and Maxent models.
+3.  Handling Sampling Bias: The paper discusses the challenges of sampling bias in presence-only studies and proposes a model for the sightings process as an occurrence process thinned by incomplete observation. You might consider incorporating this approach into your data pre-processing steps, particularly when selecting pseudo-absence points. For example, you could adjust the selection mechanism to account for potential sampling bias in the Project FeederWatch Observation Data.
+4.  Extending Logistic Regression: The authors suggest that many already-implemented methods extending logistic regression can also extend the Maxent and IPP models in directly analogous ways. This could be particularly useful if you're considering extending your models to account for additional complexities in the data. For example, you might consider using regularized logistic regression or other extensions to better handle high-dimensional feature spaces.
+5.  Asymptotic Behavior: The paper discusses the different asymptotic limits of logistic regression and the IPP when the model is misspecified. If you're working with large data sets, you might want to consider the potential implications of these different asymptotic behaviors on your model's performance and robustness.
+6.  Model Evaluation: The authors' findings about the equivalence of certain models in finite samples could also influence your model evaluation strategy. For example, you might choose to focus on comparing the performance of models that are not equivalent in finite samples, such as logistic regression and the IPP.
 
 #### Bias Correction using Species Pooling
 
@@ -186,13 +179,9 @@ The authors conclude that their method can be a valuable tool for ecologists and
 
 Ideas for implementation:
 
-1. Data Collection and Pooling: The article emphasizes the importance of pooling data from multiple sources to reduce bias. In your project, you are already using data from multiple sources, which is a good practice. However, you might consider expanding the range of data sources if possible. For instance, you could look for additional bird observation databases or environmental datasets that could provide more comprehensive coverage of the species and environmental factors you are interested in.
-2. Bias Correction: The article presents a method for correcting bias in species distribution models by combining survey and collection data. In your project, you could implement a similar approach to correct for potential biases in your data. For example, you could adjust your models to account for the fact that bird observations are likely to be more frequent in areas that are easily accessible to humans, which could skew the apparent distribution of species.
-3. Modeling and Prediction: The article's approach to reducing bias could also improve the accuracy of your predictive models. By ensuring that your models are based on a balanced and comprehensive dataset, you can increase the reliability of your predictions about bird species distribution across the United States. This could be particularly useful when comparing the performance of different machine learning algorithms, as it would allow you to evaluate them on a fair and unbiased basis.
-4. Conservation Implications: The article highlights the potential conservation implications of accurate species distribution models. In your project, you could use your improved models to identify areas where bird species are likely to be found but are currently under-surveyed. These areas could be targeted for future conservation efforts, helping to protect species that might otherwise be overlooked.
-5. Pseudo-Absence Selection: The article's method of pooling data from multiple species could be adapted to improve your pseudo-absence selection mechanism. By considering the presence of other species when selecting pseudo-absence points, you could ensure that these points represent areas that are genuinely unsuitable for the species of interest, rather than just areas where it has not been observed.
-6. Model Evaluation: The bias correction method proposed in the article could also be used to refine your model evaluation process. By assessing how well your models correct for bias, you could gain additional insights into their performance and reliability. This could be incorporated into your existing performance metrics, such as partial ROC, F1, precision, recall, and accuracy.
-
-
-
-
+1.  Data Collection and Pooling: The article emphasizes the importance of pooling data from multiple sources to reduce bias. In your project, you are already using data from multiple sources, which is a good practice. However, you might consider expanding the range of data sources if possible. For instance, you could look for additional bird observation databases or environmental datasets that could provide more comprehensive coverage of the species and environmental factors you are interested in.
+2.  Bias Correction: The article presents a method for correcting bias in species distribution models by combining survey and collection data. In your project, you could implement a similar approach to correct for potential biases in your data. For example, you could adjust your models to account for the fact that bird observations are likely to be more frequent in areas that are easily accessible to humans, which could skew the apparent distribution of species.
+3.  Modeling and Prediction: The article's approach to reducing bias could also improve the accuracy of your predictive models. By ensuring that your models are based on a balanced and comprehensive dataset, you can increase the reliability of your predictions about bird species distribution across the United States. This could be particularly useful when comparing the performance of different machine learning algorithms, as it would allow you to evaluate them on a fair and unbiased basis.
+4.  Conservation Implications: The article highlights the potential conservation implications of accurate species distribution models. In your project, you could use your improved models to identify areas where bird species are likely to be found but are currently under-surveyed. These areas could be targeted for future conservation efforts, helping to protect species that might otherwise be overlooked.
+5.  Pseudo-Absence Selection: The article's method of pooling data from multiple species could be adapted to improve your pseudo-absence selection mechanism. By considering the presence of other species when selecting pseudo-absence points, you could ensure that these points represent areas that are genuinely unsuitable for the species of interest, rather than just areas where it has not been observed.
+6.  Model Evaluation: The bias correction method proposed in the article could also be used to refine your model evaluation process. By assessing how well your models correct for bias, you could gain additional insights into their performance and reliability. This could be incorporated into your existing performance metrics, such as partial ROC, F1, precision, recall, and accuracy.
