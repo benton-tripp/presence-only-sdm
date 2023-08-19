@@ -1,0 +1,8 @@
+---
+title: "Benchmarking bird species distribution models against poisson point process and MaxEnt"
+author: "Benton Tripp"
+format: pdf
+editor: visual
+---
+
+## 

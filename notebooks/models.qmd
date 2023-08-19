@@ -1,0 +1,10 @@
+---
+title: "Species Distribution Model Comparison"
+author: "Benton Tripp"
+format: html
+editor: source
+toc: true
+toc-depth: 3
+code-folding: show
+theme: readable
+---

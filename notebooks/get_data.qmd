@@ -1,0 +1,1714 @@
+---
+title: "Getting the Data - Bird Species Observations and Environmental Rasters"
+author: "Benton Tripp"
+format: html
+editor: source
+toc: true
+toc-depth: 3
+code-folding: show
+theme: readable
+---
+
+## Overview
+
+## Data Sources
+
+-   State Boundary Data
+    -   [ArcGIS Hub](https://hub.arcgis.com/datasets/1612d351695b467eba75fdf82c10884f/explore?filters=eyJTVEFURV9BQkJSIjpbIkNPIiwiVlQiLCJOQyIsIk9SIl19&location=48.814319%2C163.610769%2C2.35) (Shapefile download with filters set to the 4 states in question)
+-   eBird Observation Data
+    -   [eBird Data Access](https://ebird.org/data/download)
+-   Raster Data
+    -   [DEM \| Source Page](https://www.sciencebase.gov/catalog/item/5540e111e4b0a658d79395d9)
+        -   Download by regions (Great Plains, Northeast, Northwest, Southeast, Southwest, and Upper Midwest)
+    -   [Urban Imperviousness \| Source Page](https://www.mrlc.gov/data)
+        -   *NLCD 2019 Percent Developed Imperviousness (CONUS), NLCD 2019 Developed Imperviousness Descriptor (CONUS)*
+    -   [Land Cover](https://www.mrlc.gov/data)
+        -   *NLCD 2019 Land Cover (CONUS)*
+    -   [Canopy](https://www.mrlc.gov/data)
+        -   *NLCD 2016 USFS Tree Canopy Cover (CONUS)*
+    -   [Weather (min/max temperature, avg precipitation)](https://www.nacse.org/prism/)
+        -   Download weather raster data for "ppt", "tmax", "tmin", 2017-2019 at a 4km resolution and 30-year monthly normals at an 800m resolution
+        -   URL to download 4km data is: *https://services.nacse.org/prism/data/public/4km/*<VARIABLE>/<YEAR>
+        -   URL to download 800m data is *https://services.nacse.org/prism/data/public/normals/800m/*<VARIABLE>/<MONTH>
+    -   [Hydrography (Water Bodies & Coast) \| Source Page](https://apps.nationalmap.gov/downloader/#/)
+        -   [Download](https://prd-tnm.s3.amazonaws.com/StagedProducts/Small-scale/data/Hydrography/hydrusm010g.gdb_nt00897.tar.gz)
+    -   [Soil \| Source Page](https://www.nrcs.usda.gov/resources/data-and-reports/gridded-national-soil-survey-geographic-database-gnatsgo)
+        -   [Download](https://nrcs.app.box.com/v/soils/folder/191790828371)
+    -   Vegetation Index
+        -   [USGS Earth Explorer](https://earthexplorer.usgs.gov/) (eVIIRS NDVI, 02/23/21-03/08/21 1km; 05/04/21-05/17/21 1km; 09/07/21-09/20/21 1km; 11/30/21-12/13/21 1km)
+
+## Boundary Data
+
+For simplicity, only [data for the four states that are being used as observation areas](https://hub.arcgis.com/datasets/1612d351695b467eba75fdf82c10884f/explore?filters=eyJTVEFURV9BQkJSIjpbIkNPIiwiVlQiLCJOQyIsIk9SIl19&location=48.814319%2C163.610769%2C2.35) needs to be downloaded (as a .shp file). By default, the zipped files should be saved in *US_State_Boundaries.zip*. Extract the files into a folder of the same name within the data directory, and use the following Python code to split the states into separate files:
+
+```{python, eval=F}
+
+# import libraries
+import geopandas as gpd
+import os
+
+# Load the shapefile into a GeoDataFrame
+gdf = gpd.read_file("../data/US_State_Boundaries/US_State_Boundaries.shp")
+gdf = gdf.to_crs("EPSG:5070")
+state_abbreviations = ["CO", "NC", "OR", "VT"]
+
+output_dir = "../data/US_State_Boundaries"
+
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+for sa in state_abbreviations:
+    try:
+        state_gdf = gdf[gdf["STATE_ABBR"] == sa]
+        output_path = os.path.join(output_dir, f"{sa}_State_Boundaries.shp")
+        state_gdf.to_file(output_path)
+    except Exception as e:
+        print(f'Failed to save shapefile for state {sa}: {e}')
+
+```
+
+## eBird Data
+
+There are four regions explored in this analysis from 2016 through 2019 (corresponding to the 4 boundary datasets):
+
+-   Colorado, 2016-2019
+-   North Carolina, 2016-2019
+-   Oregon, 2016-2019
+-   Vermont, 2016-2019
+
+Species included are:
+
+-   Belted Kingfisher
+-   Cedar Waxwing
+-   Downy Woodpecker
+-   Ruddy Duck
+-   Sanderling
+-   Sandhill Crane
+-   Sharp-shinned Hawk
+-   Wild Turkey
+
+## Observation Data Pre-Processing
+
+1.  Download each of the regions from the [eBird Download Page](https://ebird.org/data/download), filtered by date range (you will need to request access annually). They will initially be downloaded as compressed folders, so the contents will need to be extracted. There is also an eBird API, but the use of the API is beyond the scope of this document.
+2.  Using the R [`auk` package](https://cornelllabofornithology.github.io/auk/), the contents can be filtered and saved within the project data directory:
+
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F)
+library(auk)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(quarto)
+library(raster)
+library(ggplot2)
+library(sf)
+library(purrr)
+```
+
+```{r load-ebird-data, eval=F}
+
+# Import libraries
+library(auk)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(sf)
+library(purrr)
+
+auk_set_ebd_path("../data", overwrite = T)
+
+# Specify where your eBird datasets were downloaded to
+ebird.download.dir <- "../data/ebird_downloads/"
+
+# Define species
+species <- c("Sandhill Crane", "Sharp-shinned Hawk",
+             "Wild Turkey", "Downy Woodpecker",
+             "Sanderling", "Cedar Waxwing", 
+             "Belted Kingfisher", "Ruddy Duck")
+
+# Parse eBird downloads
+for (dir in list.dirs(ebird.download.dir)[-1]) {
+  # List .txt files that start with "ebd_"
+  in.file <- list.files(path = dir, pattern = "^ebd_.*\\.txt$", full.names = T)[[1]]
+  # Use regular expression to extract state abbreviation
+  state.abbreviation <- sub(".*_US-([A-Z]{2})_.*", "\\1", in.file)
+  out.file <- paste0("../data/", state.abbreviation, ".txt")
+  # Read in the filtered data using the `auk` library, saving to `out.file`
+  auk_ebd(in.file) %>%
+    auk_species(species = species) %>% 
+    auk_filter(file = out.file, overwrite=T, execute=T)
+}
+
+```
+
+```{r obs-example}
+#| label: count-example
+#| tbl-cap: "(NC) observation counts by species"
+
+# Show example (NC data)
+readr::read_delim("../data/NC.txt", delim = "\t") %>%
+  group_by(`COMMON NAME`) %>%
+  summarize(count = n()) %>%
+  kable()
+
+```
+
+```{r visualize-obs-example}
+
+# Import leaflet
+library(leaflet)
+
+# Read in sample data
+nc.shc <- readr::read_delim("../data/NC.txt", delim = "\t") %>%
+  dplyr::filter(`COMMON NAME` == "Sandhill Crane")
+
+leaflet(nc.shc) %>%
+  addTiles() %>%  # This adds the OpenStreetMap tiles
+  addMarkers(~LONGITUDE, ~LATITUDE) %>%
+  setView(lng = mean(nc.shc$LONGITUDE), lat = mean(nc.shc$LATITUDE), zoom = 7) %>%
+  addProviderTiles(providers$Stamen.Toner)
+
+```
+
+```{r prep-obs}
+#| label: preprocessed-tbl-example
+#| tbl-cap: "Sample of (NC) preprocessed observation data"
+
+# Some basic pre-processing
+preprocess_obs <- function(data_path) {
+  data <- readr::read_delim(data_path, delim = "\t")
+  names(data) <- gsub(" ", "_", tolower(names(data)))
+  data <- data %>%
+    filter(approved == 1) %>%
+    dplyr::select(common_name, observation_count, latitude, longitude) %>%
+    group_by(common_name, latitude, longitude) %>%
+    summarize(observation_count = sum(as.numeric(observation_count), na.rm=T)) %>%
+    ungroup() %>%
+    as.data.table()
+  return(data)
+}
+
+states <- c("CO", "NC", "OR", "VT")
+
+obs <- purrr::map(states, function(.x) {
+  out <- preprocess_obs(paste0("../data/", .x, ".txt"))
+  fwrite(out, paste0("../data/observations_", .x, ".csv"))
+  out
+})
+
+names(obs) <- states
+
+head(obs$NC) %>% kable()
+
+```
+
+## Rasters
+
+Raster data is a type of digital image represented by a grid of pixels, where each pixel has an associated value that represents information about a particular geographic area. It is one of the two primary ways to represent geospatial data (the other being vector data). In environmental studies and geographic analysis, raster data is extensively used to represent continuous data such as elevation, temperature, or land cover. In this project, raster data serves as the basis for various explanatory variables that influence bird species distributions, including digital elevation, urban imperviousness, land cover, canopy, weather, hydrography, soil, and vegetation index. Each of these variables represents environmental conditions that can affect bird habitat and distribution.
+
+## Raster Pre-Processing
+
+Before using raster data for analysis, it is crucial to preprocess them to ensure compatibility, accuracy, and relevancy. Raster pre-processing includes a series of steps that prepare and standardize the raster datasets for subsequent analyses. Along with some general pre-processing steps (and corresponding code), the following sections outline specific pre-processing steps tailored for each type of explanatory variable being used in the analysis.
+
+### General Raster Pre-Processing Steps
+
+1.  Load the environmental raster datasets & State Boundary data
+2.  Reproject to CRS EPSG:5070
+3.  Resample each to 2500 x 2500 meters
+4.  Mask each raster using State Boundary (ensure oceans and great lakes are set to `nodata`)
+5.  Output updated raster data
+
+```{python, eval=F}
+
+# Import libraries
+import arcpy
+import os
+
+def general_raster_preprocessing(
+    raster_name,
+    out_raster_name,
+    data_path="../data",
+    state_boundary_path="../data/US_State_Boundaries",
+    states=["NC", "CO", "OR", "VT"],
+    state_file_suffix="_State_Boundaries.shp",
+    out_path="../gis630/data",
+    crs=5070,
+    wildcard="*",
+    raster_type="All"
+):
+    # Example usage:
+    # 
+    # general_raster_preprocessing(
+    #   raster_name="canopy/nlcd_2016_treecanopy_2019_08_31", 
+    #   out_raster_name="canopy",
+    #   out_path="../data/canopy"
+    # )
+    
+    # Set the workspace environment, which is the folder where the raster files are located
+    arcpy.env.workspace = os.path.join(data_path, raster_name)
+
+    # Enable overwriting outputs
+    arcpy.env.overwriteOutput = True
+
+    # List all the raster files in the workspace directory
+    rasters = arcpy.ListRasters(wildcard, raster_type)
+    print("Rasters: ", rasters)
+    
+    # Loop through each raster file in the list
+    for raster in rasters:
+
+        # Reproject the raster to a projected coordinate system with units in meters
+        out_coordinate_system = arcpy.SpatialReference(crs)
+        print(f"Reprojecting raster to CRS {crs}...")
+        reprojected_raster = arcpy.ProjectRaster_management(raster, None, out_coordinate_system)
+        
+        # Resample the reprojected raster to 2500 x 2500 meters resolution using 
+        # the nearest neighbor algorithm
+        print(f"Resampling {raster} to 2500x2500 meters...")
+        resampled_raster = arcpy.Resample_management(reprojected_raster, None, "2500 2500", "NEAREST")
+        
+        # Loop through each state in the states list
+        for state in states:
+            # Construct the file path to the state boundary shapefile
+            state_path = os.path.join(state_boundary_path, state + state_file_suffix)
+            
+            # Extract the area of the resampled raster that intersects with the state boundary
+            print(f"Extracting {state} data using state mask...")
+            out_state_raster = arcpy.sa.ExtractByMask(reprojected_raster, state_path)
+            
+            # Save the extracted raster to a new file with state abbreviation appended to name
+            out_state_raster.save(os.path.join(out_path, out_raster_name + "_" + state + ".tif"))
+
+```
+
+*Ensure that extents match for each raster.*
+
+### Digital Elevation Model (DEM)
+
+DEM Pre-Processing Steps:
+
+1.  Using `arcpy.management.MosaicToNewRaster`, join all DEM raster parts into single raster
+
+```{python, eval=F}
+
+# Import libraries
+import arcpy
+import os
+
+def list_rasters_recursive(directory, raster_list=[]):
+    if not "mosaic" in directory: 
+        arcpy.env.workspace = directory
+        rasters = arcpy.ListRasters("*", "ADF")
+        if rasters:
+            raster_list.extend([directory])
+    # recurse into subdirectories
+    for subdir in [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]:
+        list_rasters_recursive(os.path.join(directory, subdir), raster_list)
+
+    return raster_list
+
+def combine_dem_parts(
+    dem_dir="../data/dem/raw_dem", 
+    output_dir="../data/dem", 
+    output_raster_name="mosaic_dem"
+  ):
+  rasters = list(set(list_rasters_recursive(dem_dir)))
+
+  # Convert the list of rasters to a semicolon-delimited string
+  rasters_string = ';'.join(rasters)
+
+  # Use Mosaic to New Raster tool to join all the rasters together
+  arcpy.management.MosaicToNewRaster(rasters_string, 
+                                     output_dir,
+                                     output_raster_name + ".tif", 
+                                     None, 
+                                     "32_BIT_FLOAT", 
+                                     None, 
+                                     1, 
+                                     "LAST", 
+                                     "FIRST")
+
+  print("Mosaic completed successfully!")
+
+# Combine rasters in "raw_dem" folder (great_plains, northeast, northwest, etc.)
+combine_dem_parts(dem_dir="../data/dem/raw_dem", output_dir="../data/dem")
+
+```
+
+2.  Follows [general raster pre-processing steps], using the combined raster from step 1
+
+```{python, eval=F}
+
+# Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+general_raster_preprocessing(
+    raster_name="dem", 
+    out_raster_name="dem",
+    out_path="dem"
+)
+
+```
+
+### Urban Imperviousness
+
+*(Follows [general raster pre-processing steps])*
+
+```{python, eval=F}
+
+# Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+general_raster_preprocessing(
+    raster_name="urban_imperviousness", 
+    out_raster_name="urban_imperviousness",
+    out_path="../data/urban_imperviousness"
+)
+
+```
+
+### Land Cover
+
+1. Follow [general raster pre-processing steps]
+
+```{python, eval=F}
+
+# Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+general_raster_preprocessing(
+    raster_name="land_cover/nlcd_2019_land_cover_l48_20210604", 
+    out_raster_name="land_cover",
+    out_path="../data/land_cover"
+)
+
+```
+
+2. Set values of 128 to NA
+
+```{python, eval=F}
+
+# Import libraries
+import arcpy
+import os
+import shutil
+from arcpy.sa import Con
+from arcpy.sa import Raster
+
+def fix_lc_na(data_path, na_val, states=["CO", "NC", "OR", "VT"]):
+
+  for state in states:
+  
+    # Set path of the input raster
+    input_raster_path = os.path.join(data_path, f"land_cover_{state}.tif")
+    
+    # Create a temporary output path
+    temp_output_path = os.path.join(data_path, f"temp_land_cover_{state}.tif")
+    
+    # Read the input raster
+    input_raster = Raster(input_raster_path)
+    
+    # Use the Con tool to set values of the defined na value to NoData
+    output_raster = Con(input_raster != na_val, input_raster)
+    
+    # Save the output raster to the temporary file path
+    output_raster.save(temp_output_path)
+  
+    # Delete raster variables to release locks on the files
+    del input_raster
+    del output_raster
+  
+    # Allow arcpy to perform garbage collection
+    arcpy.ClearWorkspaceCache_management()
+    
+    temp_files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.startswith("temp_")]
+    
+    for file in temp_files:
+      # Move the temporary file to the original file path
+      shutil.move(file, file.replace("temp_", ""))
+    
+fix_lc_na(data_path="../data/land_cover", na_val=128)
+    
+```
+
+### Canopy
+
+*(Follows [general raster pre-processing steps])*
+
+```{python, eval=F}
+
+# Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+general_raster_preprocessing(
+    raster_name="canopy/nlcd_2016_treecanopy_2019_08_31", 
+    out_raster_name="canopy",
+    out_path="../data/canopy"
+)
+
+```
+
+### Weather
+
+Downloading the weather data:
+
+```{python, eval=F}
+
+# Import libraries
+import urllib.request
+import os
+import zipfile
+from typing import List
+
+def get_weather_data(data_path:str) -> None:
+    """
+    Downloads and processes weather raster data for specified variables and years at a 4km resolution 
+    and 30-year monthly normals at an 800m resolution. The function downloads, aggregates, and resamples 
+    the rasters before trimming them to the North Carolina boundary.
+    Args
+    - data_path : A file path to the data directory
+    Output
+    A list of aggregated raster layer names (should match the last three inputs)
+    """
+    # Checks to confirm valid file paths
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data path '{data_path}' not found.")
+
+    vars = ["ppt", "tmax", "tmin"]
+    # Setup for yearly 4km resolution 
+    yrs = [2017, 2018, 2019]
+    pairs = list()
+    pairs = [(v, y) for v in vars for y in yrs if (v, y) not in pairs]
+    # Setup for 30 year normal monthly 800m resolution
+
+    mnths = ["{:02d}".format(m) for m in range(1, 13)]
+    norm_pairs = list()
+    norm_pairs = [(v, m) for v in vars for m in mnths if (v, m) not in norm_pairs]
+
+    ### Get Raster Data ######
+    print("Getting explanatory Weather Rasters...")
+    # Data documentation https://www.prism.oregonstate.edu/documents/PRISM_downloads_web_service.pdf
+    out_path = os.path.join(data_path, "weather/")
+    os.makedirs(out_path, exist_ok=True)
+
+    # 4km yearly data (for 2017-2019)
+    for v, y in pairs:
+        dwnld_out = os.path.join(out_path, f"{v}_{y}.zip")
+        dwnld_path = os.path.join(out_path, f"{v}_{y}")
+        if not os.path.exists(dwnld_path):
+            url = f"https://services.nacse.org/prism/data/public/4km/{v}/{y}" 
+            print(f"Downloading weather data from {url}...")
+            urllib.request.urlretrieve(url, dwnld_out)
+            print(f"Saved {v}/{y} to {dwnld_out}")
+            with zipfile.ZipFile(dwnld_out, "r") as zfile:
+                zfile.extractall(dwnld_path)
+            print(f"Extracted {v}/{y} from {dwnld_out} to {dwnld_path}")
+            os.remove(dwnld_out)
+ 
+    # 800m monthly data (30 year normals), used to estimate higher resolution for the 4km data
+    for v, m in norm_pairs:
+        dwnld_out = os.path.join(out_path, f"{v}_{m}.zip")
+        dwnld_path = os.path.join(out_path, f"{v}_{m}")
+        if not os.path.exists(dwnld_path):
+            url = f"https://services.nacse.org/prism/data/public/normals/800m/{v}/{m}" 
+            print(f"Downloading weather data from {url}...")
+            urllib.request.urlretrieve(url, dwnld_out)
+            print(f"Saved {v}/{m} to {dwnld_out}")
+            with zipfile.ZipFile(dwnld_out, "r") as zfile:
+                zfile.extractall(dwnld_path)
+            print(f"Extracted {v}/{m} from {dwnld_out} to {dwnld_path}")
+            os.remove(dwnld_out)
+            
+    print("Finished.")
+            
+get_weather_data("../data")
+
+```
+
+Weather Pre-Processing Steps:
+
+1.  Iteratively load yearly data by variable (using `get_rasters_from_dir`)
+
+```{python, eval=F}
+
+# Import libraries
+import arcpy
+import os
+from typing import List
+
+def get_rasters_from_dir(var:str, 
+                         periods:list, 
+                         out_path:str) -> List[arcpy.Raster]:
+    """
+    Retrieves a list of arcpy.Raster objects from the specified directory based on the input parameters.
+    Args
+    var : The variable type (e.g. 'prcp', 'tmin', or 'tmax').
+    periods : A list of periods (years or months) for which rasters are needed.
+    out_path : The path to the directory containing the raster files.
+    Output
+    A list of arcpy.Raster objects corresponding to the specified variable and periods.
+    """
+    return [
+        arcpy.Raster(
+            os.path.join(
+                os.path.join(out_path, f"{var}_{p}"), 
+                [f for f in os.listdir(os.path.join(out_path, f"{var}_{p}") ) \
+                 if f.endswith('.bil') and var in f][0]
+            )
+        ) for p in periods] 
+        
+```
+
+2.  Aggregate all of the yearly rasters for each variable with the corresponding function (max, min, avg) using `arcpy.sa.CellStatistics`
+3.  Save to (intermediate) raster files
+4.  Repeat steps 1-3 on monthly data, by variable
+5.  Calculate the weights based on the number of years in the datasets (3)
+6.  Combine monthly/yearly rasters by variable, applying weights (`arcpy.Raster("aggregated_year_raster") * year_weight + arcpy.Raster("aggregated_month_raster") * month_weight`)
+7.  Apply [general raster pre-Processing steps] to each combined raster (final output should be 1 raster per variable)
+
+```{python, eval=F}
+
+data_path = "../data/weather"
+wspace = "../data/weather/aggregated"
+if not os.path.exists(wspace):
+  os.mkdir(wspace)
+max_temp_data = "max_temp.tif"
+min_temp_data = "min_temp.tif"
+avg_prcp_data = "avg_prcp.tif"
+states = ["CO", "NC", "OR", "VT"]
+
+vars = ["ppt", "tmax", "tmin"]
+# Setup for yearly 4km resolution 
+yrs = [2017, 2018, 2019]
+pairs = list()
+pairs = [(v, y) for v in vars for y in yrs if (v, y) not in pairs]
+# Setup for 30 year normal monthly 800m resolution
+
+mnths = ["{:02d}".format(m) for m in range(1, 13)]
+norm_pairs = list()
+norm_pairs = [(v, m) for v in vars for m in mnths if (v, m) not in norm_pairs]
+
+```
+
+```{python, eval=F}
+
+### Process data and add to GDB #########
+for var in vars:
+    print(f"Checking {var}...")
+    out_path = os.path.join(wspace, var)
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
+    # Set workspace
+    arcpy.env.workspace = out_path
+    if var == "tmax":
+        raster = max_temp_data
+    elif var == "tmin":
+        raster = min_temp_data
+    else:
+        raster = avg_prcp_data
+    arcpy.env.overwriteOutput = True
+    # Average with other years of same var type
+    agg_rasters = dict()
+    # Yearly data
+    rasters = get_rasters_from_dir(var, yrs, data_path)
+    raster_out = raster
+    if var == "tmax":
+        agg_func = "MAXIMUM"
+    elif var == "tmin":
+        agg_func = "MINIMUM"
+    elif var == "ppt":
+        agg_func = "MEAN"
+    agg_rasters.update({var:{"yr":raster_out}})
+    print(f"Aggregating {var} for all years...")
+    outCellStats = arcpy.sa.CellStatistics(rasters, agg_func, "DATA")
+    outCellStats.save(raster_out)
+    print(f"Finished aggregating {var} for all years.")
+    # Monthly 30-year normals
+
+    rasters = get_rasters_from_dir(var, mnths, data_path) 
+    raster_out = f"{var}_30yr_800m.tif"
+    agg_rasters[var].update({"norm":raster_out})
+    print(f"Aggregating {var} for all 800m 30 year normal months...")
+    outCellStats = arcpy.sa.CellStatistics(rasters, agg_func, "DATA")
+    outCellStats.save(raster_out)
+    print(f"Finished aggregating {var} for all 30 year normal months.")
+
+    # Calculate the weights based on the number of years in the datasets
+    initial_weight_4km = 3.0
+    initial_weight_800m = 3.0 / 30.0
+    total_weight = initial_weight_4km + initial_weight_800m
+    normalized_weight_4km = initial_weight_4km / total_weight
+    normalized_weight_800m = initial_weight_800m / total_weight
+
+    combined_raster = (arcpy.Raster(agg_rasters[var]["yr"]) * normalized_weight_4km) + \
+      (arcpy.Raster(agg_rasters[var]["norm"]) * normalized_weight_800m)
+    
+    combined_raster.save("aggregated_" + raster)
+    
+    # Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+    general_raster_preprocessing(
+        raster_name=f"weather/aggregated/{var}", 
+        out_raster_name=var,
+        out_path="../data/weather",
+        wildcard="agg*"
+    )
+
+    arcpy.env.overwriteOutput = False
+print("Finished.)
+
+```
+
+### Hydrography (Water Bodies & Coasts)
+
+Hydrography Pre-Processing Steps:
+
+1.  Use `arcpy.conversion.FeatureClassToShapefile` to convert file geodatabase to shapefiles
+
+```{python, eval=F}
+
+# Import libraries
+import arcpy
+import os
+
+def convert_hydro_gdb(
+        data_path:str="../data/hydrography/",
+        gdb_name:str="hydrusm010g.gdb_nt00897/hydrusm010g.gdb",
+        data_sets:list=["Coastline", "Waterbody"],
+        output_path:str="../data/hydrography/"
+    ) -> None: 
+    input_str = ";".join([os.path.join(data_path, gdb_name, ds) for ds in data_sets])
+    out = arcpy.conversion.FeatureClassToShapefile(input_str, output_path)
+
+convert_hydro_gdb()
+
+```
+
+2.  Load waterbody data & State Boundary data as dataframes
+    a.  Remove "Lake Dry" features from waterbody data
+    b.  Create binary values in waterbody and boundary datasets (waterbody data -\> 0, boundary data -\> 1)
+    c.  Reproject CRS of both to EPSG:5070
+    d.  Perform unary union on boundary data, calculate total bounds
+    e.  Get all points in US boundary using bounds and a resolution of 2500 meters
+    f.  Join points with water body data; Set oceans/great lakes to `nodata` using preset binary values
+    g.  Set metadata and export waterbody data to raster
+    h.  Create "zones" based on distance from water bodies using binary dilation (i.e., on a water body is 1, 0 to 2500 meters away is 0.8, etc.)
+    i.  Output raster
+
+```{python, eval=F}
+
+# Import libraries
+import os
+import geopandas as gpd
+from rasterio.transform import from_origin
+import rasterio
+from shapely.geometry import Point
+import numpy as np
+from scipy.ndimage import binary_dilation
+
+data_path = "../data"
+hyd_data_path = os.path.join(data_path, "hydrography")
+states = ["CO", "NC", "OR", "VT"]
+resolution = 2500  # in the same units as your CRS
+
+def update_array(arr):
+    # Create a copy of the array to hold the updated values
+    arr_updated = arr.copy().astype(float)
+    mask = arr == -1
+
+    # Create the structuring element for dilation
+    selem = np.array([[0, 1, 0],
+                      [1, 1, 1],
+                      [0, 1, 0]])
+
+    # Perform the dilation operation multiple times
+    dilated1 = binary_dilation(arr == 1, structure=selem)
+    dilated2 = binary_dilation(dilated1, structure=selem)
+    dilated3 = binary_dilation(dilated2, structure=selem)
+    dilated4 = binary_dilation(dilated3, structure=selem)
+
+    # Subtract the result from the original dilation to get the zones
+    zone1 = dilated1 & ~(arr == 1)
+    zone2 = dilated2 & ~dilated1
+    zone3 = dilated3 & ~dilated2
+    zone4 = dilated4 & ~dilated3
+
+    # Update the values in the array based on the zones
+    arr_updated[zone1] = 0.8
+    arr_updated[zone2] = 0.6
+    arr_updated[zone3] = 0.4
+    arr_updated[zone4] = 0.2
+
+    arr_updated[mask] = -1
+
+    return arr_updated
+
+# Load the shapefile
+print("Reading waterbody data...")
+gdf = gpd.read_file(os.path.join(hyd_data_path, 'Waterbody.shp'))
+
+# Filter out records where Feature == "Dry Lake"
+gdf = gdf[gdf['Feature'] != 'Lake Dry']
+
+# Overwrite the original shapefile
+gdf.to_file(os.path.join(hyd_data_path, 'Waterbody.shp')
+
+# Create a new column in the waterbody and streams dataframes with all values set to 0
+print("Creating raster values...")
+water_bodies['raster_value'] = 0
+
+for state in states:
+    print(f"Reading {state} boundary data...")
+    state_boundary = gpd.read_file(
+        os.path.join(data_path, f"US_State_Boundaries/{state}_State_Boundaries.shp")
+        )
+
+    # Create a new column in the us_boundary dataframe with all values set to 1
+    state_boundary['raster_value'] = 1
+
+    # Reproject to a common CRS
+    print("Reprojecting...")
+    water_bodies = water_bodies.to_crs('EPSG:5070')
+    state_boundary = state_boundary.to_crs('EPSG:5070')
+
+    # Create a single polygon representing the mainland US
+    print("Combining US states...")
+    state_boundary = state_boundary.unary_union
+
+    # Create a new GeoDataFrame with the combined polygon and set the raster value to 1
+    state_boundary = gpd.GeoDataFrame([1], 
+                                      geometry=[state_boundary], 
+                                      columns=['raster_value'], 
+                                      crs='EPSG:5070')
+
+    # Determine the extent of the combined GeoDataFrame
+    xmin, ymin, xmax, ymax = state_boundary.total_bounds
+
+    # Create a grid of points within this extent
+    ys, xs = np.mgrid[ymin:ymax:resolution, xmin:xmax:resolution]
+    points = gpd.GeoDataFrame(geometry=[Point(x, y) for x, y in zip(xs.flatten(), ys.flatten())], 
+                              crs="EPSG:5070")
+
+    # Assign each point a value based on whether it falls within a water polygon or not
+    points['is_within_bounds'] = gpd.sjoin(points, 
+                                           state_boundary, 
+                                           predicate='within', 
+                                           how='left')['index_right'].notna().astype(int)
+    points['is_water'] = gpd.sjoin(points, 
+                                   water_bodies, 
+                                   predicate='within', how='left')['index_right'].notna().astype(int)
+    # Assign a 'nodata' value to points that are not within the US mainland boundary
+    points.loc[points['is_within_bounds'] == 0, 'is_water'] = -1
+    points.drop(columns='is_within_bounds', inplace=True)
+
+    # Create a raster from these points
+    transform = from_origin(xmin, ymax, resolution, resolution)  # rasterio transform (Affine object)
+    meta = {
+        'driver': 'GTiff',
+        'height': ys.shape[0],
+        'width': xs.shape[1],
+        'count': 1,
+        'dtype': rasterio.uint8,
+        'crs': "EPSG:5070",
+        'transform': transform,
+    }
+
+    arr = np.flipud(points['is_water'].values.reshape(ys.shape).astype(int))
+    arr2 = update_array(arr)
+
+    out_fn = os.path.join(hyd_data_path, f'{state}_Waterbody.tif')
+
+    meta = {
+        'driver': 'GTiff',
+        'height': ys.shape[0],
+        'width': xs.shape[1],
+        'count': 1,
+        'dtype': rasterio.float32,
+        'crs': "EPSG:5070",
+        'transform': transform,
+    }
+
+    print(f"Writing final raster for {state}...")
+    with rasterio.open(out_fn, 'w', **meta) as dst:
+        dst.write(arr2.astype(rasterio.float32), 1)
+        dst.nodata = -1.
+
+```
+
+3.  Load coast data
+    a.  Apply 5000 Meter buffer to lines to convert to polygons
+
+```{python, eval=F}
+
+# Import libraries
+import arcpy
+
+arcpy.analysis.Buffer("../data/hydrography/Coastline.shp", 
+                      "../data/hydrography/Coastline_Buffer.shp", 
+                        "5000 Meters", dissolve_option="ALL")
+ 
+```
+
+            b. Convert buffered coastline to raster
+
+```{python, eval=F}
+
+# Import libraries
+import geopandas as gpd
+from rasterio.transform import from_origin
+import rasterio
+from shapely.geometry import Point
+import numpy as np
+
+# Define your desired resolution
+resolution = 2500  # in the same units as your CRS
+
+# Load the coastline buffer shapefile
+coastline_buffer = gpd.read_file('../data/hydrography/Coastline_Buffer.shp')
+
+# Reproject the coastline buffer to the desired CRS
+coastline_buffer = coastline_buffer.to_crs('EPSG:5070')
+
+# Determine the extent of the coastline buffer
+xmin, ymin, xmax, ymax = coastline_buffer.total_bounds
+
+# Create a grid of points within this extent
+ys, xs = np.mgrid[ymin:ymax:resolution, xmin:xmax:resolution]
+points = gpd.GeoDataFrame(geometry=[Point(x, y) for x, y in zip(xs.flatten(), ys.flatten())], 
+                          crs="EPSG:5070")
+
+# Assign each point a value based on whether it falls within the coastline buffer polygon or not
+points['is_buffer'] = gpd.sjoin(points, 
+                                coastline_buffer, 
+                                predicate='within', 
+                                how='left')['index_right'].notna().astype(int)
+
+# Define the output filename
+out_fn = '../data/hydrography/Coastline_Buffer_Raster.tif'
+
+# Create a raster from these points
+transform = from_origin(xmin, ymax, resolution, resolution)  # rasterio transform (Affine object)
+meta = {
+    'driver': 'GTiff',
+    'height': ys.shape[0],
+    'width': xs.shape[1],
+    'count': 1,
+    'dtype': rasterio.uint8,
+    'crs': "EPSG:5070",
+    'transform': transform,
+}
+
+arr = np.flipud(points['is_buffer'].values.reshape(ys.shape).astype(int))
+
+with rasterio.open(out_fn, 'w', **meta) as dst:
+    dst.write(arr.astype(rasterio.uint8), 1)
+    dst.nodata = 255
+
+print("Raster file created successfully!")
+ 
+```
+
+            c. Apply [general raster pre-Processing steps] to intermediate raster
+
+```{python, eval=F}
+
+general_raster_preprocessing(
+    raster_name="hydrography", 
+    out_raster_name="coastline",
+    out_path="../data/hydrography",
+    wildcard="Coastline_Buffer*"
+)
+ 
+```
+
+### Soil
+
+Soil Pre-Processing Steps:
+
+1.  Load soil shapefile
+2.  Create new field called "MUSYM_CODE" using the "MUSYM" field that maps each unique value to an integer
+3.  Define raster pixel size, extent; Initialize raster data using GDAL `SetGeoTransform`
+4.  Set raster projection using original source spatial reference
+5.  Output to (intermediate) raster using GDAL `RasterizeLayer`, with `options=["ATTRIBUTE=MUSYM_CODE"]`
+
+```{python, eval=F}
+
+# Import libraries
+from osgeo import gdal, ogr
+import geopandas as gpd
+import pandas as pd
+
+# Open the data source
+vector_ds = "../data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp"
+raster_fn = "../data/soil/raster/gsmsoilmu_a_us.tif"
+
+def shp_to_raster(vector_ds, raster_fn, akey):
+    vector_ds = ogr.Open(vector_ds)
+    layer = vector_ds.GetLayer()
+
+    # Create the destination data source
+    pixel_size = 0.01  # Define this according to your needs
+    
+    x_min, x_max, y_min, y_max = layer.GetExtent()
+    size_x = int((x_max - x_min) / pixel_size)
+    size_y = int((y_max - y_min) / pixel_size)
+
+    # Create the raster dataset
+    raster_ds = gdal.GetDriverByName('GTiff').Create(raster_fn, size_x, size_y, 1, gdal.GDT_Float32)
+
+    raster_ds.SetGeoTransform((x_min, pixel_size, 0, y_max, 0, -pixel_size))
+
+    # Add a spatial reference
+    srs = layer.GetSpatialRef()
+    raster_ds.SetProjection(srs.ExportToWkt())
+
+    # Rasterize
+    gdal.RasterizeLayer(raster_ds, [1], layer, options=[f"ATTRIBUTE={akey}"])
+
+    # Close datasets
+    raster_ds = None
+    vector_ds = None
+    return None
+  
+
+
+# Load the shapefile into a GeoDataFrame
+gdf = gpd.read_file("../data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp")
+
+# Create a DataFrame that maps each unique MUSYM to a unique integer
+musym_codes = pd.DataFrame({'MUSYM': gdf['MUSYM'].unique()})
+musym_codes['MUSYM_CODE'] = range(1, len(musym_codes) + 1)
+
+# Merge the MUSYM_CODE field into the GeoDataFrame
+gdf = gdf.merge(musym_codes, on='MUSYM')
+
+# Save the GeoDataFrame back to a shapefile
+gdf.to_file("../data/soil/codes/gsmsoilmu_a_us.shp")
+
+
+vector_ds = "../data/soil/codes/gsmsoilmu_a_us.shp"
+raster_fn = "../data/soil/raster/gsmsoilmu_a_us.tif"
+shp_to_raster(vector_ds, raster_fn, akey="MUSYM_CODE")
+
+```
+
+6.  Apply [general raster pre-Processing steps] to intermediate raster
+
+```{python, eval=F}
+
+general_raster_preprocessing(
+    raster_name="soil", 
+    out_raster_name="soil",
+    out_path="../data/soil"
+)
+
+```
+
+### Vegetation Index
+
+Vegetation Index Pre-Processing Steps:
+
+1.  For each seasonal raster, (spring, summer, fall, winter), apply the [general raster pre-processing steps]
+
+```{python, eval=F}
+
+# Iterate through each season
+for season in ["Spring", "Summer", "Fall", "Winter"]:
+    try:
+        print(f"Applying raster preprocessing for {season}...")
+        # Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+        general_raster_preprocessing(
+            raster_name=f"NDVI/US_eVSH_NDVI-{season}-2021", 
+            out_raster_name=f"{season}_NDVI",
+            out_path="../data/NDVI",
+            wildcard="*1KM.VI_NDVI*", 
+            raster_type="TIF")
+        print("-----------------")
+    except Exception as e:
+        print(f"An error occurred while processing {season}: {str(e)}")
+print("Finished.")
+
+```
+
+2.  Re-scale (divide each value by 10,000, according the USGS specifications)
+
+*NOT CURRENTLY BEING USED*
+
+```{python, eval=F}
+
+# Import libraries
+import rasterio
+
+for season in ["Spring", "Summer", "Fall", "Winter"]:
+    for state in ["CO", "NC", "OR", "VT"]:
+        raster_path = f"../data/NDVI/{season}_NDVI_{state}.tif"
+
+        # Open the raster file
+        with rasterio.open(raster_path) as src:
+            # Read the data from the raster
+            data = src.read()
+            
+            # Divide the raster values by 10,000
+            rescaled_data = data / 10000.0
+            
+            # Parameters for saving
+            kwargs = src.meta
+            kwargs.update(dtype=rescaled_data.dtype)
+            
+        # Save the rescaled data back to the same raster file (overwriting)
+        with rasterio.open(raster_path, 'w', **kwargs) as dest:
+            dest.write(rescaled_data)
+                
+        print(f'Rescaled {season} {state} raster saved at {raster_path}')
+        
+print("Finished rescaling rasters.")
+
+```
+
+<br>
+<hr>
+
+### Final Pre-Processing Steps (Ensuring Shape/Size Conformity)
+
+1.  Create dictionary of all rasters:
+
+```{python, eval=F}
+
+def get_file_paths_dict(
+    base_path = "../data",
+    states = ["CO", "NC", "OR", "VT"],
+    categories = [
+        "canopy/canopy_",
+        "dem/dem_",
+        "hydrography/coastline_",
+        "hydrography/Waterbody",
+        "land_cover/land_cover_",
+        "NDVI/Fall_NDVI_",
+        "NDVI/Spring_NDVI_",
+        "NDVI/Summer_NDVI_",
+        "NDVI/Winter_NDVI_",
+        "soil/soil_",
+        "urban_imperviousness/urban_imperviousness_",
+        "weather/ppt_",
+        "weather/tmax_",
+        "weather/tmin_"
+    ], verbose=False):
+
+    # Dictionary to store paths
+    file_paths_dict = {}
+
+    # Loop through each category and state, and construct the file path
+    for category in categories:
+        # Extract the category name for the outer dictionary key
+        category_name = category.split('/')[0]
+        if category_name not in file_paths_dict:
+            file_paths_dict[category_name] = {}
+
+        # Extract the filename prefix for the inner dictionary key
+        filename_prefix = category.split('/')[-1]
+
+        for state in states:
+            # Handle special cases for 'Waterbody'
+            if filename_prefix == "Waterbody":
+                file_path = f"{base_path}/{category_name}/{state}_{filename_prefix}.tif"
+            else:
+                file_path = f"{base_path}/{category}{state}.tif"
+            
+            # Add the file path to the inner dictionary
+            inner_key = filename_prefix.rstrip('_')
+            if inner_key not in file_paths_dict[category_name]:
+                file_paths_dict[category_name][inner_key] = {}
+            file_paths_dict[category_name][inner_key][state] = file_path
+
+    if verbose:
+        # Print the dictionary
+        for category, filenames in file_paths_dict.items():
+            print(f"{category}:")
+            for filename, state_paths in filenames.items():
+                print(f"    {filename}:")
+                for state, file_path in state_paths.items():
+                    print(f"        {state}: {file_path}")
+    return(file_paths_dict)
+
+file_paths_dict = get_file_paths_dict(verbose=True)
+
+```
+
+2.  Check for dimension conformity:
+
+```{python, eval=F}
+
+# Import libraries
+import rasterio
+
+# Loop through the categories (e.g., canopy, dem)
+for category, subcategories in file_paths_dict.items():
+    print(f"{category}:")
+    
+    # Loop through the subcategories (e.g., canopy, dem)
+    for subcategory, states in subcategories.items():
+        print(f"    {subcategory}:")
+        
+        # Loop through the states (e.g., CO, NC)
+        for state, file_path in states.items():
+            # Open the file using rasterio
+            try:
+                with rasterio.open(file_path) as raster:
+                    print(f"        {state} dimensions: {raster.shape}")
+            except Exception as e:
+                print(f"        {state}: Could not read file. {str(e)}")
+
+# Example Output:
+# 
+# canopy:
+#     canopy:
+#         CO dimensions: (204, 258)
+#         NC dimensions: (138, 313)
+#         OR dimensions: (243, 285)
+#         VT dimensions: (114, 61)
+# dem:
+#     dem:
+#         CO dimensions: (204, 258)
+#         NC dimensions: (138, 312)
+#         OR dimensions: (243, 285)
+#         VT dimensions: (114, 61)
+# ...
+
+```
+
+3.  Define a function to resample and transform rasters
+4.  Loop through rasters, and apply resampling and transformation
+
+```{python, eval=F}
+
+import numpy as np
+import rasterio
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio.mask import mask
+from rasterio.shutil import copy
+from tqdm import tqdm
+import os
+
+dst_crs = 'EPSG:5070'  # CRS for your target raster
+states = ["CO", "NC", "OR", "VT"]
+data_path = "../data"
+
+def resample_raster(src_path, dst_path, dst_crs, target, resampling=Resampling.nearest):
+
+    with rasterio.open(target) as tar:
+        target_transform, target_width, target_height = calculate_default_transform(tar.crs, dst_crs, tar.width, tar.height, *tar.bounds)
+        mask_geom = [{'type': 'Polygon', 'coordinates': [[
+            [tar.bounds.left, tar.bounds.bottom],
+            [tar.bounds.left, tar.bounds.top],
+            [tar.bounds.right, tar.bounds.top],
+            [tar.bounds.right, tar.bounds.bottom],
+            [tar.bounds.left, tar.bounds.bottom]
+        ]]}]
+    
+    with rasterio.open(src_path) as src:
+        transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)
+
+        kwargs = src.meta.copy()
+        kwargs.update({
+            'crs': dst_crs,
+            'transform': target_transform,
+            'width': target_width,
+            'height': target_height,
+            'nodata': src.nodata  # use the original's nodata value
+        })
+
+        with rasterio.open(dst_path, 'w', **kwargs) as dst:
+            for i in range(1, src.count + 1):
+                reproject(
+                    source=rasterio.band(src, i),
+                    destination=rasterio.band(dst, i),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=target_transform,
+                    dst_crs=dst_crs,
+                    resampling=resampling)
+
+    # Apply the mask in a separate step
+    with rasterio.open(dst_path, 'r+') as dst:  # Open in read/write mode
+        out_image, out_transform = mask(dst, mask_geom, crop=True, nodata=dst.nodata)
+        dst.write(out_image)
+        dst.transform = out_transform
+
+target_raster = file_paths_dict["NDVI"]["Fall_NDVI"] # The raster to match
+outpath = os.path.join(data_path, "rasters")
+if not os.path.exists(outpath):
+    os.mkdir(outpath)
+for category, subcategories in file_paths_dict.items():
+    # Loop through the subcategories (e.g., canopy, dem)
+    for subcategory, states in subcategories.items():
+        # Loop through the states (e.g., CO, NC)
+        for state, source_raster in states.items():
+            raster_name = os.path.basename(source_raster).replace(".tif", "")
+            print(f"Resampling and transforming {raster_name}...")
+            destination_raster = os.path.join(outpath, raster_name + '.tif')  # The output path
+            if source_raster == target_raster[state]:  # if source raster is the same as target raster
+                copy(source_raster, destination_raster)  # just copy the raster to the outpath
+            else:
+                if "land_cover" in raster_name or "soil" in raster_name:
+                    resampling = Resampling.nearest
+                else:
+                    resampling = Resampling.bilinear
+                resample_raster(source_raster, destination_raster, dst_crs, target_raster[state], resampling)
+print("Fixing land cover NA values...")
+# Fix land cover na values (they git a little messed up from the resampling)
+fix_lc_na(data_path="../data/rasters", na_val=0)
+print("Finished.")
+
+```
+
+5.  Check that all shapes match (by state):
+
+```{python, eval=F}
+
+folder_path = '../data/rasters'
+
+# Loop through all the files in the folder
+for file_name in os.listdir(folder_path):
+    
+    # Check if the file is a .tif file
+    if file_name.endswith('.tif'):
+        
+        # Construct the full file path
+        file_path = os.path.join(folder_path, file_name)
+        
+        # Open the raster file
+        with rasterio.open(file_path) as src:
+            # Print the shape of the raster file
+            print(f'Shape of {file_name}: {src.shape}')
+
+```
+
+## Combining the Data (Feature Extraction)
+
+1.  Load preprocessed observation point data
+2.  Sort by distance from center
+3.  Ensure correct CRS
+
+```{python load-obs, eval=F}
+
+# Import libraries
+import pandas as pd
+import os
+import geopandas as gpd
+from shapely.geometry import Point
+
+data_path = '../data/'
+states = ["CO", "NC", "OR", "VT"]
+
+for state in states:
+    input_name = "observations_" + state + ".csv"
+    output_file = "observations_" + state + ".shp" 
+
+    print(f"Reading {state} data...")
+
+    bird_data_path = os.path.join(data_path, input_name)
+    df = pd.read_csv(bird_data_path)
+
+    # Convert the bird data to a GeoDataFrame
+    print(f"Converting {state} data to geodf...")
+    geometry = [Point(xy) for xy in zip(df['longitude'], df['latitude'])]
+    geo_df = gpd.GeoDataFrame(df, geometry=geometry, crs='EPSG:4326')
+
+    # Define target CRS
+    print(f"Updating CRS for {state}...")
+    target_crs = "EPSG:5070"
+    # If the bird data is not in the correct CRS, convert it
+    if geo_df.crs.to_string() != target_crs:
+        geo_df = geo_df.to_crs(target_crs)
+
+    print(f"Getting centroid of {state} data...")
+    # Get centroid of the entire sightings
+    centroid = geo_df.geometry.centroid.unary_union.centroid
+
+    print(f"Calculating distances from centroid for {state}...")
+    # Assign each point a distance attribute, being the distance from the centroid
+    geo_df['distance'] = geo_df.geometry.distance(centroid)
+
+    print(f"Sorting by distance from centroid in {state} data...")
+    # Sort the GeoDataFrame by the distance attribute
+    geo_df.sort_values(by='distance', inplace=True)
+
+    print(f"Saving {state} data to {output_file}...")
+    # Drop the distance attribute (we don't need it anymore)
+    geo_df.drop(columns='distance', inplace=True)
+
+    geo_df.to_file(os.path.join(data_path, output_file))
+    print("--------------")
+
+```
+
+2.  Define pre-processed raster paths; Use `arcpy.sa.ExtractMultiValuesToPoints` to extract raster values to the points in the bird data
+    -   canopy, dem, coast, waterbody, land_cover, soil, urban_imp, avg_prcp, max_tmp, min_tmp, ndvi_spring, ndvi_summer, ndvi_fall, ndvi_winter
+3.  Use `arcpy.analysis.Select` to select points that have non-null raster values for all raster layers
+
+```{python no-null-obs, eval=F}
+
+# Import libraries
+import os 
+import arcpy
+from arcpy.sa import *
+import csv
+import pandas as pd
+
+data_path = '../data/'
+# Set environment settings
+arcpy.env.workspace = data_path
+arcpy.env.overwriteOutput = True
+states = ["CO", "NC", "OR", "VT"]
+# Define your target CRS
+target_crs = arcpy.SpatialReference(5070)  # The SpatialReference should be initiated with an EPSG code
+
+for state in states:
+    input_name = "observations_" + state + ".shp" 
+    out_name = "all_data_" + state + ".shp"
+    output_no_null = "all_data_no_null_" + state + ".shp"
+
+    # Set the path for the output CSV file
+    csvfile = os.path.join(data_path, "final_data_" + state + ".csv")
+
+    # Final raster paths
+    raster_path = os.path.join(data_path, "rasters")
+    raster_paths = dict()
+    # Loop through all the files in the folder
+    for file_name in os.listdir(raster_path):
+        # Check if the file is a .tif file
+        if file_name.endswith('.tif') and state in file_name:
+            raster_name = os.path.basename(file_name).replace(".tif", "").replace("_" + state, "").replace(state + "_", "")
+            # Construct the full file path
+            file_path = os.path.join(raster_path, file_name)
+            raster_paths.update({raster_name:file_path})
+
+    raster_str = ";".join([f"{p} {k}" for k, p in raster_paths.items()])
+
+    print(f"Extracting points to values for {state}...")
+    points = arcpy.sa.ExtractMultiValuesToPoints(
+        input_name, 
+        raster_str, 
+        "NONE"
+        )
+    print(f"Selecting non-null points for {state}...")
+    query = "AND ".join([r_name[:10] + " IS NOT NULL " for r_name in raster_paths.keys()]) 
+    no_null = arcpy.analysis.Select(input_name, output_no_null, query)
+
+    # Get the fields from the feature class
+    fields = arcpy.ListFields(output_no_null)
+
+    # Create a list to hold the field names
+    fieldnames = [field.name for field in fields]
+
+    print(f"Saving {state} final data to csv...")
+    # Open the CSV file and write the data from the feature class
+    with open(csvfile, 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(fieldnames)  # write the field names
+        with arcpy.da.SearchCursor(output_no_null, fieldnames) as cursor:
+            for row in cursor:
+                writer.writerow(row)
+    # Fix names
+    print("Fixing column names...")
+    df = pd.read_csv(csvfile)
+    df.rename(columns={"common_nam":"common_name",
+                    "observatio":"observations",
+                    "Spring_NDV":"ndvi_spring",
+                    "Summer_NDV":"ndvi_summer",
+                    "Winter_NDV":"ndvi_winter",
+                    "Fall_NDVI":"ndvi_fall",
+                    "urban_impe":"urban_imperviousness"}, inplace=True)
+    df.to_csv(csvfile, index=False)
+    print(f'{state} column names: {", ".join(df.columns)}')
+    print("Finished.")
+    print("--------------")
+    
+```
+
+4.  Perform One-Hot Encoding on species (`common_name`)
+5.  Export final result to .csv file
+
+```{python final-data, eval=F}
+
+for state in states:
+    # Set the path for the CSV file
+    csvfile = os.path.join(data_path, "final_data_" + state + ".csv")
+
+    # Load the CSV file into a DataFrame
+    df = pd.read_csv(csvfile)
+    # Perform one-hot encoding on the "common_name" field
+    one_hot_encoded = pd.get_dummies(df["common_name"], prefix="species")
+    one_hot_encoded.columns = one_hot_encoded.columns.str.lower()
+    one_hot_encoded.columns = one_hot_encoded.columns.str.replace(" ", "_").str.replace("-", "_")
+
+    # Concatenate the one-hot encoded DataFrame with the original DataFrame
+    df_encoded = pd.concat([df, one_hot_encoded], axis=1)
+
+    # Save the encoded DataFrame to a new CSV file
+    encoded_csvfile = os.path.join(data_path, "encoded_data_" + state + ".csv")
+    df_encoded.to_csv(encoded_csvfile, index=False)
+
+```
+
+## Final Output Examples
+
+
+### Data
+
+```{r final-data-output}
+#| label: final-data-sample
+#| tbl-cap: Final Data Output (OR) - top 10 records
+
+kable(head(readr::read_csv("../data/encoded_data_NC.csv"), 10))
+
+```
+
+```{r}
+
+library(ggplot2)
+library(maps)
+library(mapdata)
+library(dplyr)
+
+data(us.cities)
+
+or.cities <- us.cities %>% 
+  filter(country.etc=="OR") %>%
+  mutate(city = gsub(" OR", "", name)) %>%
+  arrange(-pop) %>% 
+  filter(!(city %in% c("Gresham", "Hillsboro", "Beaverton", "Springfield"))) %>% 
+  head()
+
+# Load the map data
+states <- map_data("state") %>% filter(region == "oregon")
+
+# Load your data
+df <- readr::read_csv("../data/encoded_data_OR.csv") %>% 
+  filter(common_name == "Sharp-shinned Hawk") %>% 
+  dplyr::select(latitude, longitude)
+
+# Plot
+ggplot(data = states) +
+  geom_polygon(aes(x = long, y = lat, group = group), 
+               fill = "#877778", color = "black") +
+  geom_point(data = df, aes(x = longitude, y = latitude), 
+             size=1, alpha=.5, fill = "red", shape=21) +
+  geom_point(data = or.cities, aes(x=long, y=lat, label=city), 
+             fill="#DDDDDD", color="black", size=3.5, shape = 21,) + 
+  geom_text(data = or.cities, aes(x=long, y=lat, label=city), 
+            color="white", hjust=.5, vjust=1.5) + 
+  coord_map() +
+  labs(title="Oregon Sharp-Shinned Hawk Observations, 2016-2019",
+       plot.margin = unit(c(0,0,0,0), "cm"))
+
+```
+
+### Rasters
+
+```{r}
+
+# Create a data frame with all combinations of states and variables
+pairs <- expand.grid(state = c("CO", "NC", "OR", "VT"),
+                     variable = c("urban_imperviousness", "tmin", "tmax", "ppt", "soil", "Summer_NDVI",
+                                  "Spring_NDVI", "Fall_NDVI", "Winter_NDVI", "Waterbody", "coastline", 
+                                  "land_cover", "canopy", "dem"))
+
+min_max_scale <- function(x) {
+  (x - min(x, na.rm=T)) / (max(x, na.rm=T) - min(x, na.rm=T))
+}
+
+
+# Create an empty list to store plots
+plots_list <- list()
+
+# Processing function for each pair
+process_pair <- function(state, variable) {
+  variable <- as.character(variable)
+  
+  if (variable == "Waterbody") {
+    fname <- paste0("../data/rasters/", state, "_", variable, ".tif")
+  } else {
+    fname <- paste0("../data/rasters/", variable, "_", state, ".tif")
+  }
+  
+  # Load raster data
+  r <- raster(fname)
+  # Convert the raster to a dataframe
+  df <- as.data.frame(r, xy = T) %>% 
+    rename(value := names(.)[3]) %>%
+    mutate(state = state, variable = variable) %>%
+    filter(!is.na(value) & !(variable == "land_cover" & value %in% c(0, 128))) %>%
+    group_by(variable) %>%
+    mutate(value = min_max_scale(value)) %>%
+    ungroup()
+  
+  return(df)
+}
+
+# Process data
+all_data <- pairs %>%
+  pmap_df(process_pair) 
+
+# Create plots for each state
+for (state in c("CO", "NC", "OR", "VT")) {
+  p <- ggplot(filter(all_data, state == !!state), aes(x = x, y = y, fill = value)) +
+    geom_tile() +
+    facet_wrap(~variable, scales="free") +
+    coord_cartesian() + 
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = "none",
+          plot.margin = unit(c(.1,.1,.1,.1), "cm")) +
+    labs(title = paste0(state, " Rasters")) +
+    scale_fill_gradient(low = "lightgrey", high = "black") 
+  
+  # Add the plot to the list
+  plots_list[[state]] <- p
+}
+
+# Print plots
+plots_list$NC
+
+```
+
+```{r, include=F, eval=F}
+
+library(raster)
+library(ggplot2)
+library(sf)
+
+# Create a data frame with all combinations of states and variables
+pairs <- expand.grid(state = c("CO", "NC", "OR", "VT"),
+                     variable = c("urban_imperviousness", "tmin", "tmax", "ppt", "soil", "Summer_NDVI",
+                                  "Spring_NDVI", "Fall_NDVI", "Winter_NDVI", "Waterbody", "coastline", 
+                                  "land_cover", "canopy", "dem"))
+
+# Use pmap_df to iterate over the rows of the data frame
+map_df <- purrr::pmap_df(pairs, function(state, variable) {
+  variable <- as.character(variable)
+  if (variable == "Waterbody") {
+    fname <- paste0("../data/rasters/", state, "_", variable, ".tif")
+  } else {
+    fname <- paste0("../data/rasters/", variable, "_", state, ".tif")
+  }
+  map_file_name <- paste0("maps/", variable, "_", state, ".png")
+  
+  if (!file.exists(map_file_name)) {
+    # Load raster data
+    r <- raster(fname)
+    if (variable == "land_cover") {
+      na_value <- 128
+      rcl_matrix <- c(na_value, na_value, NA) # from_value, to_value, new_value (NA)
+      r <- reclassify(r, rcl_matrix, right='infinity', include.lowest=T)
+    }
+    
+    # Step 2: Convert the raster to a dataframe
+    df <- as.data.frame(r, xy = T)
+    df <- df %>% 
+      rename(!!sym(variable) := names(.)[3]) %>%
+      filter(!is.na(across(starts_with(names(.[3])))))
+    
+    if (variable == "land_cover") {
+      df[, 3] <- factor(df[, 3])
+      
+      # Custom palette with 16 distinct colors
+      custom_palette <- c("#1B1E28", "#263859", "#1D4E89", "#AAAAAA", "#227C84", "#27816B",
+                          "#006400", "#719546", "#A2843D", "#CCCDEF", "#228B22", "#013220",
+                          "#C42348", "#101010", "#701E7C", "#3C2484")
+      
+    }
+    
+    # Step 3: Plot the raster with ggplot2
+    p <- ggplot(df, aes(x = x, y = y, fill = !!sym(variable))) +
+      geom_tile() +
+      coord_equal() # This ensures that the plot doesn't get skewed
+    if (variable == "land_cover") {
+      p <- p + scale_fill_manual(values = custom_palette) 
+    } else {
+      p <- p + scale_fill_gradientn(colors = rev(viridis::viridis(256)), na.value = "transparent") 
+    }
+    p <- p + theme_minimal() +
+      theme(axis.title = element_blank(), # Remove axis titles
+            axis.text = element_blank(), # Remove axis text
+            axis.ticks = element_blank(), # Remove axis ticks
+            panel.grid.major = element_blank(), # Remove major grid
+            panel.grid.minor = element_blank(), # Remove minor grid
+            legend.position = "none", # Remove legend
+            plot.margin = unit(c(.1,.1,.1,.1), "cm")) + 
+      labs(title = paste0(state, " - ", gsub("_", " ", variable))) # Add title
+    
+    ggsave(map_file_name, p, dpi=400, scale=1.5, height=2)
+  }
+  data.frame(
+    state=state,
+    variable=variable,
+    map=map_file_name
+  )
+})
+
+```
+
+
+```{html, include=F, eval=F}
+<script>
+  // List of states and variables
+  let states = ["NC", "OR", "CO", "VT"];
+  let variables = [
+    "land_cover",
+    "coastline",
+    "canopy",
+    "dem",
+    "urban_imperviousness",
+    "tmin",
+    "tmax",
+    "ppt",
+    "soil",
+    "Summer_NDVI",
+    "Spring_NDVI",
+    "Fall_NDVI",
+    "Winter_NDVI",
+    "Waterbody",
+  ];
+
+  // Create dropdowns for state and variable
+  let stateDropdown = $("<select style='margin-left:41%;'></select>");
+  $.each(states, function (i, state) {
+    stateDropdown.append($("<option></option>").text(state));
+  });
+  $("body").append(stateDropdown);
+
+  let variableDropdown = $("<select style='margin-left:15px;'></select>");
+  $.each(variables, function (i, variable) {
+    variableDropdown.append($("<option></option>").text(variable));
+  });
+  $("body").append(variableDropdown);
+
+  // Create a div to hold the image
+  let mapDiv = $("<div style='width:60%; margin:25px; padding-top:15px; display: flex; justify-content: center; align-items:center; background:#eeeeee;'></div>");
+  $("body").append(mapDiv);
+
+  // Function to update the display based on the selected state and variable
+  function updateDisplay() {
+    let selectedState = stateDropdown.val();
+    let selectedVariable = variableDropdown.val();
+
+    // Create the filename for the png file
+    let pngFilename = `maps/${selectedVariable}_${selectedState}.png`;
+
+    // Remove the old image if it exists
+    mapDiv.empty();
+
+    // Create an img tag to embed the png file
+    let img = $("<img>")
+      .attr("src", pngFilename)
+      .attr("width", "90%")
+      .attr("height", "90%");
+    mapDiv.append(img);
+  }
+
+  // Event listeners for the dropdowns
+  stateDropdown.change(updateDisplay);
+  variableDropdown.change(updateDisplay);
+
+  // Initial display
+  updateDisplay();
+</script>
+```

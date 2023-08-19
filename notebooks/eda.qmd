@@ -1,0 +1,28 @@
+---
+title: "Exploratory Analysis, Pseudo-Absence Generation, Autocorrelation Mitigation, Feature Engineering, and Train/Test Splitting"
+author: "Benton Tripp"
+format: html
+editor: source
+toc: true
+toc-depth: 3
+code-folding: show
+theme: readable
+---
+
+## Train/Test Splitting (Observation Data)
+
+## Initial EDA
+
+## Pseudo-Absence Generation
+
+## Train/Test Splitting (Pseudo-Absence Data)
+
+## EDA With Pseudo-Absence Data
+
+## Autocorrelation Mitigation
+
+## Feature Engineering
+
+### Dimensionality Reduction
+
+### Feature Selection
