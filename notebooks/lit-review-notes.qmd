@@ -1,0 +1,605 @@
+---
+title: "Presence Only Prediction - Literature Review Notes"
+author: "Benton Tripp"
+format: html
+editor: source
+toc: true
+toc-depth: 3
+code-folding: show
+theme: readable
+---
+
+## REQUIREMENTS
+
+### Timeline
+
+8/21-9/3/2023
+
+### Overview
+
+In an effort to understand existing research related to this topic, the first two weeks will be dedicated to exploring existing research, code libraries/repositories, and data.
+
+### Deliverable
+
+A (somewhat informal) literature review citing 10-20 sources, covering each of the primary areas of interest in this project.
+
+### Table of Contents
+    
+    Abstract
+
+    Introduction
+        Background and Significance
+        Objective of the Literature Review
+
+    MaxEnt and Poisson Point Processes in Species Distribution Modeling
+        Theoretical Underpinnings
+        Applications and Limitations
+
+    Sampling Techniques, Bias, and the Treatment of Pseudo-Absence Data
+        Strategies to Address Bias
+        Pseudo-Absence Data in Presence-Only Models
+
+    Machine Learning Models for Species Distribution Modeling
+        Comparison with Presence-Only Models
+        Evaluation of Performance
+
+    Bayesian Approaches in Species Distribution Modeling
+        Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA‑SPDE)
+        Markov Chain Monte Carlo (MCMC)
+
+    Discussion
+        Synthesis of Findings
+        Implications for Future Research
+
+    Conclusion
+        Summary of Major Findings
+        Recommendations
+
+    References
+
+------------------------------------------------------------------------
+
+{{< pagebreak >}}
+
+## Sources/Notes (To be Updated)
+
+#### Article 1
+
+[Equivalence of MAXENT and Poisson point process models for species distribution modeling in ecology](https://doi.org/10.1111/j.1541-0420.2012.01824.x)
+
+> One potential reason for such high interest is that SDM aims to address important topical questions such as the potential effects of climate change on species distributions (Thullier et al. 2008). Rapid progress in this field has been facilitated by recent significant technological advances in remote sensing, GIS (O'Sullivan and Unwin, 2010), and computational power, enabling models to be built at increasingly fine resolutions and increasingly large spatial scales.
+
+> MAXENT has a number of shortcomings... In particular, it is unclear what diagnostic tools may be used to assess whether the fitted model is reasonable. Morover, MAXENT analyzes data after first aggregating them into presence/absence grid cells, and it is currently unclear what spatial resolution should be used when constructing these cells.
+
+> The MAXENT procedure and Poisson regression are equivalent. That is, <br>
+1. They fit the same model: 
+   $$\ln \pi(g_i) = \ln \mu(g_i) = x(g_i)'\beta$$
+2. They estimate parameters to maximize the same function up to a constant: 
+   $$\Lambda\{\beta; z(n)(g)\} = l\{\beta; z(n)(g)\} + C$$ 
+   where $C$ is a constant and $\Lambda\{\beta; z(n)(g)\}$ is the Lagrangian function to maximize entropy $H\{\pi(g)\}$ subject to the constraints stated in equations (1)–(2). Hence the maximum entropy estimate $\hat{\beta}_{MAXENT}$ equals the maximum likelihood estimate from Poisson regression $\hat{\beta}_{GLM}$.
+
+> A Poisson point process regression model (PPM) analyzes $m$ presence-only locations $y_P = \{y_1, . . . , y_m\}$ as a point process in which the locations of the $m$ points are assumed to be independent. Unlike MAXENT, which models probability $\pi(g_i)$ per grid cell, a Poisson PPM models the limiting expected count ($\lambda(y)$, the “intensity”) per unit area (Cressie, 1993) for any location $y \in A$. Intensity is modeled as a log-linear function of $p$ explanatory variables: $\ln\{\lambda(y)\} = x(y)'\beta$. An analysis on a per area basis rather than a per grid cell basis is a key distinction between a point process model and MAXENT.
+
+> Consider a Poisson point process model fitted to grid cell data $z(n)(g)$, with parameter estimates stored in $\hat{\beta}_{PPM}$. Then:  
+$$\hat{\beta}_{MAXENT} = \hat{\beta}_{PPM} + J C$$  
+where $J C = \{ \ln C, 0, . . . , 0 \}$ is a vector of length $p + 1$, and $C = \frac{|A|}{m(n)n}$.In other words, the MAXENT and PPM solutions for grid cell data are proportional, and estimates of slope parameters are identical.
+
+> Likelihood of observing a presence point depends not just on the spatial distribution of the species, but also on the spatial distribution of observers, which is strongly affected by site accessibility.
+<br>
+The underlying assumption of a Poisson point process model (and by equivalence, MAXENT) is that the point locations are independent, conditional on model covariates... While MAXENT offers no method for checking this assumption, there are a number of diagnostic tools to assess model adequacy of a Poisson point process model (Cressie, 1993; Baddeley et al., 2005). One such method is to construct the inhomogeneous K-function (Baddeley, Møller, and Waagepetersen, 2000) and corresponding simulation envelope (Diggle, 2003) of the fitted model. 
+<br>
+Current problems with MAXENT and their proposed solutions available through re-expression as a Poisson point process model:
+
+| MAXENT problem                                 | Poisson PPM solution                 |
+|------------------------------------------------|--------------------------------------|
+| Predicted probabilities are scale-dependent    | Predicted intensities are scale-invariant |
+| How to determine spatial resolution?           | Increase until log-likelihood converges    |
+| How to assess model adequacy?                  | Various goodness-of-fit procedures available |
+| How to choose LASSO parameter?                 | Various data-driven methods                 |
+| Available in MAXENT software only              | Use any standard GLM software               |
+| 130 seconds to fit models in Figure 1b         | 12 seconds to fit models in Figure 1b       |
+
+> Warton and Shepherd (2010) showed the equivalence of Poisson point process models and
+pseudo-absence regression, which aside from MAXENT is the most commonly used approach to presence-only modeling at the moment. 
+
+> A key distinction between point process models and MAXENT is that in the former we model $lambda(y)$ on a per area basis whereas for the latter, we model $pi(g_i)$ per grid cell—the per area analysis is thus invariant under choice of spatial resolution while the per grid cell analysis is not (because increasing spatial resolution increases the number of grid cells). This is related to the distinction between probability and frequency models (Aarts et al., 2012). It is this distinction that enables the likelihood convergence for a Poisson point process model (Figure 2a) and hence a data-driven choice of spatial resolution. However, MAXENT is proportional to a Poisson point process model (Theorem 2), which suggests that it can achieve
+the same qualitative answer but with the disadvantage of scale dependence of the predicted probabilities and an arbitrary choice of spatial resolution.
+
+> One important disadvantage of MAXENT is that in its current form, it does not estimate the intercept consistently (Elith et al., 2011). The intercept term diverges to −∞ as spatial resolution increases.
+
+> We advise that as a matter of routine, presence-only analysts should use their
+data to identify a spatial resolution appropriate for analysis, or equivalently, to identify the number of “background points” to use in analysis.
+
+#### Article 2
+
+[Poisson point process models solve the "pseudo-absence problem" for presence-only data in ecology](https://arxiv.org/abs/1011.3319)
+
+>  Currently, ecologists most commonly analyze presence-only data by adding randomly chosen “pseudo-absences” to the data such that it can be analyzed using logistic regression, an approach which has weaknesses in model specification, in interpretation, and in implementation. To address these issues, we propose Poisson point process modeling of the intensity of presences. We also derive a link between the proposed approach and logistic regression—specifically, we show that as the number of pseudo-absences increases (in a regular or uniform random arrangement), logistic regression slope parameters and their standard errors converge to those of the corresponding Poisson point process model.
+
+> Point process modeling offers a framework for choice of the number and location of pseudo-absences, both of which are currently chosen by ad hoc and sometimes ineffective methods in ecology.
+
+> We see three key weaknesses of the “pseudo-absence” approach so widely used in ecology for analyzing presence-only data, which we describe concisely as problems of model specification, interpretation, and implementation. A sounder model specification would involve constructing a model for the observed data $y$ only, rather than requiring us to generate new data $y_0$ prior
+to constructing a model. Interpretation of results is difficult, because some model parameters of interest are a function of the number of pseudo-absences and their location. Implementation of the approach is problematic because it is unclear how pseudo-absences should be chosen [Elith
+and Leathwick (2007); Guisan et al. (2007); Zarnetske, Edwards and Moisen (2007); Phillips et al. (2009)], and one can obtain qualitatively different results depending on the method of choice of pseudo-absences [Chefaoui and Lobo (2008)].
+
+> We propose point process models as an appropriate tool for species distribution modeling of presence-only data, given that presence-only data arise as a set of point events—a set of locations where a species has been reported to have been seen. A point process model specification addresses each of the three concerns raised above regarding pseudo-absence approaches. Our second key contribution is a proof that the pseudo-absence logistic regression
+approach, when applied with an increasing number of regularly spaced or randomly chosen pseudo-absences, yields estimates of slope parameters that converge to the point process slope estimates.
+
+> We consider inhomogeneous Poisson point process models [Cressie (1993); Diggle (2003)], which make the following two assumptions:
+1. The locations of the $n)$ point events $(y_1, . . . , y_n)$ are independent.
+2. The intensity at point $y_i$, $\lambda(y_i)$ (denoted as $\lambda_i$ for convenience), the limiting expected number of presences per unit area [Cressie (1993)], can be modeled as a function of the $k$ explanatory variables. We assume a log-linear specification:
+   $$ \log(\lambda_i) = \beta_0 + \sum_{j=1}^{k} x_{ij} \beta_j $$
+Although note that the linearity assumption can be relaxed in the usual way (e.g., using quadratic terms or splines). The parameters of the model for the $\lambda_i$ are stored in the vector $\beta = (\beta_0, \beta_1, . . . , \beta_k)$.
+
+> Pseudo-absence points of presence-only logistic regression play the same role as quadrature points of a point process model, and so established guidelines on how to choose quadrature points can inform choice of pseudo-absences. Previously pseudo-absences have been generated according to ad hoc recommendations [Pearce and Boyce (2006); Zarnetske, Edwards and Moisen (2007)], given the lack of a theoretical framework for their selection. In contrast, quadrature points are generated in order to estimate the log-likelihood to a pre-determined level of accuracy, a criterion which guides the choice of locations and numbers of quadrature points $m − n$. Interestingly, current methods of selecting pseudo-absences in ecology [Pearce and Boyce (2006); Zarnetske, Edwards and Moisen (2007)] do not appear to be consistent with the best practice in low-dimensional numerical quadrature—points are usually selected at random rather than on a regular grid, and the number of pseudo-absences ($m − n$) is more commonly chosen relative to the magnitude of the number of presences ($n$) rather than based on some convergence criterion.
+
+> Despite the apparent ad hoc nature of the pseudo-absence approach, some form of point process model is being estimated. However, logistic regression is only equivalent to a Poisson point
+process when $w = 1$, that is, all quadrature weights are ignored.
+
+> The pseudo-absence approach has problems with model specification, interpretation, and implementation. We argue that each of these difficulties is resolved by using a point process
+modeling framework. 
+
+> 1. Model specification - We believe that a point process model is a plausible model for the data generation mechanism for presence-only data. In contrast, the logistic regression approach involves generating new data in order to fit a model originally designed for a different problem (analysis of binary data not analysis of point-events). Hence, the pseudo-absence approach as it is usually applied appears to involve coercing the data to fit the model rather than choosing a model that fits the original data.
+
+> 2. Interpretation — In the logistic regression approach we model $p_i$, the probability that a given point event is a presence not a pseudo-absence. This quantity has no physical meaning and clearly its interpretation is sensitive to our method of choice of pseudo-absences (and typically each $p_i → 0$ as $m → ∞$). In contrast, the intensity at a point $\lambda_i$ has a natural interpretation as the (limiting) expected number of presences per unit area, and will not be sensitive to choice of quadrature points, provided that the number of quadrature points is sufficiently large. 
+
+> 3. Implementation — Point process models offer a framework for choosing quadrature points. Specifically, [the point process log-likelihood is estimated], and progressively more quadrature points are added until [convergence is achieved]. No such framework for choice of pseudo-absences is offered by logistic regression, and instead choice of the location and number of pseudo-absences is ad hoc, with potentially poor results. Ecologists are concerned about the issues of how many pseudo-absences to choose [Pearce and Boyce (2006)], where to put them [Elith and Leathwick (2007); Zarnetske, Edwards and Moisen (2007); Phillips et al. (2009)], and what spatial resolution to use in model-fitting [Guisan et al. (2007); Elith and Leathwick (2009)], all issues that have natural solutions given a point process model specification of the problem.
+
+#### Article 3
+
+[Maximum entropy modeling of species geographic distributions](https://doi.org/10.1016/j.ecolmodel.2005.03.026)
+
+### Sampling, Bias, and Pseudo-Absence Data
+
+#### Article 4
+
+[On pseudo-absence generation and machine learning for locust breeding ground prediction in Africa](https://arxiv.org/abs/2111.03904)
+
+> ...We compare this random sampling approach to more advanced pseudo-absence generation methods, such as environmental profiling and optimal background extent limitation, specifically for predicting desert locust breeding grounds in Africa. Interestingly, we find that for the algorithms we tested, namely logistic regression, gradient boosting, random forests and MaxEnt, all popular in prior work, the linear logistic model performed significantly better than the more sophisticated ensemble methods, both in terms of prediction accuracy and F1 score. Although background extent limitation combined with random sampling seemed to boost performance for ensemble methods, no statistically significant differences were detected between the pseudo-absence generation methods used to train the logistic model. In light of this, we conclude that simpler approaches such as random sampling for pseudo-absence generation combined with linear classifiers such as logistic regression are sensible and effective for predicting locust breeding grounds across Africa.
+
+> Machine learning (ML) has been shown to be a valuable tool for species distribution modeling (Beery et al., 2021). However, even when remote sensing is capable of providing useful features for such models, ML still heavily relies on large amounts of labelled data for training. 
+
+#### Article 5
+
+[Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data](https://bmcecol.biomedcentral.com/articles/10.1186/1472-6785-9-8)
+
+> We evaluated the effect of using a) real absences b) pseudo-absences
+selected randomly from the background and c) two-step approaches: pseudo-absences selected
+from low suitability areas predicted by either Ecological Niche Factor Analysis: (ENFA) or
+BIOCLIM. We compared how the choice of pseudo-absence strategy affected model fit, predictive
+power, and information-theoretic model selection results.
+
+> Conclusion: If ecologists wish to build parsimonious GLM models that will allow them to make
+robust predictions, a reasonable approach is to use a large number of randomly selected pseudo-
+absences, and perform model selection based on an information theoretic approach. However, the
+resulting models can be expected to have limited fit.
+
+> Two groups of techniques are generally used [to relate field observations to environmental predictor variables, based on statistically or theoretically derived response surfaces,
+for prediction and inference]. Techniques that require data documenting the species presence only are called "profile techniques" while those that require both presence and absence data are called "group discrimination techniques". Examples of profile techniques include BIOCLIM, DOMAIN, Species-PCA, and Ecological Niche Factor Analysis (ENFA).
+
+> Among group-discrimination techniques, logistic regression modelling (LRM), a particular branch of generalized linear models (GLM) for binary responses, remains the most widely used so far to predict the potential distributions of species.
+
+> Despite its numerous advantages, LRM has been precluded from many studies of species distributions because it requires absence data, which are frequently unavailable and often not reliable. This is an acute problem for the study of poorly documented, cryptic, rare or highly mobile species, many of which may be of special conservation interest.
+
+> Given an adequate set of presence locations, models generated with random pseudo-absences can yield useful results. A potential drawback to using random pseudo-absences is that pseudo-absences might coincide with locations where the species actually occurs. This affects the calculation of probability of presence, and consequently, models built with random pseudo-absences are expected to have poorer fit, and lower predictive performance than models built with real absences.
+
+> Engler et al. used a two step modelling approach to predict the distribution of a rare plant in Switzerland. In the first step, they used the profile technique "ENFA" to map potential habitat suitability for the species, and then selected pseudo-absences from the areas predicted to have low suitabilty. They subsequently included the pseudo-absences in a second logistic regression model which was used to predict the final species' potential distribution and prioritize further field work.
+
+> In a virtual species approach, the species' distribution is defined *a priori*, by specifying its ecological niche as a simple mathematical relationship to the set of predictor environmental variables (e.g. in the form of a multiple logistic regression equation) and projects this
+relationship onto a map of the study area to define its "true" distribution. One can then attempt to recover the virtual species' known distribution by building models from samples drawn from the study area and then evaluate the efficacy of different implementations of models by
+comparing their parameter estimates and predictions to the true distribution of the species. Such an approach has never been used to assess the best way to select pseudo-absences.
+
+> Whenever a two-step modelling approach was used, the true model was only weakly supported by the data.
+
+> Evaluating so many aspects of model's behaviour and performance is facilitated through use of a virtual species, because a real species' "true" relationship to environmental variables is
+never known. In the real world, sufficient amounts of reliable, completely independent, presence and absence data are rarely available to evaluate the predictive power of complex models in a controlled manner. 
+
+> A large body of statistical literature suggests that parsimonious models, including a small number of predictor variables, should have greater predictive power to independent samples than models including more predictors. Neither ENFA nor BIOCLIM are based on this principle (i.e. they do not incorporate way to select predictors), and both showed somewhat lower predictive power in terms of AUC than group discrimination models based on pseudo-absences... BIOCLIM and
+ENFA cannot incorporate quadratic relationships to predictors, so this may be another reason the GLM methods performed better.
+
+> ...With small datasets, models for which complexity is calibrated for sample size, such as
+MAXENT have better predictive power than models that use complex response shapes regardless of sample size (Wisz et al. 2008).
+
+> Through the use of a simulated species we confirmed that although randomly selected pseudo-absences yield models with lower fit to the training data, they outperform
+models developed from two-step methods in terms of predictive power and variable selection. Thus randomly selected pseudo-absences may be a reasonable alternative when real absences are unavailable.
+
+> Two step pseudo-absences result in models with weaker predictive power because they lead to overfitting. An overfit model will always have a higher value of adjusted deviance than a simpler model nested within it, but its predictive power to an independent sample will be lower because the model losses generality.
+
+> Model selection, the process of selecting predictors and parameter estimates in a model, is considered one of the most crucial steps in a model building procedure.
+
+#### Article 6
+
+[Sample selection bias and presence-only distribution models: implications for background and pseudo-absence data](https://doi.org/10.1890/07-2153.1)
+
+#### Article 7
+
+[Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data](https://arxiv.org/abs/1809.01322)
+
+#### Article 8
+
+[Novel Three-Step Pseudo-Absence Selection Technique for Improved Species Distribution Modelling](https://doi.org/10.1371/journal.pone.0071218)
+
+#### Article 9
+
+[The importance of correcting for sampling bias in MaxEnt species distribution models](https://doi.org/10.1111/ddi.12096)
+
+#### Machine Learning and Predictive Models
+
+[The use of classification and regression algorithms using the random forests method with presence-only data to model species' distribution](https://doi.org/10.1016/j.mex.2019.09.035)
+
+#### Article 10
+
+[Predictive performance of presence-only species distribution models: a benchmark study with reproducible code](https://doi.org/10.1002/ecm.1486)
+
+#### Article 11
+
+[Breeding density, fine-scale tracking, and large-scale modeling reveal the regional distribution of four seabird species](https://doi.org/10.1002/eap.1591)
+
+#### Article 12
+
+[Novel methods improve prediction of species’ distributions from occurrence data](https://onlinelibrary.wiley.com/doi/10.1111/j.2006.0906-7590.04596.x)
+
+#### Article 13
+[Predicting species distribution: Offering more than simple habitat models](https://www.researchgate.net/publication/224935224_Predicting_species_distribution_Offering_more_than_simple_habitat_models)
+
+#### Bayesian Modeling
+
+#### Article 14
+
+[Using a Bayesian modelling approach (INLA‑SPDE) to predict the occurrence of the Spinetail Devil Ray (Mobular mobular)](https://www.nature.com/articles/s41598-020-73879-3)
+
+- Lezama-Ochoa, N., Pennino, M. G., Hall, M., Lopez, J., & Murua, H. (2020). Using a Bayesian modelling approach (INLA-SPDE) to predict the occurrence of the Spinetail Devil Ray (Mobular mobular). Scientific Reports, 10(1). https://doi.org/10.1038/s41598-020-73879-3
+
+>  In this study, Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA‑SPDE) is used [as an alternative Bayesian approach to predict the occurrence of species...  The INLA‑SPDE approach had the potential to predict both the areas of importance in the [sample region] that are already known, and the more marginal hotspots... which are
+not identified using other habitat models. 
+
+> Some drawbacks were identified with the INLA‑SPDE database, including the difficulties of dealing with categorical variables and triangulating effectively to analyze spatial data. Despite these challenges, we conclude that INLA approach method is an useful complementary and/or alternative approach to traditional ones when modeling bycatch data to inform accurately management decisions.
+
+> A variety of methodological approaches have been developed over the last decades to generate SDMs, such as Artificial Neural Networks (e.g., SPECIES), Classification and Regression Trees (e.g., BIOMOD), Maximum Entropy (e.g., MAXENT), Climatic Envelops (e.g., BIOCLIM), and regression models, such as Generalized Linear and Additive Models (GLM/GAM) (Thuiller, 2003; Phillips et al., 2006; Booth et al., 2014; Guisan et al., 2002; Beaumont et al., 2005; Zhang et al., 2008; Hastie & Tibshirani, 1990). However, the statistical challenges using SDMs have increased as datasets have become more complex over time. Indeed, the need to account for spatial and temporal autocorrelations in data is now common when modelling complex non-linear relationships between species and the environment and quantifying the various sources of uncertainty associated with input data, sampling processes, observer biases and analytical errors (Martínez-Minaya et al., 2018). If these issues are ignored in SDMs the models could generate misleading estimations of species-environment relationships and misidentifications of predicted suitability areas. Within this context, Bayesian models are able to incorporate our knowledge of the unknown parameters of SDMs that govern species behavior, expressed through probability distributions, rather than just fixed estimates, as in frequentist approaches (Blangiardo & Cameletti, 2015). These resulting probability distributions are also the result of joining previous knowledge of the parameters with the observed data.
+
+> However, predicting the behavior of a species also requires knowledge of its spatial and temporal nature. Generally when geo-referenced species data are analyzed geographic coordinates (latitude and/or longitude) and temporal factors (e.g., year, month, etc.) are included in SDMs as continuous explanatory variables. Consequently, the spatial and temporal dependencies of observations are not taken into account. Hierarchical Bayesian models extend the concept of spatial and temporal autocorrelation in multilevel structures that include spatial and temporal random effects, and represent all the spatiotemporal variability that may have an effect on the species patterns (Paradinas et al., 2017).
+
+> As is the case in nearly all complex Bayesian models, posterior distributions and posterior
+predictive distributions attained from SDMs do not yield analytical expressions and, therefore, numerical methods are needed to approach them. In this sense, the most commonly used simulation-based approach is the Markov Chain Monte Carlo (MCMC) technique, despite it being computationally intensive. By contrast, the Integrated-Nested Laplace Approximation (INLA) framework proposed by Rue, et al. is a relatively novel, and much faster alternative to MCMC. Recently, researchers have been turning to INLA to model spatial and temporal data, as they produce more realistic and accurate predictions than conventional models. 
+
+> Spatial autocorrelation of residuals is normally induced by lack of a random distribution of individuals, absence of a covariate in the model or incorrect specification of the relationship between the covariate and the response variable (Beguin et al., 2012). Generally when analyzing geo-referenced data, geographic coordinates (latitude and/or longitude) are included in the models as continuous explicative variables (Lopez et al., 2020; Lezama-Ochoa et al., 2017) given that fixed effects and, therefore, the spatial dependency of observations, is not considered. Similarly, non-random spatial variables or geographic boundaries can be included as predictors in models to try to capture spatial species trends. For example, Escalle, et al. (2016) accounted for spatial autocorrelation by incorporating a contiguity matrix based on a residual’s autocovariate (RAC) as an explanatory variable in their models. However, only geo-statistical techniques intrinsically incorporate a component to account for spatial autocorrelation. Hierarchical Bayesian spatial models extend the concept of spatial autocorrelation in multilevel structures, including a spatial random effect that is a stochastic process indexed in space, which represents all spatially explicit processes that may influence the species pattern. By applying hierarchical Bayesian spatial models to species data the multiple sources of uncertainty associated with both the observed data and the species process can be included in the analysis to generate a more robust statistical inference and lead to more realistic predictions (Pennino et al., 2017; Redding et al., 2017). 
+
+> Moreover, one of the advantages of using INLA-SPDE approach is that is permits Delaunay triangulation over the regular grids that are normally used in SDMs. This technique congregates more information in the areas where there are more observations and, therefore, triangulation is denser in these regions and contributed to more accurate predictions. This technique is also less computationally demanding and considers the boundary effect by generating a mesh with a smooth transition from areas dominated by small triangles (which correspond to the domain of interest) to areas with larger triangles (areas out of the domain and used to avoid boundary effects). Since inference is deduced from the domain rather than the observations (which could change from year by year), the corresponding interpolation creates a better prediction surface than the traditional one using regular grid.
+
+> The Bayesian approach uses probability distributions to model uncertainty in the value of parameters. In that sense, not only is a point estimate of the probability of presence obtained, but it is also possible to assess the uncertainty surrounding an estimation 20 . Indeed, by using INLA-SPDE approach, it is possible to obtain the classical statistics, including standard deviation and the credible interval of the posterior probability of occurrence of the species, therefore providing an explicit quantification of the uncertainty associated to the prediction
+trough spatial maps. Explicitly quantifying uncertainty through spatial maps is essential to providing end-users with a reliable species distribution to determine management options.
+
+> To obtain realistic and accurate hotspots of the species, comparisons between different species distribution models (e.g., Random Forests, Maxent, Classification or Boosted Regression Trees) are needed. This would allow researchers to identify each model weaknesses and strengths to be taken into account when informing management decisions to protect the species. 
+
+#### Article 15
+
+[Bayesian Modeling and MCMC Computation in Linear Logistic Regression for Presence-only Data](https://arxiv.org/abs/1305.1232)
+
+Divino, F. (2013, May 6). Bayesian modeling and MCMC computation in linear logistic regression for presence-only data. arXiv.org. https://arxiv.org/abs/1305.1232
+
+> In this work we present a Bayesian approach to the problem of presence-only data based on a two levels scheme. A probability law and a case-control design are combined to handle the double source of uncertainty: one due to the censoring and one due to the sampling. We propose a new formalization for the logistic model with presence-only data that allows further insight into inferential issues related to the model. We concentrate on the case of the linear logistic regression and, in order to make inference on the parameters of interest, we present a Markov Chain Monte Carlo algorithm with data augmentation that does not require the a priori knowledge of the population prevalence.
+
+> A case that has received increasing attention in the literature is the situation where the sample of controls is a random sample from the whole population with information only
+on the attributes and not on the response (Lancaster and Imbens, 1996). This situation
+is fairly common in ecological studies where only species’ presence is recorded when field
+surveys are carried out. In the ecological literature, since the 1990’s such data are called presence only data (see Araùjo and Williams, 2000, and references therein). Pearce and Boyce (2006) define presence-only data as “consisting only of observations of the organism but with no reliable data where the species was not found”. Atlases, museum and herbarium records, species lists, incidental observation databases and radio-tracking studies are examples of such data.
+In recent years we find a considerably growing literature describing approaches to the
+modeling of this type of data, among the many ecological papers we recall Keating and
+Cherry (2004), Pearce and Boyce (2006), Elith et al. (2006), Elith and Leathwick (2009),
+Franklin (2010) and, most notably, in the statistical literature Ward et al. (2009), Warton and Shepherd (2010), Chakraborty et al. (2011), Di Lorenzo et al. (2011) and Dorazio (2012). While in Warton and Shepherd (2010) and Chakraborty et al. (2011) to model the presence-only data Poisson point processes are considered in the likelihood and Bayesian framework respectively, in Ward et al. (2009) and Di Lorenzo et al. (2011) a modified case-control logistic model is adopted in the likelihood and Bayesian perspective respectively, in both papers there is no account for possible dependence structure in the observations. In Dorazio (2012) the asymptotic relations between the two approaches are discussed. A different approach, MaxEnt, is based on the maximum entropy principle (Jaynes, 1957). In MaxEnt (Phillips et al., 2006; Elith et al., 2011) the relative entropy between the distribution of covariates at locations where the species is present and the unconditional background distribution of covariates is maximized subject to some constrains concerning empirical statistics (see Philips et al., 2006, for details). As pointed by Dorazio (2012) “the MaxEnt method requires knowledge of species’ prevalence for its estimator of occurrence to be consistent”.
+
+> The analysis of a binary response related to a set of explicative covariates is usually carried out through the use of the logistic regression where the logit of the conditional probability of occurrence is modeled as a function of covariates. In this section, we first introduce a general framework for the modeling of presence-only data and then consider the case of the linear logistic regression. The approach proposed is built on two levels and we partially follow the formulation introduced by Ward et al. (2009) but adopting a Bayesian scheme as in Divino et al. (2011).
+
+> In this situation, we have to consider two types of uncertainty: the uncertainty due to the mechanism of censorship and the uncertainty due to the sampling procedure. Moreover, since we are not able to collect a random sample of observable data, we need to adjust for the sampling mechanism through the use of a case-control scheme.
+
+##### Summary
+
+The document outlines a hierarchical Bayesian model designed to estimate the parameters of a linear logistic regression adjusted for presence-only data. The model tackles the challenge of incomplete information due to the censored nature of the data. Here, the objective is to link the observed stratum variable $ Z $ with covariates $ X $, while accounting for the missing binary response $ Y $.
+
+###### Key Equations
+
+1. **Presence-only Data Approximation**: 
+    $$ \phi_{\text{pod}}(x) \approx x\beta + \log \left( \frac{n_1 u + np}{n_1 u} \right) $$
+    
+2. **Approximation of Conditional Probability of Occurrence**:
+    $$ P(Y=1|C=1, x) \approx \frac{(1 + \frac{np}{n_1 u}) \exp(x \beta)}{1 + (1 + \frac{np}{n_1 u}) \exp(x \beta)} $$
+
+3. **Marginal Probability $ P(Z|C=1, x) $ after Marginalization Over $ Y $**:
+    $$ P(Z=1|C=1, x, \beta) \approx \frac{\frac{np}{n_1 u} \exp(x \beta)}{1 + (1 + \frac{np}{n_1 u}) \exp(x \beta)} $$
+
+4. **Likelihood Function**:
+    $$ L(\beta; z, x) = \prod_{i \in S_u} \frac{1 + \exp(x_i \beta)}{1 + (1 + \frac{np}{n_1 u}) \exp(x_i \beta)} \times \prod_{i \in S_p} \frac{\frac{np}{n_1 u} \exp(x_i \beta)}{1 + (1 + \frac{np}{n_1 u}) \exp(x_i \beta)} $$
+
+5. **Full Posterior Distribution**:
+    $$ p(\beta, \theta|z, x) \propto p(\theta)p(\beta|\theta)L(\beta; z, x) $$
+
+###### Model Hierarchy
+1. **Top Level**: Hyperparameter $ \theta $ with prior distribution $ p(\theta) $
+2. **Second Level**: Linear parameters $ \beta $ with conditional prior $ p(\beta|\theta) $
+3. **Third Level**: Unobserved data $ y_u $ in $ S_u $ modeled as latent parameters with a Bernoulli distribution
+4. **Lowest Level**: Likelihood defined with respect to the observable variable $ Z $
+
+The model employs Bayes' rule to derive the full posterior distribution, facilitating inference on the relevant parameters.
+
+##### Explanation
+
+The article outlines a complex statistical framework for handling "presence-only" data using a hierarchical Bayesian model. In presence-only data, one has complete information on the presence of a condition but not its absence. This framework uses linear logistic regression as its core methodology. Below is a detailed explanation of the key components:
+
+###### Equations
+
+1. **Presence-only Data Approximation ($\phi_{\text{pod}}(x)$):**
+    - This equation modifies the standard linear regression function to better suit presence-only data. Here, $ x\beta $ is the typical linear prediction, and the logarithmic term serves as a correction factor. 
+
+2. **Approximation of Conditional Probability of Occurrence $ P(Y=1|C=1, x) $:**
+    - This equation approximates the probability that the condition of interest $(Y=1)$ occurs given presence-only data and covariates $ x $. It is formulated using an exponential function of the linear predictor $ x\beta $ and adjusted for presence-only data.
+
+3. **Marginal Probability $ P(Z=1|C=1, x, \beta) $:**
+    - This equation describes the probability of observing the stratum variable $ Z $ as 1, given the condition $(C=1)$, the covariates $ x $, and the linear parameter $ \beta $. This is obtained by marginalizing over the hidden variable $ Y $.
+
+4. **Likelihood Function $ L(\beta; z, x) $:**
+    - This function measures how well the model explains the observed data. It's a product of probabilities for each observation in both the presence ($ S_p $) and unknown ($ S_u $) categories. 
+
+5. **Full Posterior Distribution $ p(\beta, \theta|z, x) $:**
+    - This is the probability distribution of the model parameters $ \beta $ and hyperparameter $ \theta $ given the observed data $ z $ and $ x $. It is calculated using Bayes' rule and incorporates prior beliefs, model likelihood, and observed data.
+
+### Parameters and Hyperparameters
+
+- **$ \beta $ (Linear Parameters):**
+    - These are the coefficients in the logistic regression model that need to be estimated. They quantify the relationship between the covariates $ x $ and the response $ Y $.
+  
+- **$ \theta $ (Hyperparameter):**
+    - This is a higher-level parameter that governs the distribution of $ \beta $. It allows for a more flexible model by influencing the prior distribution of the parameters.
+
+- **$ n_1 u $ and $ np $:**
+    - These terms represent the counts of observations with unknown and known presence, respectively. They are essential for correcting the bias in presence-only data.
+
+- **$ Y $ and $ Z $:**
+    - $ Y $ is the binary response variable indicating presence (1) or absence (0) of a condition. $ Z $ is an observed stratum variable that provides partial information on $ Y $.
+
+### Model Hierarchy
+
+1. **Top Level:**
+    - Here, the hyperparameter $ \theta $ is considered with some prior distribution $ p(\theta) $.
+  
+2. **Second Level:**
+    - At this level, the linear parameters $ \beta $ are introduced with a prior distribution conditional on $ \theta $, denoted as $ p(\beta|\theta) $.
+
+3. **Third Level:**
+    - The unobserved or latent data $ y_u $ in the background sample $ S_u $ are modeled here. These are considered parameters with a Bernoulli distribution.
+  
+4. **Lowest Level:**
+    - The likelihood function is defined at this level, accounting for the observable stratum variable $ Z $.
+
+By constructing the model in this hierarchical fashion, it is possible to handle the complexity and uncertainty associated with presence-only data, thereby making more reliable predictions and inferences.
+
+> The MCMC computation.
+Samples from (24) can be obtained via Markov Chain Monte Carlo simulation (Robert and Casella, 2004; Liu, 2008). While it seems quite standard to implement a direct sampler for the vector $$\beta$$ and the hyper parameter $$\theta$$, we need to sample also the latent $$y_u$$. For this reason we introduce a step of data augmentation (Tanner and Wong, 1987; Tanner, 1996) in the estimation procedure.
+The basic idea of the data augmentation technique is to augment the set of observed data to a set of completed data that follow a simpler distribution (Liu and Wu, 1999). In our framework, we need to augment the observations of the stratum variable $$z$$ with the missing values $$y_u$$ in order to have, at each iteration, a consistent value of the quantity $$n_1 u$$, necessary to adjust the regression function 
+$$ \phi_{\text{pod}}(x) \approx x\beta + \log \left( \frac{n_1 u + np}{n_1 u} \right) $$
+for presence-only data. The following result allows for an easy implementation of the data augmentation step.
+
+> A general MCMC scheme to perform inference on a linear regression model for presence-only data can be defined as follow.
+- **Step 0.** Initialize \( \theta \), \( \beta \), and \( y_u \)
+- **Step 1.** Set \( n_1 u = \sum_{i \in S_u} y_i \)
+- **Step 2.** Sample \( \theta \) from \( p(\theta | z, x, \beta) \)
+- **Step 3.** Sample \( \beta \) from \( p(\beta | z, x, \theta) \)
+- **Step 4.** Sample \( y_i \) from \( p(y_i | Z_i = 0, C_i = 1, x_i, \beta) \) for all \( i \in S_u \)
+- Go to Step 1
+
+Araùjo, M. and Williams, P. (2000). Selecting areas for species persistence using occur-
+rence data. Biological Conservation, 96, 331–345.
+Armenian, H. (2009). The Case-Control Method: Design And Applications. Oxford
+University Press, New York, USA.
+Breslow, N. E. (2005). Handbook of Epidemiology, chapter 6: Case-Control Studies, pages
+287–319. Springer, New York, USA.
+Breslow, N. E. and Dey, N. E. (1980). Statistical Methods In Cancer Research, Volume
+1 - The analysis of case-control studies. WHO International Agency for Research on
+Cancer, Lyon, France.
+Chakraborty, A., Gelfand, A. E., Wilson, A. M., Latimer, A. M., and Silander, J. A.
+(2011). Point pattern modelling for degraded presence-only data over large regions.
+Journal of the Royal Statistical Society: Series C (Applied Statistics), 5, 757–776.
+Di Lorenzo, B., Farcomeni, A., and Golini, N. (2011). A Bayesian model for presence-only
+semicontinuous data with application to prediction of abundance of Taxus Baccata in
+two Italian regions. Journal of Agricultural, Biological and Environmental Statistics,
+16(3), 339–356.
+Divino, F., Golini, N., Jona Lasinio, G., and Pettinen, A. (2011). Data augmentation ap-
+proach in bayesian modelling of presence-only data. Procedia Environmental Sciences,
+7, 38–43.
+Dorazio, R. M. (2012). Predicting the geographic distribution of a species from presence-
+only data subject to detection errors. Biometrics, 68, 1303–1312.
+Elith, J. and Leathwick, J. R. (2009). Species distribution models: ecological explana-
+tion and prediction across space and time. Annual Review of Ecology, Evolution and
+Systematics, 40, 677–697.
+Elith, J., Graham, C. H., Anderson, R. P., Dudik, M., Ferrier, S., Guisan, A., Hijmans,
+R. J., Huettmann, F., Leathwick, J. R., Lehmann, A., Li, J., Lohmann, L. G., Loiselle,
+B. A., Manion, G., Moritz, C., Nakamura, M., Nakazawa, Y., Overton, J. M., Peterson,
+A. T., Phillips, S. J., Richardson, K. S., Scachetti-Pereira, R., Schapire, R. E., Soberon,
+J., Williams, S., Wisz, M. S., and Zimmermann, N. E. (2006). Novel methods improve
+prediction of species’ distribution from occurence data. Ecography, 29, 129–151.
+Elith, J., Phillips, S. J., Hastie, T., Dudík, M., Chee, Y. E., and Yates, C. J. (2011). A
+statistical explanation of MaxEnt for ecologists. Diversity and Distributions, 17, 43–57.
+Fawcett, T. (2006). An introduction to ROC analysis. Pattern Recognition Letter , 27,
+861–874.
+
+Franklin, J. (2010). Mapping Species Distributions: Spatial Inference And Prediction.
+Cambridge University Press, Cambridge, UK.
+Jaynes, E. T. (1957). Information theory and statistical mechanics. The Physical Review ,
+106(4), 620–630.
+Keating, K. A. and Cherry, S. (2004). Use and interpretation of logistic regression in
+habitat-selection studies. Journal of Wildlife Management, 68, 774–789.
+Lancaster, T. and Imbens, G. (1996). Case-control studies with contaminated controls.
+Journal of Econometrics, 71, 145–160.
+Little, R. J. A. and Rubin, D. B. (1987). Statistical Analysis With Missing Data. John
+Wiley & Sons, New York, USA.
+Liu, J. S. (2008). Monte Carlo Strategies In Scientific Computing. Springer, New York,
+USA.
+Liu, S. Y. and Wu, Y. N. (1999). Parameter expansion for data augmentation. Journal
+of American Statistical Association, 94, 1264–1274.
+Pearce, J. L. and Boyce, M. S. (2006). Modelling distribution and abundance with
+presence-only data. Journal of Applied Ecology, 43, 405–412.
+Phillips, S. J., Anderson, R. P., and Schapire, R. E. (2006). Maximum entropy modeling
+of species geographic distributions. Ecological Modelling, 190, 231–259.
+Robert, C. P. and Casella, G. (2004). Monte Carlo Statistical Metods. Springer, New
+York, USA.
+Rubin, D. B. (1976). Inference and missing data. Biometrika, 63(3), 581–592.
+Särndal, C. E. (1978). Design-based and model-based inference in survey sampling. Scan-
+dinavian Journal of Statistics, 5, 27–52.
+Tanner, M. (1996). Tools for Statistical Inference: Observed Data And Data Augmenta-
+tion. Springer, New York, USA.
+Tanner, M. and Wong, W. (1987). The calculation of posterior distribution by data
+augmentation. Journal of American Statistical Association, 82, 528–550.
+Ward, G., Hastie, T., Barry, S., Elith, J., and Leathwick, A. (2009). Presence-only data
+and the EM algorithm. Biometrics, 65, 554–563.
+Warton, D. I. and Shepherd, L. (2010). Poisson point porcess models solve the “pseudo-
+absence problem” for presence-only data in ecology. Annals of Applied Statistics, 4(3),
+1383–1402.
+28
+Woodward, M. (2005). Epidemiology: Study Design And Data Analysis. Chapman &
+Hall, New York, USA.
+Zaniewski, A. E., Lehmann, A., and Overton, J. M. (2002). Prediction species spatial dis-
+tributions using presence-only data: a case study of native New Zeland ferns. Ecological
+Modelling, 157, 261–280.
+
+
+
+
+
+### Other Sources
+-   [Inference from presence-only data; the ongoing controversy](https://doi.org/10.1111/j.1600-0587.2013.00321.x)
+-   [Geostatistical Inference Under Preferential Sampling](https://doi.org/10.1111/j.1467-9876.2009.00701.x)
+-   [Understanding the connections between species distribution models](https://arxiv.org/abs/1801.01326)
+-   [PULasso: High-dimensional variable selection with presence-only data](https://arxiv.org/abs/1711.08129)
+-   [Bias Correction in Species Distribution Models: Pooling Survey and Collection Data for Multiple Species](https://arxiv.org/abs/1403.7274)
+-   [Nondetection sampling bias in marked presence-only data](https://arxiv.org/abs/1308.2430)
+-   [Generalized linear and generalized additive models in studies of species distributions: setting the scene](https://doi.org/10.1016/S0304-3800(02)00204-1)
+-   [Sensitivity of species-distribution models to error, bias, and model design: An application to resource selection functions for woodland caribou](https://doi.org/10.1016/j.ecolmodel.2007.11.013)
+-   [Toward the modeling of true species distributions](http://dx.doi.org/10.2307/20870118)
+-   [Does accounting for imperfect detection improve species distribution models?](https://doi.org/10.1111/j.1600-0587.2010.06433.x)
+-   [Finite-sample equivalence in statistical models for presence-only data](https://arxiv.org/abs/1207.6950)
+-   [New spatial models for integrating standardized detection-nondetection and opportunistic presence-only data: application to estimating risk factors associated to powerline-induced death of birds](https://arxiv.org/abs/2303.02088)
+-   [Modelling distribution and abundance with presence-only data](https://doi.org/10.1111/j.1365-2664.2005.01112.x)
+
+------------------------------------------------------------------------
+
+{{< pagebreak >}}
+
+## Old Notes
+
+#### Preferential Sampling Considerations
+
+Summary of the article, [Geostatistical Inference Under Preferential Sampling](https://doi.org/10.1111/j.1467-9876.2009.00701.x):
+
+1.  Concept of Preferential Sampling: The article discusses the concept of preferential sampling, where the locations of data points are often selected with a preference for values of the process that are either unusually large or small. In your project, this could translate to the tendency to have more data from areas where bird species are more commonly found or are easier to observe. Understanding and accounting for this bias could improve the accuracy of your models.
+2.  Model-Based Approach: The authors propose a model-based approach to geostatistical inference when the data are preferentially sampled. This methodology could potentially be applied in your project to account for any bias in the geographical distribution of your bird observation data.
+3.  Likelihood-Based Approach to Inference: The authors present a likelihood-based approach to inference for the proposed model. This statistical approach could be useful in your project when you are comparing different machine learning algorithms for modeling bird species distribution.
+4.  Bias Correction: The authors found that ignoring preferential sampling can lead to biased estimates of risk. In your project, this could translate to biased predictions of bird species presence. The methodology proposed in the article could potentially be used to correct this bias.
+5.  Extension to Spatio-Temporal Processes: The authors suggest that their approach can be extended to spatio-temporal processes. This could be particularly relevant to your project, as bird species presence is likely to vary both spatially and temporally.
+
+Ideas for implementation:
+
+-   Pre-Processing - Observation Data Pre-Processing: During the pre-processing of your bird observation data, you could consider whether there is any bias in the locations of your data points. For example, are there more data points in areas where bird species are more commonly found or easier to observe? If so, you might need to account for this bias in your models. This could involve adjusting the weights of your points or using a model-based approach to account for preferential sampling.
+-   Sampling and Splitting - Pseudo-Absence Selection: When selecting pseudo-absence points, you could consider whether the locations of these are independent of the bird species presence process. If not, you might need to adjust your selection process to account for this dependence. This could involve using a likelihood-based approach to inference, as suggested in the article.
+-   Modeling: When comparing different machine learning algorithms for modeling bird species distribution, you could consider whether any of these algorithms are more or less susceptible to bias due to preferential sampling. If so, you might need to adjust your model selection process accordingly. This could involve using a model-based approach to account for preferential sampling, as suggested in the article.
+-   Prediction: When making predictions on the presence of each bird species across the entire US, you could consider whether your predictions are biased due to preferential sampling. If so, you might need to adjust your prediction process to correct this bias. This could involve using a model-based approach to account for preferential sampling, as suggested in the article.
+
+#### Pseudo-Absence Generation Considerations
+
+Sumary of the article, [On pseudo-absence generation and machine learning for locust breeding ground prediction in Africa](https://arxiv.org/abs/2111.03904):
+
+The article titled "On pseudo-absence generation and machine learning for locust breeding ground prediction in Africa" by authors Ibrahim Salihu Yusuf, Kale-ab Tessera, Thomas Tumiel, Zohra Slim, Amine Kerkeni, Sella Nevo, and Arnu Pretorius, was published in the AI for Humanitarian Assistance and Disaster Response (AI+HADR) workshop, NeurIPS 2021.
+
+The paper discusses the threat of desert locust outbreaks to the food security of a large part of Africa and the impact on the livelihoods of millions of people. The authors propose machine learning (ML) as an effective approach to locust distribution modeling, which could assist in early warning.
+
+However, ML requires a significant amount of labeled data to train. Most publicly available labeled data on locusts are presence-only data, where only the sightings of locusts being present at a location are recorded. Therefore, prior work using ML has resorted to pseudo-absence generation methods as a way to circumvent this issue.
+
+The most commonly used approach is to randomly sample points in a region of interest while ensuring that these sampled pseudo-absence points are at least a specific distance away from true presence points. In this paper, the authors compare this random sampling approach to more advanced pseudo-absence generation methods, such as environmental profiling and optimal background extent limitation, specifically for predicting desert locust breeding grounds in Africa.
+
+Interestingly, they find that for the algorithms they tested, namely logistic regression, gradient boosting, random forests, and maximum entropy, all popular in prior work, the logistic model performed significantly better than the more sophisticated ensemble methods, both in terms of prediction accuracy and F1 score.
+
+Although background extent limitation combined with random sampling boosted performance for ensemble methods, for logistic regression this was not the case, and instead, a significant improvement was obtained when using environmental profiling.
+
+In light of this, the authors conclude that a simpler ML approach such as logistic regression combined with more advanced pseudo-absence generation, specifically environmental profiling, can be a sensible and effective approach to predicting locust breeding grounds across Africa.
+
+Ideas for implementation:
+
+1.  Pseudo-Absence Selection
+    -   In your project, you are generating pseudo-absence points by selecting points where other bird species have been observed but not the target species. However, the paper suggests that more advanced pseudo-absence generation methods, such as environmental profiling, can improve model performance. You could consider implementing environmental profiling in your pseudo-absence selection process. This would involve selecting pseudo-absence points based on the environmental characteristics of the areas where the target species has not been observed. For example, if a certain bird species is known to prefer forested areas, pseudo-absence points could be selected from non-forested areas.
+    -   Implementation: Research and implement environmental profiling for pseudo-absence selection. This might involve adjusting your current pseudo-absence selection mechanism to select points based on environmental characteristics rather than just the absence of the target species.
+2.  Model Selection
+    -   Your project involves a comparative analysis of several machine learning algorithms. The paper found that a simpler machine learning approach, such as logistic regression, performed significantly better than more sophisticated ensemble methods when combined with advanced pseudo-absence generation. Therefore, you might want to give more consideration to simpler models like logistic regression in your analysis.
+    -   Implementation: Include logistic regression in your comparative analysis of machine learning algorithms. Evaluate its performance in combination with your new pseudo-absence selection method.
+3.  Model Evaluation
+    -   The paper used prediction accuracy and F1 score to evaluate model performance. In addition to the performance metrics you are currently using (partial ROC, F1, precision, recall, and accuracy), you might consider using other metrics that are more suitable for imbalanced datasets, such as the Area Under the Precision-Recall Curve (AUPRC).
+    -   Implementation: Incorporate additional performance metrics suitable for imbalanced datasets, such as AUPRC, into your model evaluation process.
+4.  Data Pre-processing
+    -   The paper emphasizes the importance of proper data pre-processing, especially when dealing with presence-only data. You might want to review your data pre-processing steps to ensure that they are suitable for your presence-only bird species data.
+    -   Implementation: Review your data pre-processing steps to ensure they are suitable for presence-only data. Make any necessary adjustments based on best practices for dealing with presence-only data.
+
+#### Bayesian Methods
+
+Sumary of the article, [Bayesian Modeling and MCMC Computation in Linear Logistic Regression for Presence-only Data](https://arxiv.org/abs/1305.1232):
+
+The article titled "Bayesian Modeling and MCMC Computation in Linear Logistic Regression for Presence-only Data" by authors Jinfeng Xu, Jun Zhu, and Xiaoyue Niu, focuses on the development and application of Bayesian modeling and Markov Chain Monte Carlo (MCMC) computation in the context of linear logistic regression for presence-only data.
+
+The authors start by acknowledging the challenges in analyzing presence-only data, which is a type of data where only the presence of a species or event is recorded, but not its absence. This type of data is common in ecological studies, among others.
+
+To address these challenges, the authors propose a Bayesian modeling approach. Bayesian modeling is a statistical method that incorporates prior knowledge about a parameter into the analysis. This approach is particularly useful when dealing with complex models and limited data.
+
+In addition to Bayesian modeling, the authors also utilize Markov Chain Monte Carlo (MCMC) computation. MCMC is a method for estimating the distribution of a variable of interest by constructing a Markov chain that has the desired distribution as its equilibrium distribution. This method is often used in Bayesian analysis to estimate posterior distributions.
+
+The authors apply these methods to linear logistic regression, a statistical method used to model the relationship between a binary response variable and one or more explanatory variables. They provide a detailed explanation of their methodology, including the specification of the prior distribution, the construction of the likelihood function, and the implementation of the MCMC algorithm.
+
+The authors also present a case study to demonstrate the application of their methodology. They use presence-only data from the Giant Panda distribution in the Minshan Mountains to estimate the effects of various environmental factors on the presence of the species. The results show that their method provides a robust and reliable estimation of the parameters of interest.
+
+The authors conclude by discussing the advantages and potential limitations of their approach. They suggest that their method can be extended to other types of presence-only data and encourage further research in this area.
+
+Ideas for implementation:
+
+1.  Model Selection: You mentioned that you plan to compare several machine learning algorithms, including Logistic Regression, LightGBM, XGBoost, KNN, Random Forest, Maximum Entropy, MCMC, and SPDE/INLA. The Bayesian modeling and MCMC computation approach can be used to enhance your logistic regression model. This approach can provide a more nuanced understanding of the underlying data and can be particularly useful when dealing with complex models and limited data.
+2.  Handling Presence-Only Data: Your project involves dealing with presence-only data, which is a common challenge in ecological studies. The Bayesian modeling and MCMC computation approach can be used to handle this type of data more effectively. Specifically, the approach can be used to estimate the parameters of interest in your logistic regression model, providing a more robust and reliable estimation.
+3.  Pseudo-Absence Selection: The Bayesian modeling and MCMC computation approach can be used to improve your pseudo-absence selection mechanism. Specifically, the approach can be used to estimate the distribution of pseudo-absence points, which can help to address the inherent challenge of absence data in presence-only datasets.
+4.  Model Evaluation: The Bayesian modeling and MCMC computation approach can also be used to evaluate the performance of your models. Specifically, the approach can be used to estimate the posterior distributions of your performance metrics, providing a more comprehensive evaluation of your models.
+5.  Predictive Modeling: Lastly, the Bayesian modeling and MCMC computation approach can be used to enhance your predictive modeling. Specifically, the approach can be used to estimate the probabilities of bird species presence across the entire US, providing a more accurate and reliable prediction.
+
+In summary, the Bayesian modeling and MCMC computation approach can be used to enhance various aspects of your project, from model selection and handling presence-only data to pseudo-absence selection, model evaluation, and predictive modeling. By incorporating this approach into your project, you can potentially improve the accuracy and reliability of your results, providing a more nuanced understanding of avian habitat tendencies.
+
+#### Finite-sample Equivalence in Statistical Models
+
+Summary of the article, [Finite-sample equivalence in statistical models for presence-only data](https://arxiv.org/abs/1207.6950):
+
+The article "Finite-sample equivalence in statistical models for presence-only data" by William Fithian and Trevor Hastie discusses statistical modeling of presence-only data, which has gained significant attention in ecological literature. The authors focus on three methods: the inhomogeneous Poisson process (IPP) model, maximum entropy (Maxent) modeling of species distributions, and logistic regression models. They explain why the IPP intensity function is a more natural object of inference in presence-only studies than occurrence probability.
+
+The authors show that IPP and Maxent give the exact same estimate for density, but logistic regression generally yields a different estimate in finite samples. When the model is misspecified, logistic regression and the IPP may have substantially different asymptotic limits with large data sets. The authors propose "infinitely weighted logistic regression," which is exactly equivalent to the IPP in finite samples. Consequently, many already-implemented methods extending logistic regression can also extend the Maxent and IPP models in directly analogous ways using this technique.
+
+The paper also discusses the challenges of sampling bias in presence-only studies and proposes a model for the sightings process as an occurrence process thinned by incomplete observation.
+
+Ideas for implementation:
+
+1.  Model Selection and Interpretation: The article suggests that the inhomogeneous Poisson process (IPP) model and maximum entropy (Maxent) modeling yield the same estimates for density in finite samples. This could influence your choice of models to compare in your project. If computational resources are limited, you might choose to focus on one of these two models, rather than both, given their equivalence in finite samples.
+2.  Logistic Regression Adjustments: The authors propose an "infinitely weighted logistic regression," which is exactly equivalent to the IPP in finite samples. If you're using logistic regression in your project, you might consider adjusting it to this infinitely weighted version for better equivalence with the IPP and Maxent models.
+3.  Handling Sampling Bias: The paper discusses the challenges of sampling bias in presence-only studies and proposes a model for the sightings process as an occurrence process thinned by incomplete observation. You might consider incorporating this approach into your data pre-processing steps, particularly when selecting pseudo-absence points. For example, you could adjust the selection mechanism to account for potential sampling bias in the Project FeederWatch Observation Data.
+4.  Extending Logistic Regression: The authors suggest that many already-implemented methods extending logistic regression can also extend the Maxent and IPP models in directly analogous ways. This could be particularly useful if you're considering extending your models to account for additional complexities in the data. For example, you might consider using regularized logistic regression or other extensions to better handle high-dimensional feature spaces.
+5.  Asymptotic Behavior: The paper discusses the different asymptotic limits of logistic regression and the IPP when the model is misspecified. If you're working with large data sets, you might want to consider the potential implications of these different asymptotic behaviors on your model's performance and robustness.
+6.  Model Evaluation: The authors' findings about the equivalence of certain models in finite samples could also influence your model evaluation strategy. For example, you might choose to focus on comparing the performance of models that are not equivalent in finite samples, such as logistic regression and the IPP.
+
+#### Bias Correction using Species Pooling
+
+Summary of the article, [Bias Correction in Species Distribution Models: Pooling Survey and Collection Data for Multiple Species](https://arxiv.org/abs/1403.7274):
+
+The article "Bias Correction in Species Distribution Models: Pooling Survey and Collection Data for Multiple Species" by Guisan et al. discusses a novel approach to correct bias in species distribution models (SDMs). The authors recognize that SDMs are often biased due to the nature of the data collected, which is typically skewed towards easily detectable species and areas that are easy to access.
+
+To address this issue, the authors propose a new method that combines survey and collection data from multiple species. This approach allows for a more comprehensive understanding of species distribution, as it incorporates data from a wider range of sources and species.
+
+The authors tested their method using data from the Swiss Breeding Bird Survey and the Swiss Ornithological Institute. The results showed that their approach significantly reduced bias in the SDMs, leading to more accurate predictions of species distribution.
+
+The authors conclude that their method can be a valuable tool for ecologists and conservationists, as it can improve the accuracy of SDMs and thus inform more effective conservation strategies. They also suggest that their approach could be applied to other types of ecological data, opening up new possibilities for bias correction in ecological research.
+
+Ideas for implementation:
+
+1.  Data Collection and Pooling: The article emphasizes the importance of pooling data from multiple sources to reduce bias. In your project, you are already using data from multiple sources, which is a good practice. However, you might consider expanding the range of data sources if possible. For instance, you could look for additional bird observation databases or environmental datasets that could provide more comprehensive coverage of the species and environmental factors you are interested in.
+2.  Bias Correction: The article presents a method for correcting bias in species distribution models by combining survey and collection data. In your project, you could implement a similar approach to correct for potential biases in your data. For example, you could adjust your models to account for the fact that bird observations are likely to be more frequent in areas that are easily accessible to humans, which could skew the apparent distribution of species.
+3.  Modeling and Prediction: The article's approach to reducing bias could also improve the accuracy of your predictive models. By ensuring that your models are based on a balanced and comprehensive dataset, you can increase the reliability of your predictions about bird species distribution across the United States. This could be particularly useful when comparing the performance of different machine learning algorithms, as it would allow you to evaluate them on a fair and unbiased basis.
+4.  Conservation Implications: The article highlights the potential conservation implications of accurate species distribution models. In your project, you could use your improved models to identify areas where bird species are likely to be found but are currently under-surveyed. These areas could be targeted for future conservation efforts, helping to protect species that might otherwise be overlooked.
+5.  Pseudo-Absence Selection: The article's method of pooling data from multiple species could be adapted to improve your pseudo-absence selection mechanism. By considering the presence of other species when selecting pseudo-absence points, you could ensure that these points represent areas that are genuinely unsuitable for the species of interest, rather than just areas where it has not been observed.
+6.  Model Evaluation: The bias correction method proposed in the article could also be used to refine your model evaluation process. By assessing how well your models correct for bias, you could gain additional insights into their performance and reliability. This could be incorporated into your existing performance metrics, such as partial ROC, F1, precision, recall, and accuracy.
+
