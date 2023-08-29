@@ -1,81 +1,74 @@
----
-title: "Presence-Only Prediction - Literature Review"
-author: "Benton Tripp"
-editor: source
-format:
-  docx:
-    toc: false
-    number-sections: false
-    highlight-style: github
----
+= Presence-Only Prediction - Literature Review
+Benton Tripp
+:stem: latexmath
 
-## Abstract
+== Abstract
 
 The continuous development and diversification of species distribution models (SDMs) necessitates a comprehensive examination of both conventional and emerging techniques. This literature review focuses on the application of presence-only prediction techniques, including Poisson point processes and MaxEnt, in the context of bird species distribution modeling. The review seeks to critically analyze the performance of traditional machine learning models such as xgboost, logistic regression, and random forests against the more specialized presence-only prediction techniques. Moreover, the exploration of Bayesian methods, data processing mechanisms, and innovative sampling methodologies aims to shed light on strategies to enhance model performance and reduce bias. The overarching goal of this review is to provide a systematic foundation for further research into the integration and optimization of various modeling strategies for presence-only predictions.
 
-## Introduction
-        
-### Background and Significance
+== Introduction
 
-Species distribution modeling (SDM) has become increasingly crucial in the realm of ecological research. Driven by advancements in technology, remote sensing, and computational capabilities, there has been a proliferation of methods to predict species distributions (Renner & Warton, 2013; Marmion et al., 2008; O'Sullivan and Unwin, 2010). These models often center around unique datasets, such as presence-only data, which poses unique challenges for statistical modeling due to inherent uncertainty from data censoring and specific sampling procedures.
+=== Background and Significance
 
-In this context, presence-only data is often defined as datasets "consisting only of observations of the organism but with no reliable data where the species was not found" (Pearce and Boyce, 2006). Such data forms the backbone of various sources, including atlases, museum and herbarium records, and incidental observation databases (Divino, 2013).
+Species distribution modeling (SDM) has become increasingly crucial in the realm of ecological research. Driven by advancements in technology, remote sensing, and computational capabilities, there has been a proliferation of methods to predict species distributions (Renner & Warton, 2013; Marmion et al., 2008; O’Sullivan and Unwin, 2010). These models often center around unique datasets, such as presence-only data, which poses unique challenges for statistical modeling due to inherent uncertainty from data censoring and specific sampling procedures.
 
-Two primary modeling approaches for this type of data have gained traction. The first leverages Poisson point processes in both likelihood and Bayesian frameworks, while the second adopts a modified case-control logistic model (Warton & Shepherd, 2010; Chakraborty et al., 2011; Ward et al., 2009). Another technique, MaxEnt, based on the maximum entropy principle, requires knowledge of species' prevalence for its estimator of occurrence to be consistent (Dorazio, 2012).
+In this context, presence-only data is often defined as datasets "`consisting only of observations of the organism but with no reliable data where the species was not found`" (Pearce and Boyce, 2006). Such data forms the backbone of various sources, including atlases, museum and herbarium records, and incidental observation databases (Divino, 2013).
+
+Two primary modeling approaches for this type of data have gained traction. The first leverages Poisson point processes in both likelihood and Bayesian frameworks, while the second adopts a modified case-control logistic model (Warton & Shepherd, 2010; Chakraborty et al., 2011; Ward et al., 2009). Another technique, MaxEnt, based on the maximum entropy principle, requires knowledge of species’ prevalence for its estimator of occurrence to be consistent (Dorazio, 2012).
 
 Recently, traditional machine learning models such as Random Forests, Support Vector Machines, and Gradient Boosting Machines have also been adopted for presence-only data modeling. These algorithms often function by identifying complex, non-linear relationships within the data, which can be particularly valuable for predicting species occurrences. They provide an avenue for species distribution modeling that is often interpretable, efficient, and robust to overfitting. By exploiting the power of ensemble methods or kernel-based strategies, these models can accommodate the intricate patterns and interactions seen in ecological datasets.
 
 Bayesian models, especially in the context of presence-only data, have been highlighted due to their capability to encapsulate the complexities and uncertainties inherent in such datasets. Central to Bayesian modeling are techniques like Markov Chain Monte Carlo (MCMC) and the Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA-SPDE). While MCMC offers a framework adept for data augmentation, simplifying the data distribution, INLA-SPDE presents a Bayesian approach that handles spatial and temporal autocorrelations. This method expands the predictive capacity of species distribution models, with the added advantage of utilizing Delaunay triangulation for more accurate predictions. The Bayesian foundation common to both allows for explicit quantification of uncertainties, crucial for management decisions (Divino, 2013; Lezama-Ochoa et al., 2020).
 
-### Objective of the Literature Review
+=== Objective of the Literature Review
 
 The objective of this review is to critically evaluate and synthesize the developments in presence-only prediction techniques. The exploration aims to shed light on the performance of traditional machine learning models against more specialized techniques, diving deep into the nuances of Bayesian methods, presence-only data processing mechanisms, and innovative sampling methodologies.
 
-## Sampling Techniques, Bias, and the Treatment of Pseudo-Absence Data
+== Sampling Techniques, Bias, and the Treatment of Pseudo-Absence Data
 
-### Strategies to Address Bias
+=== Strategies to Address Bias
 
-### Pseudo-Absence Data in Presence-Only Models
+=== Pseudo-Absence Data in Presence-Only Models
 
-## MaxEnt and Poisson Point Processes in Species Distribution Modeling
+== MaxEnt and Poisson Point Processes in Species Distribution Modeling
 
-### Theoretical Underpinnings
+=== Theoretical Underpinnings
 
-Maximum Entropy (MaxEnt) and Poisson Point Processes (PPMs) have been identified as essential tools for species distribution modeling (SDM). The appeal of SDM lies in its potential to address significant questions, such as the impact of climate change on species distributions. Recent advancements in remote sensing, GIS, and computational power have further facilitated the development of these models (Renner & Warton, 2013; Thullier et al., 2008; O'Sullivan and Unwin, 2010).
+Maximum Entropy (MaxEnt) and Poisson Point Processes (PPMs) have been identified as essential tools for species distribution modeling (SDM). The appeal of SDM lies in its potential to address significant questions, such as the impact of climate change on species distributions. Recent advancements in remote sensing, GIS, and computational power have further facilitated the development of these models (Renner & Warton, 2013; Thullier et al., 2008; O’Sullivan and Unwin, 2010).
 
 MaxEnt models the probability per grid cell and analyzes data after aggregating them into presence/absence grid cells. In contrast, a Poisson PPM models the limiting expected count or intensity per unit area, rather than per grid cell. This per area basis, compared to per grid cell, is a significant distinction between the two approaches (Renner & Warton, 2013).
 
 Interestingly, Renner & Warton (2013) highlight the mathematical equivalence of the MaxEnt procedure and Poisson regression, asserting that both approaches fit the same model and estimate parameters to maximize the same function up to a constant. Moreover, the MaxEnt and PPM solutions for grid cell data are proportional, with identical estimates of slope parameters.
 
-### Applications and Limitations
+=== Applications and Limitations
 
-MaxEnt's applications are sometimes hindered by its shortcomings. It lacks clarity regarding diagnostic tools to assess model fit and is unclear about the spatial resolution when constructing grid cells (Renner & Warton, 2013).
+MaxEnt’s applications are sometimes hindered by its shortcomings. It lacks clarity regarding diagnostic tools to assess model fit and is unclear about the spatial resolution when constructing grid cells (Renner & Warton, 2013).
 
 A key limitation of MaxEnt is its scale dependence of predicted probabilities and arbitrary choice of spatial resolution. The per grid cell analysis is not invariant under choice of spatial resolution, unlike PPM, which models intensity on a per area basis (Renner & Warton, 2013). MaxEnt also fails to estimate the intercept consistently, diverging to −∞ as spatial resolution increases (Renner & Warton, 2013; Elith et al., 2011).
 
-PPM, on the other hand, offers various solutions to MaxEnt's problems. Predicted intensities in PPM are scale-invariant, and spatial resolution can be increased until log-likelihood converges. Various goodness-of-fit procedures are available for PPM, enabling more robust model adequacy assessment (Renner & Warton, 2013; Cressie, 1993; Baddeley et al., 2005).
+PPM, on the other hand, offers various solutions to MaxEnt’s problems. Predicted intensities in PPM are scale-invariant, and spatial resolution can be increased until log-likelihood converges. Various goodness-of-fit procedures are available for PPM, enabling more robust model adequacy assessment (Renner & Warton, 2013; Cressie, 1993; Baddeley et al., 2005).
 
 Warton & Shepherd (2010) introduce PPMs as an alternative to pseudo-absence approaches, which have weaknesses in model specification, interpretation, and implementation. Point process modeling directly addresses these concerns, proposing a more sound specification for observed data without needing to generate new data. PPM also provides a framework for the selection of pseudo-absences, an area often tackled ad hoc in ecology (Warton & Shepherd, 2010).
 
-### Insights into Presence-Only Prediction
+=== Insights into Presence-Only Prediction
 
 Presence-only prediction is a critical aspect of species distribution modeling. MaxEnt is limited in this regard due to its scale dependence and the current ambiguity over the spatial resolution (Renner & Warton, 2013).
 
-PPM is proposed as a solution to the "pseudo-absence problem" in presence-only data, providing a more robust specification, clearer interpretation, and structured implementation than MaxEnt. The problems related to the pseudo-absence approach, specifically those associated with model specification, interpretation, and implementation, are rectified through the application of a point process modeling framework (Warton & Shepherd, 2010). Various authors have addressed the confusion over how pseudo-absences should be chosen (Elith and Leathwick, 2007; Guisan et al., 2007; Zarnetske, Edwards, and Moisen, 2007; Phillips et al., 2009), recognizing that the selection method can yield different outcomes (Chefaoui and Lobo, 2008).
+PPM is proposed as a solution to the "`pseudo-absence problem`" in presence-only data, providing a more robust specification, clearer interpretation, and structured implementation than MaxEnt. The problems related to the pseudo-absence approach, specifically those associated with model specification, interpretation, and implementation, are rectified through the application of a point process modeling framework (Warton & Shepherd, 2010). Various authors have addressed the confusion over how pseudo-absences should be chosen (Elith and Leathwick, 2007; Guisan et al., 2007; Zarnetske, Edwards, and Moisen, 2007; Phillips et al., 2009), recognizing that the selection method can yield different outcomes (Chefaoui and Lobo, 2008).
 
 Studies have demonstrated that logistic regression slope parameters and their corresponding standard errors converge to those of the Poisson point process model as the number of pseudo-absences is increased (Warton & Shepherd, 2010). This demonstrates that the PPM approach successfully addresses the arbitrary nature of pseudo-absence selection, signifying that a specific form of point process model is being estimated, even in the utilization of pseudo-absence methods. Current selection procedures for pseudo-absences do not align with best practices, as they are frequently chosen at random and lack a basis in convergence criteria (Pearce and Boyce, 2006; Zarnetske, Edwards, and Moisen, 2007).
 
 The exploration of MaxEnt and PPM in species distribution modeling reveals intriguing similarities and critical differences between these two methods. While MaxEnt is challenged by its shortcomings, including scale dependence and lack of consistent intercept estimation, PPM offers robust solutions, especially for presence-only prediction. The equivalence between MaxEnt and PPM and the insights into the pseudo-absence problem signify a notable contribution to ecological modeling, pointing to the potential for further refinements and innovations in the field.
 
-## Machine Learning Models for Species Distribution Modeling
+== Machine Learning Models for Species Distribution Modeling
 
-### Comparison with MaxEnt and Poisson Point Process models
+=== Comparison with MaxEnt and Poisson Point Process models
 
-### Evaluation of Performance
+=== Evaluation of Performance
 
-## Bayesian Approaches in Species Distribution Modeling
+== Bayesian Approaches in Species Distribution Modeling
 
-### Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA‑SPDE)
+=== Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA‑SPDE)
 
 The Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA-SPDE) framework presents a Bayesian approach for handling the challenges of species distribution modeling (SDM). Bayesian models such as INLA-SPDE are adept at addressing complex datasets laden with spatial and temporal autocorrelations, thus providing an alternative to frequentist approaches, which yield fixed parameter estimates (Lezama-Ochoa et al., 2020; Martínez-Minaya et al., 2018; Blangiardo & Cameletti, 2015).
 
@@ -85,62 +78,67 @@ One distinct advantage of the INLA-SPDE approach is its utilization of Delaunay 
 
 Despite its capabilities, INLA-SPDE faces specific limitations such as difficulties in processing categorical variables and challenges in effective triangulation for analyzing spatial data (Lezama-Ochoa et al., 2020). Furthermore, although it offers a faster computational alternative to Markov Chain Monte Carlo (MCMC) methods, it should not replace MCMC entirely but rather serve as a complementary or alternative approach (Rue et al.; Lezama-Ochoa et al., 2020).
 
-The Bayesian foundation of INLA-SPDE also allows for the explicit quantification of uncertainties, providing credible intervals and standard deviations in addition to point estimates (Lezama-Ochoa et al., 2020). This explicit quantification is particularly vital for management decisions, as it provides a fuller understanding of the model's predictions.
+The Bayesian foundation of INLA-SPDE also allows for the explicit quantification of uncertainties, providing credible intervals and standard deviations in addition to point estimates (Lezama-Ochoa et al., 2020). This explicit quantification is particularly vital for management decisions, as it provides a fuller understanding of the model’s predictions.
 
 For a holistic understanding of species distribution, it is essential to contrast INLA-SPDE with other SDMs like Random Forests, MaxEnt, and Boosted Regression Trees. Each model carries its unique set of strengths and limitations, warranting careful consideration for effective species management (Lezama-Ochoa et al., 2020).
 
-### Markov Chain Monte Carlo (MCMC)
+=== Markov Chain Monte Carlo (MCMC)
 
-Divino (2013) dives deep into the intricate nuances of modeling presence-only data, presenting a hierarchically structured Bayesian model tailored for estimating parameters of a linear logistic regression suited to presence-only data. The core objective of this model is to bridge the observed stratum variable $Z$ with covariates  $X$ , even in scenarios where there's a conspicuous absence of a binary response $Y$. The presence of this absence, as Divino highlights, induces dual layers of uncertainty: one emanating from the censoring mechanism and the other from the sampling procedure itself.
+Divino (2013) dives deep into the intricate nuances of modeling presence-only data, presenting a hierarchically structured Bayesian model tailored for estimating parameters of a linear logistic regression suited to presence-only data. The core objective of this model is to bridge the observed stratum variable latexmath:[Z] with covariates latexmath:[X] , even in scenarios where there’s a conspicuous absence of a binary response latexmath:[Y]. The presence of this absence, as Divino highlights, induces dual layers of uncertainty: one emanating from the censoring mechanism and the other from the sampling procedure itself.
 
 Several key equations underscored by Divino (2013) illuminate the mechanics of the model. At the forefront is the presence-only data approximation:
 
-$$ \phi_{\text{pod}}(x) \approx x\beta + \log \left( \frac{n_1 u + np}{n_1 u} \right) $$
+[latexmath]
+++++
+ \phi_{\text{pod}}(x) \approx x\beta + \log \left( \frac{n_1 u + np}{n_1 u} \right) 
+++++
 
-This equation serves as a nuanced modification to the conventional linear regression model, sculpting it to align more harmoniously with presence-only datasets. It elegantly blends the regular linear prediction, $x\beta$, with a logarithmic term that serves as a correction factor. Delving further, there are the approximations for the conditional probability of occurrence and the marginal probability $P(Z|C=1, x)$ upon marginalizing over $Y$. These equations are instrumental in capturing the subtleties of presence-only data and its inherent complexities.
+This equation serves as a nuanced modification to the conventional linear regression model, sculpting it to align more harmoniously with presence-only datasets. It elegantly blends the regular linear prediction, latexmath:[x\beta], with a logarithmic term that serves as a correction factor. Delving further, there are the approximations for the conditional probability of occurrence and the marginal probability latexmath:[P(Z|C=1, x)] upon marginalizing over latexmath:[Y]. These equations are instrumental in capturing the subtleties of presence-only data and its inherent complexities.
 
-At the heart of the Bayesian framework is the Markov Chain Monte Carlo (MCMC) algorithm. Here, Divino (2013) shines a spotlight on the integral role of data augmentation within the MCMC computation. This step, characterized by augmenting the observed dataset to a more amenable distribution, is pivotal. It ensures that at each iteration, a consistent value for $n_1u$ can be derived, essential for fine-tuning the regression function for presence-only data.
+At the heart of the Bayesian framework is the Markov Chain Monte Carlo (MCMC) algorithm. Here, Divino (2013) shines a spotlight on the integral role of data augmentation within the MCMC computation. This step, characterized by augmenting the observed dataset to a more amenable distribution, is pivotal. It ensures that at each iteration, a consistent value for latexmath:[n_1u] can be derived, essential for fine-tuning the regression function for presence-only data.
 
 Moreover, the MCMC algorithm is laid out in a sequential scheme:
 
-1. Initialization of hyperparameters and latent variables.
-2. Calculation of the sum of latent variables to adjust the regression function.
-3. Sampling of hyperparameters based on the observed data.
-4. Estimation of linear parameters conditional on the hyperparameters.
-5. A sampling step for unobserved data in the presence-only framework.
+[arabic]
+. Initialization of hyperparameters and latent variables.
+. Calculation of the sum of latent variables to adjust the regression function.
+. Sampling of hyperparameters based on the observed data.
+. Estimation of linear parameters conditional on the hyperparameters.
+. A sampling step for unobserved data in the presence-only framework.
 
 The process, iterative in nature, is reiterated to refine estimates, thereby leveraging the strengths of Bayesian methods.
 
 Divino (2013) summarizes the hierarchical layout for the Bayesian model as follows:
 
-1. At the summit, the hyperparameter $\theta$, governing the distribution of $\beta$, offering flexibility.
-2. Descending a level, the linear parameters $\beta$, which illuminate the relationship between the covariates $X$ and the response $Y$.
-3. Further down the unobserved data $y_u$ are modeled as latent parameters in a Bernoulli distribution.
-4. At the base, the likelihood tethered to the observable variable $Z$.
+[arabic]
+. At the summit, the hyperparameter latexmath:[\theta], governing the distribution of latexmath:[\beta], offering flexibility.
+. Descending a level, the linear parameters latexmath:[\beta], which illuminate the relationship between the covariates latexmath:[X] and the response latexmath:[Y].
+. Further down the unobserved data latexmath:[y_u] are modeled as latent parameters in a Bernoulli distribution.
+. At the base, the likelihood tethered to the observable variable latexmath:[Z].
 
 Through this layered approach, Divino (2013) encapsulates the multiple sources of uncertainty, providing a cohesive structure for handling presence-only data.
 
-Within the realm of academic inquiry, the integration of the Bayesian modeling strategy with the MCMC framework, as articulated by Divino (2013), manifests as a sophisticated and robust approach for analyzing presence-only data. As the relevance of such data intensifies, especially in disciplines such as ecology, Divino's model and methodological paradigm offer a significant reference point for subsequent studies endeavoring to achieve dependable predictions and inferences.
+Within the realm of academic inquiry, the integration of the Bayesian modeling strategy with the MCMC framework, as articulated by Divino (2013), manifests as a sophisticated and robust approach for analyzing presence-only data. As the relevance of such data intensifies, especially in disciplines such as ecology, Divino’s model and methodological paradigm offer a significant reference point for subsequent studies endeavoring to achieve dependable predictions and inferences.
 
-## Discussion
+== Discussion
 
-### Synthesis of Findings
+=== Synthesis of Findings
 
-### Implications for Future Research
+=== Implications for Future Research
 
-## Conclusion
+== Conclusion
 
-### Summary of Major Findings
+=== Summary of Major Findings
 
-### Recommendations
+=== Recommendations
 
-## References
+== References
 
 Baddeley, A., & Turner, R. (2005). spatstat: An R Package for Analyzing Spatial Point Patterns. Journal of Statistical Software, 12(6). https://doi.org/10.18637/jss.v012.i06
 
 Chefaoui, R. M., & Lobo, J. M. (2008). Assessing the effects of pseudo-absences on predictive distribution model performance. Ecological Modelling, 210(4), 478–486. https://doi.org/10.1016/j.ecolmodel.2007.08.010
 
-Cressie, N. (1993). Statistics for spatial data. In John Wiley & Sons, Inc. eBooks. https://doi.org/10.1002/9781119115151
+Cressie, N. (1993). Statistics for spatial data. In John Wiley & Sons, Inc. eBooks. https://doi.org/10.1002/9781119115151
 
 Divino, F. (2013, May 6). Bayesian modeling and MCMC computation in linear logistic regression for presence-only data. arXiv.org. https://arxiv.org/abs/1305.1232
 
@@ -170,6 +168,6 @@ Renner, I., & Warton, D. I. (2013). Equivalence of MAXENT and Poisson Point proc
 
 Rue, H., Martino, S. & Chopin, N. Approximate Bayesian inference for latent Gaussian models by using integrated nested Laplace approximations. J. R. Stat. Soc. Ser. B. (Stat. Method.) 71, 319–392 (2009).
 
-Warton, D. I., & Shepherd, L. (2010). Poisson point process models solve the “pseudo-absence problem” for presence-only data in ecology. The Annals of Applied Statistics, 4(3). https://doi.org/10.1214/10-aoas331
+Warton, D. I., & Shepherd, L. (2010). Poisson point process models solve the "`pseudo-absence problem`" for presence-only data in ecology. The Annals of Applied Statistics, 4(3). https://doi.org/10.1214/10-aoas331
 
 Zarnetske, P. L., Edwards, T. C., & Moisen, G. G. (2007). HABITAT CLASSIFICATION MODELING WITH INCOMPLETE DATA: PUSHING THE HABITAT ENVELOPE. Ecological Applications, 17(6), 1714–1726. https://doi.org/10.1890/06-1312.1

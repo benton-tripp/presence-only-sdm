@@ -215,6 +215,36 @@ models developed from two-step methods in terms of predictive power and variable
 
 [Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data](https://arxiv.org/abs/1809.01322)
 
+> We illuminate the fundamental modeling differences between the two
+types of data. Most simply, locations are considered as fixed under presence/absence data;
+locations are random under presence-only data. The definition of “probability of presence”
+is incompatible between the two. So, we are not comfortable with modeling strategies in
+the literature which ignore this incompatibility, which assume that presence/absence modeling can be induced from presence-only specifications and therefore, that fusion of presence-only and presence/absence data sources is routine. While, in some cases, data collection may not support this, we propose that, since, in nature, presence/absence is seen at point locations, presence/absence data should be modeled at point level. If so, then we need to specify two surfaces. The first provides the probability of presence at any location in the region. The second provides a realization from this surface in the form of a binary map yielding the results of Bernoulli trials across all locations; this surface is only partially observed. On the other hand, presence-only data should be modeled as a (partially observed) point pattern, arising from a random number of individuals seen at random locations, driven by specification of an intensity function. There is no notion of Bernoulli trials; events are associated with areas. We further suggest that, with just presence/absence data, preferential sampling of locations may arise. Accounting for this, using a shared process perspective, can improve our estimated presence/absence surface as well as prediction of presence. We further propose that preferential sampling can enable a probabilistically coherent fusion of the two data types.
+
+> The importance of our work is to encourage more careful modeling when studying species distributions. Ignoring incompatibility between data types and adopting nongenerative modeling specifications results in invalid inference; the quantitative ecological community should benefit from this recognition.
+
+> Learning about species distributions is an important activity in the ecology community. The literature discusses two types of data collection to learn about species distributions: presence/absence and presence-only. The former works with some version of designed sampling where say plots (grid cells, quadrats, etc.) are sampled and presence/absence or abundance of a species is observed for the sampled plots. That is, locations are fixed. Presence-only data arises through randomly encountering a species within a region and is typically collected in the form of museum or citizen science data. That is, locations are random... The contribution of this paper is to address some fundamental and occasionally contentious
+threads in the literature with regard to the foregoing data collection. For instance, it is asserted that a common modeling framework can be used for both data types, that presence/absence data modeling can be induced under a presence-only framework, and, moreover, that presence-only data can be used to infer about presence/absence (Dorazio, 2014; Royle et al., 2012; Hastie and Fithian, 2013). A further implication is that fusion of general presence/absence and presence-only data sources can be implemented within what is essentially the presence-only framework (Pacifici et al., 2017).
+
+> Coherence finds us wanting to think of presence/absence in a dimensionless fashion.
+
+> There is no notion of an intensity associated with presence/absence observations. Intensities arise from thinking about presence through point patterns, a perspective that is associated with presence-only data, as we develop below. Intensity surfaces can be normalized to density surfaces. Such density surfaces reflect the relative chance of observing a species at a given location compared with other locations in the region. They have nothing to do with providing a probability of presence surface.
+
+> Is it a Bernoulli trial at say location $s$ or is it the probability that the number of individuals of a species in a set, say $A >= 1$?
+
+NHPPs and LGCPs:
+
+- A nonhomogeneous Poisson process (NHPP)
+- More generally a log Gaussian Cox process (LGCP) with intensity $\lambda(s)$ 
+- See Illian et al. (2008) for a full discussion of NHPPs and LGCPs
+
+> The definition of probability of presence as “one or more” observations of the species in A yields local distortion to any such surface; $N(A) = 1$ or $N(A) = 11$ are treated the same with regard to probability of presence in $A$ (Aarts et al., 2012).
+
+> In reconciling the differences above it may be useful to think more carefully about what the distribution of a species looks like within a specified region, $D$. Suppose we consider the complete census of individuals in the region. To be realistic, we have to view the number of presences in a bounded region as finite and therefore a presence must be bigger than a (dimensionless) point since there are an uncountable number of points in D. The scaling issue arises once more. Formally, a presence can not arise at a point, it is not dimensionless in size; practically, it can be observed as point-referenced. So, at point-level, the presence/absence surface over the region consists of a finite set of “patches” where the species is present and, outside of these patches, the species is
+absent. From an ecological and practical perspective, we could think of a patch as a collection of individuals of a particular species (it might be just one) that is dense enough so that, at point level, we would declare presence for every location in the patch. However, if the gaps between the individuals become sufficiently large, then those locations in the gaps must now become absences. The scaling here is qualitative, not quantitative - an ecologist would not attempt to be precise here and the denseness needed to define a patch depends upon the sizes of the patch relative to the size of $D$. In the sequel, we also avoid defining patch sizes.
+
+> Some implications are as follows. First, the number of presence points in $D$ is uncountable, as is the number of absence points. Second, presence/absence is a neighborhood phenomenon. If there is a presence at s then there is presence everywhere in a sufficiently small neighborhood, $\deltas$, of $s$. Similarly, if there is an absence at $s$, then there must be a neighborhood of s where every location is an absence. As a result, the realized presence absence surface is locally constant, i.e., it takes the value 1 in a patch and 0 if not in a patch. A suitable probability model for presence/absence should provide realizations which are locally constant. 
+
 #### Article 8
 
 [Novel Three-Step Pseudo-Absence Selection Technique for Improved Species Distribution Modelling](https://doi.org/10.1371/journal.pone.0071218)
@@ -243,6 +273,55 @@ models developed from two-step methods in terms of predictive power and variable
 [Predicting species distribution: Offering more than simple habitat models](https://www.researchgate.net/publication/224935224_Predicting_species_distribution_Offering_more_than_simple_habitat_models)
 
 #### Bayesian Modeling
+
+## Bayesian Approaches in Species Distribution Modeling
+
+### Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA‑SPDE)
+
+The Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA-SPDE) framework presents a Bayesian approach for handling the challenges of species distribution modeling (SDM). Bayesian models such as INLA-SPDE are adept at addressing complex datasets laden with spatial and temporal autocorrelations, thus providing an alternative to frequentist approaches, which yield fixed parameter estimates (Lezama-Ochoa et al., 2020; Martínez-Minaya et al., 2018; Blangiardo & Cameletti, 2015).
+
+The INLA-SPDE method excels in capturing both well-known and more marginal areas where species are found, thereby expanding the predictive capacity of SDMs (Lezama-Ochoa et al., 2020). This framework incorporates multilevel structures with spatial random effects, which are stochastic processes indexed in space. This strategy adequately represents the various spatially explicit processes influencing species patterns (Lezama-Ochoa et al., 2020; Pennino et al., 2017; Redding et al., 2017).
+
+One distinct advantage of the INLA-SPDE approach is its utilization of Delaunay triangulation over regular grids commonly used in SDMs. This triangulation congregates additional information in regions with higher density of observations, leading to more accurate predictions (Lezama-Ochoa et al., 2020).
+
+Despite its capabilities, INLA-SPDE faces specific limitations such as difficulties in processing categorical variables and challenges in effective triangulation for analyzing spatial data (Lezama-Ochoa et al., 2020). Furthermore, although it offers a faster computational alternative to Markov Chain Monte Carlo (MCMC) methods, it should not replace MCMC entirely but rather serve as a complementary or alternative approach (Rue et al.; Lezama-Ochoa et al., 2020).
+
+The Bayesian foundation of INLA-SPDE also allows for the explicit quantification of uncertainties, providing credible intervals and standard deviations in addition to point estimates (Lezama-Ochoa et al., 2020). This explicit quantification is particularly vital for management decisions, as it provides a fuller understanding of the model's predictions.
+
+For a holistic understanding of species distribution, it is essential to contrast INLA-SPDE with other SDMs like Random Forests, MaxEnt, and Boosted Regression Trees. Each model carries its unique set of strengths and limitations, warranting careful consideration for effective species management (Lezama-Ochoa et al., 2020).
+
+### Markov Chain Monte Carlo (MCMC)
+
+Divino (2013) dives deep into the intricate nuances of modeling presence-only data, presenting a hierarchically structured Bayesian model tailored for estimating parameters of a linear logistic regression suited to presence-only data. The core objective of this model is to bridge the observed stratum variable $Z$ with covariates  $X$ , even in scenarios where there's a conspicuous absence of a binary response $Y$. The presence of this absence, as Divino highlights, induces dual layers of uncertainty: one emanating from the censoring mechanism and the other from the sampling procedure itself.
+
+Several key equations underscored by Divino (2013) illuminate the mechanics of the model. At the forefront is the presence-only data approximation:
+
+$$ \phi_{\text{pod}}(x) \approx x\beta + \log \left( \frac{n_1 u + np}{n_1 u} \right) $$
+
+This equation serves as a nuanced modification to the conventional linear regression model, sculpting it to align more harmoniously with presence-only datasets. It elegantly blends the regular linear prediction, $x\beta$, with a logarithmic term that serves as a correction factor. Delving further, there are the approximations for the conditional probability of occurrence and the marginal probability $P(Z|C=1, x)$ upon marginalizing over $Y$. These equations are instrumental in capturing the subtleties of presence-only data and its inherent complexities.
+
+At the heart of the Bayesian framework is the Markov Chain Monte Carlo (MCMC) algorithm. Here, Divino (2013) shines a spotlight on the integral role of data augmentation within the MCMC computation. This step, characterized by augmenting the observed dataset to a more amenable distribution, is pivotal. It ensures that at each iteration, a consistent value for $n_1u$ can be derived, essential for fine-tuning the regression function for presence-only data.
+
+Moreover, the MCMC algorithm is laid out in a sequential scheme:
+
+1. Initialization of hyperparameters and latent variables.
+2. Calculation of the sum of latent variables to adjust the regression function.
+3. Sampling of hyperparameters based on the observed data.
+4. Estimation of linear parameters conditional on the hyperparameters.
+5. A sampling step for unobserved data in the presence-only framework.
+
+The process, iterative in nature, is reiterated to refine estimates, thereby leveraging the strengths of Bayesian methods.
+
+Divino (2013) summarizes the hierarchical layout for the Bayesian model as follows:
+
+1. At the summit, the hyperparameter $\theta$, governing the distribution of $\beta$, offering flexibility.
+2. Descending a level, the linear parameters $\beta$, which illuminate the relationship between the covariates $X$ and the response $Y$.
+3. Further down the unobserved data $y_u$ are modeled as latent parameters in a Bernoulli distribution.
+4. At the base, the likelihood tethered to the observable variable $Z$.
+
+Through this layered approach, Divino (2013) encapsulates the multiple sources of uncertainty, providing a cohesive structure for handling presence-only data.
+
+Within the realm of academic inquiry, the integration of the Bayesian modeling strategy with the MCMC framework, as articulated by Divino (2013), manifests as a sophisticated and robust approach for analyzing presence-only data. As the relevance of such data intensifies, especially in disciplines such as ecology, Divino's model and methodological paradigm offer a significant reference point for subsequent studies endeavoring to achieve dependable predictions and inferences.v
 
 #### Article 14
 
