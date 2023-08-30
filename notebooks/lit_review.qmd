@@ -11,6 +11,8 @@ format:
 
 ## Abstract
 
+*TODO: Add references*
+
 The continuous development and diversification of species distribution models (SDMs) necessitates a comprehensive examination of both conventional and emerging techniques. This literature review focuses on the application of presence-only prediction techniques, including Poisson point processes and MaxEnt, in the context of bird species distribution modeling. The review seeks to critically analyze the performance of traditional machine learning models such as xgboost, logistic regression, and random forests against the more specialized presence-only prediction techniques. Moreover, the exploration of Bayesian methods, data processing mechanisms, and innovative sampling methodologies aims to shed light on strategies to enhance model performance and reduce bias. The overarching goal of this review is to provide a systematic foundation for further research into the integration and optimization of various modeling strategies for presence-only predictions.
 
 ## Introduction
@@ -19,23 +21,43 @@ The continuous development and diversification of species distribution models (S
 
 Species distribution modeling (SDM) has become increasingly crucial in the realm of ecological research. Driven by advancements in technology, remote sensing, and computational capabilities, there has been a proliferation of methods to predict species distributions (Renner & Warton, 2013; Marmion et al., 2008; O'Sullivan and Unwin, 2010). These models often center around unique datasets, such as presence-only data, which poses unique challenges for statistical modeling due to inherent uncertainty from data censoring and specific sampling procedures.
 
-In this context, presence-only data is often defined as datasets "consisting only of observations of the organism but with no reliable data where the species was not found" (Pearce and Boyce, 2006). Such data forms the backbone of various sources, including atlases, museum and herbarium records, and incidental observation databases (Divino, 2013).
+In the context of presence-only data, earlier modeling techniques primarily focused on measuring environmental similarities. Contemporary methods, however, emphasize modeling species' suitability in relation to the surrounding environment. This is accomplished by leveraging what is known as "background" or "pseudo-absence" data—specific locations within the study area where a species' presence is unconfirmed but which represent a spectrum of environmental conditions (Busby 1991, Carpenter et al. 1993; Phillips et al., 2009b).
 
-Two primary modeling approaches for this type of data have gained traction. The first leverages Poisson point processes in both likelihood and Bayesian frameworks, while the second adopts a modified case-control logistic model (Warton & Shepherd, 2010; Chakraborty et al., 2011; Ward et al., 2009). Another technique, MaxEnt, based on the maximum entropy principle, requires knowledge of species' prevalence for its estimator of occurrence to be consistent (Dorazio, 2012).
+In modeling presence-only data, certain strategies have remained prominent and evolved through continued research. Poisson point processes, within likelihood and Bayesian contexts, model solely using presence points and environmental covariates, eliminating the need for absence or pseudo-absence points. Conversely, logistic regression and Maximum Entropy utilize both observations and pseudo-absence points as binary indicators, incorporating environmental and temporal variables as predictors (Warton & Shepherd, 2010; Chakraborty et al., 2011; Ward et al., 2009; Dorazio, 2012).
 
-Recently, traditional machine learning models such as Random Forests, Support Vector Machines, and Gradient Boosting Machines have also been adopted for presence-only data modeling. These algorithms often function by identifying complex, non-linear relationships within the data, which can be particularly valuable for predicting species occurrences. They provide an avenue for species distribution modeling that is often interpretable, efficient, and robust to overfitting. By exploiting the power of ensemble methods or kernel-based strategies, these models can accommodate the intricate patterns and interactions seen in ecological datasets.
+*TODO: add references*
 
-Bayesian models, especially in the context of presence-only data, have been highlighted due to their capability to encapsulate the complexities and uncertainties inherent in such datasets. Central to Bayesian modeling are techniques like Markov Chain Monte Carlo (MCMC) and the Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA-SPDE). While MCMC offers a framework adept for data augmentation, simplifying the data distribution, INLA-SPDE presents a Bayesian approach that handles spatial and temporal autocorrelations. This method expands the predictive capacity of species distribution models, with the added advantage of utilizing Delaunay triangulation for more accurate predictions. The Bayesian foundation common to both allows for explicit quantification of uncertainties, crucial for management decisions (Divino, 2013; Lezama-Ochoa et al., 2020).
+Recently, traditional machine learning models such as Random Forests, Support Vector Machines, and Gradient Boosting Machines have also been adopted for presence-only data modeling, using "pseudo-absence" points to determine species' distributions. These algorithms detect complex, non-linear relationships in the data, enhancing predictions of species occurrences. Through ensemble methods or kernel-based strategies, they effectively capture the nuanced patterns and interactions inherent in ecological datasets.
+
+While traditional machine learning models have gained traction in recent years, Bayesian approaches offer another layer of sophistication. Bayesian models are recognized for their ability to address the complexities and uncertainties characteristic of presence-only data. Key techniques in Bayesian modeling include Markov Chain Monte Carlo (MCMC) and the Integrated Nested Laplace Approximation with Stochastic Partial Differential Equation (INLA-SPDE). Though MCMC is a proven method, INLA-SPDE offers a more efficient computational framework. Both strategies deliver models that enable precise quantification of uncertainties (Divino, 2013; Lezama-Ochoa et al., 2020).
 
 ### Objective of the Literature Review
 
 The objective of this review is to critically evaluate and synthesize the developments in presence-only prediction techniques. The exploration aims to shed light on the performance of traditional machine learning models against more specialized techniques, diving deep into the nuances of Bayesian methods, presence-only data processing mechanisms, and innovative sampling methodologies.
 
-## Sampling Techniques, Bias, and the Treatment of Pseudo-Absence Data
+## Pseudo-Absence Data in Presence-Only Models
 
-### Strategies to Address Bias
+### Pseudo-absence Selection Strategies
 
-### Pseudo-Absence Data in Presence-Only Models
+The selection of pseudo-absence data directly impacts the accuracy and reliability of presence-only models. Before discussing primary methods and models in subsequent sections, understanding the intricacies of pseudo-absence selection is essential.
+
+Wisz and Guisan (2009) assessed the impacts of different pseudo-absence selection strategies on species distribution models and their predictions. Specifically, they examined the use of (a) real absences, (b) pseudo-absences randomly chosen from the background, and (c) a two-step approach using pseudo-absences from low suitability regions predicted by Ecological Niche Factor Analysis (ENFA) or BIOCLIM. The study highlighted that while logistic regression modelling (LRM) has been a popular choice for predicting potential species distributions, its dependency on absence data has limited its applicability, especially when studying species with insufficient absence data. Wisz and Guisan (2009) further distinguished between two key techniques for relating field observations to environmental predictor variables. The "profile techniques" use data documenting only the species presence and include methods like BIOCLIM, DOMAIN, and ENFA. On the other hand, "group discrimination techniques" require both presence and absence data, with logistic regression modelling (LRM), a subset of generalized linear models (GLM), being a prevalent approach. However, due to the inherent challenges associated with the absence of data in many species distribution studies, pseudo-absences are often used. One identified concern with random pseudo-absences is their potential overlap with actual species presence locations, leading to potential model inaccuracies.
+
+In a notable two-step modeling example, Engler et al. used the profile technique "ENFA" to map habitat suitability and then selected pseudo-absences from low suitability areas. These pseudo-absences were then integrated into a subsequent logistic regression model to forecast the species' potential distribution. However, Wisz and Guisan (2009) found that two-step modeling approaches often received weak support from data. Using a virtual species approach, which defines a species' distribution *a priori*, the study demonstrated that models based on randomly selected pseudo-absences, despite having lower fit to training data, showed superior predictive power and variable selection over the two-step methods. It was suggested that two-step pseudo-absences tend to result in overfit models, which while they might better fit the training data, lose generality and thus have reduced predictive power on independent samples.
+
+Furthermore, the study accentuated the importance of parsimony in model selection. Contrary to methods like BIOCLIM and ENFA, which lack a mechanism for predictor selection and can't incorporate quadratic relationships to predictors, parsimonious models (with fewer predictor variables) are believed to offer better predictive power. As an example, models like MAXENT, which calibrate complexity based on sample size, often outperform models that employ intricate response shapes irrespective of sample size. Ultimately, the rigorous model selection process, aiming to select the most pertinent predictors and accurate parameter estimates, remains paramount in the modeling procedure (Wisz & Guisan, 2009).
+
+## Presence/Absence vs. Presence-Only Data
+
+Building on the complexities of pseudo-absence selection, it's crucial to dissect the differences between presence/absence and presence-only data as these distinctions have important implications. Gelfand (2018) explores these nuances, emphasizing the contrasting characteristics between the two data types. Notably, the locations are fixed under presence/absence data, whereas they are random for presence-only data. This distinction creates an incompatibility in defining the "probability of presence" between the two types. Contrary to the assertions in previous literature which suggests that presence/absence modeling can be derived from presence-only specifications (Dorazio, 2014; Royle et al., 2012; Hastie and Fithian, 2013), and that fusion of the two data types can be easily executed (Pacifici et al., 2017), Gelfand argues otherwise. He recommends modeling presence/absence data at the point level, requiring the specification of two surfaces. One surface gives the probability of presence at any location, while the second, a realization from the first, provides a binary map yielding the results of Bernoulli trials at all locations, which is only partially observed. In contrast, presence-only data should be modeled using a (partially observed) point pattern, emerging from a random count of individuals seen at random locations, steered by an intensity function specification, with no association to Bernoulli trials but rather with areas.
+
+Furthermore, Gelfand (2018) underscores the need for coherent modeling in species distribution studies. The presence-only perspective provides for intensities through point patterns, leading to intensity surfaces that can be converted to density surfaces. These surfaces express the relative likelihood of observing a species at one location versus another but do not equate to a probability of presence surface. He delves into the technicalities of presence probability, noting that equating probability of presence to “one or more” sightings of a species can lead to local distortion (Aarts et al., 2012). The probability of presence does not discern between a single or multiple observations within a given set.
+
+Building on this, Gelfland discusses the complexities of species distribution within a specified region, noting the finite presence in any bounded area. Consequently, presence cannot be simply dimensionalized at a point but can be point-referenced in observations. At point-level, the presence/absence surface over a region manifests as distinct "patches" where a species is found. These patches, from an ecological perspective, can be visualized as dense collections of individuals of a specific species, with absences being distinguished by sufficiently large gaps. Importantly, presence/absence is seen as a local phenomenon, suggesting that if presence is noted at a location $s$, then it is also present throughout a sufficiently small neighborhood, $\delta s$, of $s$. Consequently, the actual presence/absence surface remains locally constant, taking value 1 in a patch and 0 otherwise.
+
+Gelfand (2018) calls for a more meticulous approach to modeling when studying species distributions. Recognizing and accounting for the inherent incompatibilities between data types is pivotal to ensure accurate inference.
+
+## Strategies to Address Bias
 
 ## MaxEnt and Poisson Point Processes in Species Distribution Modeling
 
@@ -136,6 +158,8 @@ Within the realm of academic inquiry, the integration of the Bayesian modeling s
 
 ## References
 
+Aarts, G., J. Fieberg, and J. Matthiopoulos (2012). Comparative interpretation of count, presence/absence and point methods for species distribution models. Methods in Ecology and Evolution 3, 177–187.
+
 Baddeley, A., & Turner, R. (2005). spatstat: An R Package for Analyzing Spatial Point Patterns. Journal of Statistical Software, 12(6). https://doi.org/10.18637/jss.v012.i06
 
 Chefaoui, R. M., & Lobo, J. M. (2008). Assessing the effects of pseudo-absences on predictive distribution model performance. Ecological Modelling, 210(4), 478–486. https://doi.org/10.1016/j.ecolmodel.2007.08.010
@@ -144,11 +168,19 @@ Cressie, N. (1993). Statistics for spatial data. In John Wiley & Sons, Inc. eBoo
 
 Divino, F. (2013, May 6). Bayesian modeling and MCMC computation in linear logistic regression for presence-only data. arXiv.org. https://arxiv.org/abs/1305.1232
 
+Dorazio, R. M. (2014). Accounting for imperfect detection and survey bias in statistical analysis of presence-only data. Global Ecology and Biogeography 23, 1472–1484.
+
 Elith, J., & Leathwick, J. R. (2009). Species Distribution Models: Ecological explanation and prediction across space and time. Annual Review of Ecology, Evolution, and Systematics, 40(1), 677–697. https://doi.org/10.1146/annurev.ecolsys.110308.120159
 
 Elith, J., Phillips, S. J., Hastie, T., Dudík, M., Chee, Y. E., & Yates, C. J. (2010). A statistical explanation of MaxEnt for ecologists. Diversity and Distributions, 17(1), 43–57. https://doi.org/10.1111/j.1472-4642.2010.00725.x
 
+Engler, R., Guisan, A., & Rechsteiner, L. (2004). An improved approach for predicting the distribution of rare and endangered species from occurrence and pseudo-absence data. Journal of Applied Ecology, 41(2), 263–274. https://doi.org/10.1111/j.0021-8901.2004.00881.x
+
+Gelfand, A. E. (2018, September 5). Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data. arXiv.org. https://arxiv.org/abs/1809.01322
+
 Guisan, A., Tingley, R., Baumgartner, J. B., Naujokaitis-Lewis, I., Sutcliffe, P., Tulloch, A. I. T., Regan, T. J., Brotons, L., McDonald-Madden, E., Mantyka-Pringle, C., Martin, T. G., Rhodes, J. R., Maggini, R., Setterfield, S. A., Elith, J., Schwartz, M. W., Wintle, B. A., Broennimann, O., Austin, M. P., . . . Buckley, Y. M. (2013). Predicting species distributions for conservation decisions. Ecology Letters, 16(12), 1424–1435. https://doi.org/10.1111/ele.12189
+
+Hastie, T. and W. Fithian (2013). Inference from presence-only data; the ongoing controversy. Ecography 36, 864–867.
 
 Lezama-Ochoa, N., Pennino, M. G., Hall, M., Lopez, J., & Murua, H. (2020). Using a Bayesian modelling approach (INLA-SPDE) to predict the occurrence of the Spinetail Devil Ray (Mobular mobular). Scientific Reports, 10(1). https://doi.org/10.1038/s41598-020-73879-3
 
@@ -157,6 +189,8 @@ Marmion, M., Hjort, J., Thuiller, W., & Luoto, M. (2008). A comparison of predic
 Martínez-Minaya, J., Cameletti, M., Conesa, D. & Pennino, M. G. Species distribution modeling: a statistical review with focus in spatio-temporal issues. in Stochastic Environmental Research and Risk Assessment 1–18 (2018).
 
 O’Sullivan, D., & Unwin, D. (2010). Geographic Information Analysis. https://doi.org/10.1002/9780470549094
+
+Pacifici, K., B. J. Reich, D. A.W. Miller, B. Gardner, G. Stauffer, S. Singh, A. McKerrow, and J. A. Collazo (2017). Integrating multiple data sources in species distribution modeling: a framework for data fusion. Ecology, 840–850.
 
 Pearce, J., & Boyce, M. S. (2006). Modelling distribution and abundance with presence-only data. Journal of Applied Ecology, 43(3), 405–412. https://doi.org/10.1111/j.1365-2664.2005.01112.x
 
@@ -168,7 +202,11 @@ Redding, D. W., Lucas, T. C., Blackburn, T. M. & Jones, K. E. Evaluating Bayesia
 
 Renner, I., & Warton, D. I. (2013). Equivalence of MAXENT and Poisson Point process models for species distribution modeling in Ecology. Biometrics, 69(1), 274–281. https://doi.org/10.1111/j.1541-0420.2012.01824.x
 
+Royle, J. A., R. B. Chandler, C. Yackulic, and J. D. Nichols (2012). Likelihood analysis of species occurrence probability from presence-only data for modelling species distributions. Methods in Ecology and Evolution 3, 545–554.
+
 Rue, H., Martino, S. & Chopin, N. Approximate Bayesian inference for latent Gaussian models by using integrated nested Laplace approximations. J. R. Stat. Soc. Ser. B. (Stat. Method.) 71, 319–392 (2009).
+
+Wisz, M. S., & Guisan, A. (2009). Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data. BMC Ecology, 9(1), 8. https://doi.org/10.1186/1472-6785-9-8
 
 Warton, D. I., & Shepherd, L. (2010). Poisson point process models solve the “pseudo-absence problem” for presence-only data in ecology. The Annals of Applied Statistics, 4(3). https://doi.org/10.1214/10-aoas331
 

@@ -163,16 +163,14 @@ modeling framework.
 
 [Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data](https://bmcecol.biomedcentral.com/articles/10.1186/1472-6785-9-8)
 
+Wisz, M. S., & Guisan, A. (2009). Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data. BMC Ecology, 9(1), 8. https://doi.org/10.1186/1472-6785-9-8
+
 > We evaluated the effect of using a) real absences b) pseudo-absences
 selected randomly from the background and c) two-step approaches: pseudo-absences selected
 from low suitability areas predicted by either Ecological Niche Factor Analysis: (ENFA) or
-BIOCLIM. We compared how the choice of pseudo-absence strategy affected model fit, predictive
-power, and information-theoretic model selection results.
+BIOCLIM. We compared how the choice of pseudo-absence strategy affected model fit, predictive power, and information-theoretic model selection results.
 
-> Conclusion: If ecologists wish to build parsimonious GLM models that will allow them to make
-robust predictions, a reasonable approach is to use a large number of randomly selected pseudo-
-absences, and perform model selection based on an information theoretic approach. However, the
-resulting models can be expected to have limited fit.
+> Conclusion: If ecologists wish to build parsimonious GLM models that will allow them to make robust predictions, a reasonable approach is to use a large number of randomly selected pseudo-absences, and perform model selection based on an information theoretic approach. However, the resulting models can be expected to have limited fit.
 
 > Two groups of techniques are generally used [to relate field observations to environmental predictor variables, based on statistically or theoretically derived response surfaces,
 for prediction and inference]. Techniques that require data documenting the species presence only are called "profile techniques" while those that require both presence and absence data are called "group discrimination techniques". Examples of profile techniques include BIOCLIM, DOMAIN, Species-PCA, and Ecological Niche Factor Analysis (ENFA).
@@ -185,17 +183,13 @@ for prediction and inference]. Techniques that require data documenting the spec
 
 > Engler et al. used a two step modelling approach to predict the distribution of a rare plant in Switzerland. In the first step, they used the profile technique "ENFA" to map potential habitat suitability for the species, and then selected pseudo-absences from the areas predicted to have low suitabilty. They subsequently included the pseudo-absences in a second logistic regression model which was used to predict the final species' potential distribution and prioritize further field work.
 
-> In a virtual species approach, the species' distribution is defined *a priori*, by specifying its ecological niche as a simple mathematical relationship to the set of predictor environmental variables (e.g. in the form of a multiple logistic regression equation) and projects this
-relationship onto a map of the study area to define its "true" distribution. One can then attempt to recover the virtual species' known distribution by building models from samples drawn from the study area and then evaluate the efficacy of different implementations of models by
-comparing their parameter estimates and predictions to the true distribution of the species. Such an approach has never been used to assess the best way to select pseudo-absences.
+> In a virtual species approach, the species' distribution is defined *a priori*, by specifying its ecological niche as a simple mathematical relationship to the set of predictor environmental variables (e.g. in the form of a multiple logistic regression equation) and projects this relationship onto a map of the study area to define its "true" distribution. One can then attempt to recover the virtual species' known distribution by building models from samples drawn from the study area and then evaluate the efficacy of different implementations of models by comparing their parameter estimates and predictions to the true distribution of the species. Such an approach has never been used to assess the best way to select pseudo-absences.
 
 > Whenever a two-step modelling approach was used, the true model was only weakly supported by the data.
 
-> Evaluating so many aspects of model's behaviour and performance is facilitated through use of a virtual species, because a real species' "true" relationship to environmental variables is
-never known. In the real world, sufficient amounts of reliable, completely independent, presence and absence data are rarely available to evaluate the predictive power of complex models in a controlled manner. 
+> Evaluating so many aspects of model's behaviour and performance is facilitated through use of a virtual species, because a real species' "true" relationship to environmental variables is never known. In the real world, sufficient amounts of reliable, completely independent, presence and absence data are rarely available to evaluate the predictive power of complex models in a controlled manner. 
 
-> A large body of statistical literature suggests that parsimonious models, including a small number of predictor variables, should have greater predictive power to independent samples than models including more predictors. Neither ENFA nor BIOCLIM are based on this principle (i.e. they do not incorporate way to select predictors), and both showed somewhat lower predictive power in terms of AUC than group discrimination models based on pseudo-absences... BIOCLIM and
-ENFA cannot incorporate quadratic relationships to predictors, so this may be another reason the GLM methods performed better.
+> A large body of statistical literature suggests that parsimonious models, including a small number of predictor variables, should have greater predictive power to independent samples than models including more predictors. Neither ENFA nor BIOCLIM are based on this principle (i.e. they do not incorporate way to select predictors), and both showed somewhat lower predictive power in terms of AUC than group discrimination models based on pseudo-absences... BIOCLIM and ENFA cannot incorporate quadratic relationships to predictors, so this may be another reason the GLM methods performed better.
 
 > ...With small datasets, models for which complexity is calibrated for sample size, such as
 MAXENT have better predictive power than models that use complex response shapes regardless of sample size (Wisz et al. 2008).
@@ -207,13 +201,33 @@ models developed from two-step methods in terms of predictive power and variable
 
 > Model selection, the process of selecting predictors and parameter estimates in a model, is considered one of the most crucial steps in a model building procedure.
 
+### Review of Wisz et al. (2009): Pseudo-absence Selection Strategies in Species Distribution Models
+
+Wisz and Guisan (2009) assessed the impacts of different pseudo-absence selection strategies on species distribution models and their predictions. Specifically, they examined the use of (a) real absences, (b) pseudo-absences randomly chosen from the background, and (c) a two-step approach using pseudo-absences from low suitability regions predicted by Ecological Niche Factor Analysis (ENFA) or BIOCLIM. The study highlighted that while logistic regression modelling (LRM) has been a popular choice for predicting potential species distributions, its dependency on absence data has limited its applicability, especially when studying species with insufficient absence data. Wisz and Guisan (2009) further distinguished between two key techniques for relating field observations to environmental predictor variables. The "profile techniques" use data documenting only the species presence and include methods like BIOCLIM, DOMAIN, and ENFA. On the other hand, "group discrimination techniques" require both presence and absence data, with logistic regression modelling (LRM), a subset of generalized linear models (GLM), being a prevalent approach. However, due to the inherent challenges associated with the absence of data in many species distribution studies, pseudo-absences are often used. One identified concern with random pseudo-absences is their potential overlap with actual species presence locations, leading to potential model inaccuracies.
+
+In a notable two-step modeling example, Engler et al. used the profile technique "ENFA" to map habitat suitability and then selected pseudo-absences from low suitability areas. These pseudo-absences were then integrated into a subsequent logistic regression model to forecast the species' potential distribution. However, Wisz and Guisan (2009) found that two-step modeling approaches often received weak support from data. Using a virtual species approach, which defines a species' distribution *a priori*, the study demonstrated that models based on randomly selected pseudo-absences, despite having lower fit to training data, showed superior predictive power and variable selection over the two-step methods. It was suggested that two-step pseudo-absences tend to result in overfit models, which while they might better fit the training data, lose generality and thus have reduced predictive power on independent samples.
+
+Furthermore, the study accentuated the importance of parsimony in model selection. Contrary to methods like BIOCLIM and ENFA, which lack a mechanism for predictor selection and can't incorporate quadratic relationships to predictors, parsimonious models (with fewer predictor variables) are believed to offer better predictive power. As an example, models like MAXENT, which calibrate complexity based on sample size, often outperform models that employ intricate response shapes irrespective of sample size. Ultimately, the rigorous model selection process, aiming to select the most pertinent predictors and accurate parameter estimates, remains paramount in the modeling procedure (Wisz & Guisan, 2009).
+
+**Reference**:
+Wisz, M. S., & Guisan, A. (2009). Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data. *BMC Ecology, 9*(1), 8.
+
+
 #### Article 6
 
 [Sample selection bias and presence-only distribution models: implications for background and pseudo-absence data](https://doi.org/10.1890/07-2153.1)
 
+Phillips, S. J., Dudík, M., Elith, J., Graham, C. H., Lehmann, A., Leathwick, J. R., & Ferrier, S. (2009b). Sample selection bias and presence-only distribution models: implications for background and pseudo-absence data. Ecological Applications, 19(1), 181–197. https://doi.org/10.1890/07-2153.1
+
+> Most methods for modeling species distributions from occurrence records require additional data representing the range of environmental conditions in the modeled region. These data, called background or pseudo-absence data, are usually drawn at random from the entire region, whereas occurrence collection is often spatially biased toward easily accessed areas. Since the spatial bias generally results in environmental bias, the difference between occurrence collection and background sampling may lead to inaccurate models.
+
+> Accurate information about spatial bias is usually lacking, so explicit biased sampling of background sites may not be possible. However, it is likely that an entire target group of species observed by similar methods will share similar bias. We therefore explore the use of all occurrences within a target group as biased background data. We compare model performance using target-group background and randomly sampled background on a comprehensive collection of data for 226 species from diverse regions of the world. We find that target-group background improves average performance for all the modeling methods we consider, with the choice of background data having as large an effect on predictive performance as the choice of modeling method. The performance improvement due to target-group background is greatest when there is strong bias in the target-group presence records. Our approach applies to regression-based modeling methods that have been adapted for use with occurrence data, such as generalized linear or additive models and boosted regression trees, and to Maxent, a probability density estimation method. We argue that increased awareness of the implications of spatial bias in surveys, and possible modeling remedies, will substantially improve predictions of species distributions.
+
 #### Article 7
 
 [Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data](https://arxiv.org/abs/1809.01322)
+
+Gelfand, A. E. (2018, September 5). Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data. arXiv.org. https://arxiv.org/abs/1809.01322
 
 > We illuminate the fundamental modeling differences between the two
 types of data. Most simply, locations are considered as fixed under presence/absence data;
@@ -244,6 +258,21 @@ NHPPs and LGCPs:
 absent. From an ecological and practical perspective, we could think of a patch as a collection of individuals of a particular species (it might be just one) that is dense enough so that, at point level, we would declare presence for every location in the patch. However, if the gaps between the individuals become sufficiently large, then those locations in the gaps must now become absences. The scaling here is qualitative, not quantitative - an ecologist would not attempt to be precise here and the denseness needed to define a patch depends upon the sizes of the patch relative to the size of $D$. In the sequel, we also avoid defining patch sizes.
 
 > Some implications are as follows. First, the number of presence points in $D$ is uncountable, as is the number of absence points. Second, presence/absence is a neighborhood phenomenon. If there is a presence at s then there is presence everywhere in a sufficiently small neighborhood, $\deltas$, of $s$. Similarly, if there is an absence at $s$, then there must be a neighborhood of s where every location is an absence. As a result, the realized presence absence surface is locally constant, i.e., it takes the value 1 in a patch and 0 if not in a patch. A suitable probability model for presence/absence should provide realizations which are locally constant. 
+
+
+## Preferential Sampling for Presence/Absence and Presence-Only Data: A Literature Review
+
+Gelfand (2018) delves into the intricacies of modeling presence/absence and presence-only data, highlighting the fundamental differences between the two data types. Notably, the locations are fixed under presence/absence data, whereas they are random for presence-only data. This distinction creates an incompatibility in defining the "probability of presence" between the two types. Contrary to the assertions in previous literature which suggests that presence/absence modeling can be derived from presence-only specifications (Dorazio, 2014; Royle et al., 2012; Hastie and Fithian, 2013), and that fusion of the two data types can be easily executed (Pacifici et al., 2017), Gelfand argues otherwise. He recommends modeling presence/absence data at the point level, requiring the specification of two surfaces. One surface gives the probability of presence at any location, while the second, a realization from the first, provides a binary map yielding the results of Bernoulli trials at all locations, which is only partially observed. In contrast, presence-only data should be modeled using a (partially observed) point pattern, emerging from a random count of individuals seen at random locations, steered by an intensity function specification, with no association to Bernoulli trials but rather with areas.
+
+Furthermore, Gelfand (2018) underscores the need for coherent modeling in species distribution studies. The presence-only perspective provides for intensities through point patterns, leading to intensity surfaces that can be converted to density surfaces. These surfaces express the relative likelihood of observing a species at one location versus another but do not equate to a probability of presence surface. He delves into the technicalities of presence probability, noting that equating probability of presence to “one or more” sightings of a species can lead to local distortion (Aarts et al., 2012). The probability of presence does not discern between a single or multiple observations within a given set.
+
+Building on this, Gelfland discusses the complexities of species distribution within a specified region, noting the finite presence in any bounded area. Consequently, presence cannot be simply dimensionalized at a point but can be point-referenced in observations. At point-level, the presence/absence surface over a region manifests as distinct "patches" where a species is found. These patches, from an ecological perspective, can be visualized as dense collections of individuals of a specific species, with absences being distinguished by sufficiently large gaps. Importantly, presence/absence is seen as a local phenomenon, suggesting that if presence is noted at a location $s$, then it is also present throughout a sufficiently small neighborhood, $\delta s$, of $s$. Consequently, the actual presence/absence surface remains locally constant, taking value 1 in a patch and 0 otherwise.
+
+In conclusion, Gelfand (2018) calls for a more meticulous approach to modeling when studying species distributions. Recognizing and accounting for the inherent incompatibilities between data types is pivotal to ensure accurate inference. This article serves as a critical reminder of the importance of nuanced and accurate modeling, especially in the realm of ecological studies.
+
+*Reference*:  
+Gelfand, A. E. (2018, September 5). Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data. *arXiv.org*. https://arxiv.org/abs/1809.01322
+
 
 #### Article 8
 
