@@ -47,6 +47,14 @@ In a notable two-step modeling example, Engler et al. used the profile technique
 
 Furthermore, the study accentuated the importance of parsimony in model selection. Contrary to methods like BIOCLIM and ENFA, which lack a mechanism for predictor selection and can't incorporate quadratic relationships to predictors, parsimonious models (with fewer predictor variables) are believed to offer better predictive power. As an example, models like MAXENT, which calibrate complexity based on sample size, often outperform models that employ intricate response shapes irrespective of sample size. Ultimately, the rigorous model selection process, aiming to select the most pertinent predictors and accurate parameter estimates, remains paramount in the modeling procedure (Wisz & Guisan, 2009).
 
+Senay et al. (2013) delved deeper into the realm of pseudo-absence selection, specifically for spatial distribution models (SDMs). As the field continues to expand, a multitude of techniques have emerged, each with varied results concerning their efficacy. Noting the paramount importance of both presence and absence data in generating reliable SDM predictions, Senay et al. emphasized the demand for a method that seamlessly integrates both geographical and environmental aspects. This would ideally lead to pseudo-absence points representative in both realms.
+
+In response to this demand, Senay et al. (2013) introduced a distinctive three-tiered methodology. The inaugural step focuses on defining a geographically appropriate boundary around species presence points. This is achieved by analyzing environmental variables across varied distances, ensuring that the boundary isn't determined by an arbitrary radius alone. The next phase pinpoints areas that are environmentally distinct from known presence points, yet remain within the earlier specified distance boundary. In the concluding step, K-means clustering is utilized to filter potential pseudo-absences. The centroids of clusters, which are environmentally distinct as ascertained in the second step, are prioritized.
+
+The significance of SDMs cannot be understated. These models have found critical applications in forecasting species distributions for conservation efforts, biocontrol introductions, and especially in assessing the potential spread of invasive species. Their rise in popularity can largely be attributed to the convergence of enhanced data availability and the strides in computational capability. At their core, SDMs predict species' distributions based on their observed environmental niche from known presence locations. While mechanistic or process-driven models offer a valuable alternative, they demand a profound grasp of a species' environmental and physiological needs, which isn't always viable. A prevalent concern regarding SDMs is their accuracy, especially when absence data is sparse or unreliable. Senay et al. addressed this concern by spotlighting the challenges in discerning genuine absences, which could be masked by factors like undetected species presence, natural obstructions, or even short-term migration patterns (Jime´nez-Valverde et al, 2008; Phillips et al., 2006; Lobo et al., 2010; Peterson, 2006; Kearney & Porter, 2009; Wisz & Guisan, 2009; Soberon & Peterson, 2005).
+
+To bridge the gap presented by the scarcity of absence data, Senay et al. categorized the primary modeling approaches into three distinct groups: basic presence-only models, enhanced presence-only models, and the comprehensive presence-absence models. The basic models utilize only presence data to sketch species distributions, while their enhanced counterparts integrate these data with pivotal background environmental variables, as seen in models such as MaxEnt, ENFA, and PBL. The presence-absence models incorporate both data types to predict habitat suitability or overall species distribution. In scenarios where genuine absence data is lacking, these models often rely on the generation of pseudo-absence points. The range of these models spans from traditional regression-based ones, like GLM and GAM, to cutting-edge machine learning algorithms such as ANN, SVM, and naïve Bayes. Concluding their discussion, the authors detailed the three primary pseudo-absence selection techniques: random selection, geographically constrained selection, and those anchored in environmental considerations, with the latter gaining traction due to its proven enhanced precision (Hirzel et al., 2002; Li et al., 2011; Elith et al., 2006; Lorena et al., 2011; Chefauoui & Lobo, 2008; Warton & Shepherd, 2010; Hengl, 2009).
+
 ## Presence/Absence vs. Presence-Only Data
 
 Building on the complexities of pseudo-absence selection, it's crucial to dissect the differences between presence/absence and presence-only data as these distinctions have important implications. Gelfand (2018) explores these nuances, emphasizing the contrasting characteristics between the two data types. Notably, the locations are fixed under presence/absence data, whereas they are random for presence-only data. This distinction creates an incompatibility in defining the "probability of presence" between the two types. Contrary to the assertions in previous literature which suggests that presence/absence modeling can be derived from presence-only specifications (Dorazio, 2014; Royle et al., 2012; Hastie and Fithian, 2013), and that fusion of the two data types can be easily executed (Pacifici et al., 2017), Gelfand argues otherwise. He recommends modeling presence/absence data at the point level, requiring the specification of two surfaces. One surface gives the probability of presence at any location, while the second, a realization from the first, provides a binary map yielding the results of Bernoulli trials at all locations, which is only partially observed. In contrast, presence-only data should be modeled using a (partially observed) point pattern, emerging from a random count of individuals seen at random locations, steered by an intensity function specification, with no association to Bernoulli trials but rather with areas.
@@ -158,6 +166,8 @@ Within the realm of academic inquiry, the integration of the Bayesian modeling s
 
 ## References
 
+
+
 Aarts, G., J. Fieberg, and J. Matthiopoulos (2012). Comparative interpretation of count, presence/absence and point methods for species distribution models. Methods in Ecology and Evolution 3, 177–187.
 
 Baddeley, A., & Turner, R. (2005). spatstat: An R Package for Analyzing Spatial Point Patterns. Journal of Statistical Software, 12(6). https://doi.org/10.18637/jss.v012.i06
@@ -169,6 +179,8 @@ Cressie, N. (1993). Statistics for spatial data. In John Wiley & Sons, Inc. eBoo
 Divino, F. (2013, May 6). Bayesian modeling and MCMC computation in linear logistic regression for presence-only data. arXiv.org. https://arxiv.org/abs/1305.1232
 
 Dorazio, R. M. (2014). Accounting for imperfect detection and survey bias in statistical analysis of presence-only data. Global Ecology and Biogeography 23, 1472–1484.
+
+Elith J., Graham C. H., Anderson R. P., Dudik M., Ferrier S., et al. (2006) Novel methods improve prediction of species; distributions from occurance data. Ecography 29: 129–151.
 
 Elith, J., & Leathwick, J. R. (2009). Species Distribution Models: Ecological explanation and prediction across space and time. Annual Review of Ecology, Evolution, and Systematics, 40(1), 677–697. https://doi.org/10.1146/annurev.ecolsys.110308.120159
 
@@ -182,7 +194,21 @@ Guisan, A., Tingley, R., Baumgartner, J. B., Naujokaitis-Lewis, I., Sutcliffe, P
 
 Hastie, T. and W. Fithian (2013). Inference from presence-only data; the ongoing controversy. Ecography 36, 864–867.
 
+Hengl T. (2009) A Practical Guide to Geostatistical Mapping. Open Access Publication. Available: http://spatial-analyst.net/book/system/files/Hengl_ 2009_GEOSTATe2c1w.pdf.
+
+Hirzel A. H., Hausser J., Chessel D, Perrin N (2002) Ecological-Niche factor analysis: How to compute habitat-suitability maps without absence data? Ecology 83: 2027.
+
+Jime´nez-Valverde A., Lobo J. M., Hortal J. (2008) Not as good as they seem: the importance of concepts in species distribution modelling. Diversity and Distributions 14: 885–890.
+
+Kearney M., Porter W. (2009) Mechanistic niche modelling: combining physiological and spatial data to predict species’ ranges. Ecology Letters 12: 334.
+
 Lezama-Ochoa, N., Pennino, M. G., Hall, M., Lopez, J., & Murua, H. (2020). Using a Bayesian modelling approach (INLA-SPDE) to predict the occurrence of the Spinetail Devil Ray (Mobular mobular). Scientific Reports, 10(1). https://doi.org/10.1038/s41598-020-73879-3
+
+Li W., Guo Q., Elkan C. (2011) Can we model the probability of presence of species without absence data? Ecography 34: 1096–1105.
+
+Lobo J. M., Jime´nez-Valverde A., Hortal J. (2010) The uncertain nature of absences and their importance in species distribution modelling. Ecography 33: 103–114.
+
+Lorena A. C., Jacintho L. F. O., Siqueira M. F., Giovanni R. D., Lohmann L. G., et al. (2011) Comparing machine learning classifiers in potential distribution modelling. Expert Systems with Applications 38: 5268–5275.
 
 Marmion, M., Hjort, J., Thuiller, W., & Luoto, M. (2008). A comparison of predictive methods in modelling the distribution of periglacial landforms in Finnish Lapland. Earth Surface Processes and Landforms, 33(14), 2241–2254. https://doi.org/10.1002/esp.1695
 
@@ -196,7 +222,11 @@ Pearce, J., & Boyce, M. S. (2006). Modelling distribution and abundance with pre
 
 Pennino, M. G., Vilela, R., Bellido, J. M. & Mendoza, M. Comparing methodological approaches to model occurrence patterns of marine species. in Research Advances in Marine Resources (Eds: Norton, K.). (Nova Publisher, ISBN: 978-1-53612-177-3, 2017).
 
+Peterson A. T. (2006) Uses and Requirements of Ecological Niche Models and Related Distributional Models. Biodiversity Informatics 3: 59–72.
+
 Phillips, S. J., Dudík, M., Elith, J., Graham, C. H., Lehmann, A., Leathwick, J. R., & Ferrier, S. (2009). Sample selection bias and presence-only distribution models: implications for background and pseudo-absence data. Ecological Applications, 19(1), 181–197. https://doi.org/10.1890/07-2153.1
+
+Phillips S. J., Anderson R. P., Schapire RE (2006) Maximum entropy modeling of species geographic distributions. Ecological Modelling 190: 231–259.
 
 Redding, D. W., Lucas, T. C., Blackburn, T. M. & Jones, K. E. Evaluating Bayesian spatial methods for modelling species distributions with clumped and restricted occurrence data. PLoS ONE 12, e0187602 (2017).
 
@@ -205,6 +235,10 @@ Renner, I., & Warton, D. I. (2013). Equivalence of MAXENT and Poisson Point proc
 Royle, J. A., R. B. Chandler, C. Yackulic, and J. D. Nichols (2012). Likelihood analysis of species occurrence probability from presence-only data for modelling species distributions. Methods in Ecology and Evolution 3, 545–554.
 
 Rue, H., Martino, S. & Chopin, N. Approximate Bayesian inference for latent Gaussian models by using integrated nested Laplace approximations. J. R. Stat. Soc. Ser. B. (Stat. Method.) 71, 319–392 (2009).
+
+Senay SD, Worner SP, Ikeda T (2013) Novel Three-Step Pseudo-Absence Selection Technique for Improved Species Distribution Modelling. PLoSONE 8(8): e71218. doi:10.1371/journal.pone.0071218
+
+Soberon J., Peterson A. T. (2005) Interpretation of models of fundamental ecological niches and species’ distriputional areas. Biodiversity Informatics 2: 1–10.
 
 Wisz, M. S., & Guisan, A. (2009). Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data. BMC Ecology, 9(1), 8. https://doi.org/10.1186/1472-6785-9-8
 
