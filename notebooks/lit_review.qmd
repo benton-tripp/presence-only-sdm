@@ -13,7 +13,7 @@ format:
 
 *TODO: Add references*
 
-The continuous development and diversification of species distribution models (SDMs) necessitates a comprehensive examination of both conventional and emerging techniques. This literature review focuses on the application of presence-only prediction techniques, including Poisson point processes and MaxEnt, in the context of bird species distribution modeling. The review seeks to critically analyze the performance of traditional machine learning models such as xgboost, logistic regression, and random forests against the more specialized presence-only prediction techniques. Moreover, the exploration of Bayesian methods, data processing mechanisms, and innovative sampling methodologies aims to shed light on strategies to enhance model performance and reduce bias. The overarching goal of this review is to provide a systematic foundation for further research into the integration and optimization of various modeling strategies for presence-only predictions.
+The continuous development and diversification of species distribution models (SDMs) necessitates a comprehensive examination of both conventional and emerging techniques. This literature review focuses on the application of presence-only prediction techniques, including Poisson point processes and MaxEnt, in the context of bird species distribution modeling. The review seeks to critically analyze the performance of traditional machine learning models such as xgboost, logistic regression, and random forests against the more specialized presence-only prediction techniques (Zhang et al., 2019; Valavi et al., 2021). Moreover, the exploration of Bayesian methods, data processing mechanisms, and innovative sampling methodologies aims to shed light on strategies to enhance model performance and reduce bias. The overarching goal of this review is to provide a systematic foundation for further research into the integration and optimization of various modeling strategies for presence-only predictions.
 
 ## Introduction
         
@@ -99,9 +99,13 @@ The exploration of MaxEnt and PPM in species distribution modeling reveals intri
 
 ## Machine Learning Models for Species Distribution Modeling
 
-### Comparison with MaxEnt and Poisson Point Process models
+Zhang et al. (2019) expound on the power of the Random Forests (RF) as a Species Distribution Model (SDM) algorithm. At its core, RF is an ensemble learning technique designed to produce both categorical and numerical species distribution maps, a feat achieved using the classification tree (CT) and regression tree (RT) algorithms respectively (Strobl et al., 2009). CT, in its statistical essence, also has the capability to provide probabilistic predictions, known as class probability (Zhang et al., 2019). The quintessence of RF lies in its bootstrap samples which are harnessed to construct a plethora of decision trees, which are then aggregated to predict new data. In the context of CT, model output is often categorical and determined by the proportion of votes, with the ratio for presence in CT potentially being leveraged as a relative index of occurrence or numerical prediction (Strobl et al., 2009).
 
-### Evaluation of Performance
+With an abundance of metrics available for evaluating SDM performance, discerning the most effective one becomes challenging (Fielding & Bell, 1997; Liu et al., 2011). Different metrics invariably have their unique strengths, weaknesses, and methods of weighting prediction errors like omission, commission, or confusion. Emphasizing the importance of utilizing multiple performance metrics, Zhang et al. (2019) underscore the utility of threshold-independent evaluations such as root mean square error (RMSE), mean absolute prediction error (MAE), coefficient of determination (R^2), mean cross entropy (MXE), and several AUC measures. Numerical predictions, in particular, are distinguished by their discrimination capacity, such as AUC values, and reliability metrics, including RMSE, MAE, and R^2 (Liu et al., 2011; Pearce & Ferrier, 2000). The inherent importance of these two facets (reliability and discrimination capacity) is contingent upon the model's application and the user's proficiency level (Pearce & Ferrier, 2000).
+
+A significant challenge emerges when converting numerical predictions to binary predictions, primarily because the optimal threshold is influenced by the choice of threshold-setting method. This choice has palpable ramifications on the estimation of RF model performance and potential species range shifts due to climate change (Zhang et al., 2019). Out of multiple threshold methods explored, Zhang et al. (2019) highlighted four as particularly promising for binary conversions of continuous predictions with presence-only data: MaxKappa, MaxOA, MinROCdist, and MaxTSS. These methods demonstrated consistent performance in threshold determination, model performance, and range shift projection. Notably, the default CT classification method was deemed suboptimal for binary conversions (Zhang et al., 2017).
+
+To conclude, the researchers proposed a detailed procedural framework for harnessing RF methods with presence-only data in modeling species distributions. This framework emphasizes the importance of the RT model when prioritizing model discrimination capacity over reliability, and the converse. While the framework offers a generic concept suited for virtually any model prediction question utilizing presence-only data, its applications might necessitate fine-tuning depending on specific species and contexts, highlighting the diverse nuances of the ecosystem (Zhang et al., 2017).
 
 ## Bayesian Approaches in Species Distribution Modeling
 
@@ -166,11 +170,11 @@ Within the realm of academic inquiry, the integration of the Bayesian modeling s
 
 ## References
 
-
-
 Aarts, G., J. Fieberg, and J. Matthiopoulos (2012). Comparative interpretation of count, presence/absence and point methods for species distribution models. Methods in Ecology and Evolution 3, 177–187.
 
 Baddeley, A., & Turner, R. (2005). spatstat: An R Package for Analyzing Spatial Point Patterns. Journal of Statistical Software, 12(6). https://doi.org/10.18637/jss.v012.i06
+
+Brieuc, M. S. O., Waters, C. D., Drinana, D. P., & Naish, K. A. (2018). A practical introduction to random forest for genetic association studies in ecology and evolution. Mol. Ecol. Resour., 18, 755–766.
 
 Chefaoui, R. M., & Lobo, J. M. (2008). Assessing the effects of pseudo-absences on predictive distribution model performance. Ecological Modelling, 210(4), 478–486. https://doi.org/10.1016/j.ecolmodel.2007.08.010
 
@@ -187,6 +191,8 @@ Elith, J., & Leathwick, J. R. (2009). Species Distribution Models: Ecological ex
 Elith, J., Phillips, S. J., Hastie, T., Dudík, M., Chee, Y. E., & Yates, C. J. (2010). A statistical explanation of MaxEnt for ecologists. Diversity and Distributions, 17(1), 43–57. https://doi.org/10.1111/j.1472-4642.2010.00725.x
 
 Engler, R., Guisan, A., & Rechsteiner, L. (2004). An improved approach for predicting the distribution of rare and endangered species from occurrence and pseudo-absence data. Journal of Applied Ecology, 41(2), 263–274. https://doi.org/10.1111/j.0021-8901.2004.00881.x
+
+Fielding, A. H., & Bell, J. F. (1997). A review of methods for the assessment of prediction errors in conservation presence/absence models. Environ. Conserv., 24, 38–49.
 
 Gelfand, A. E. (2018, September 5). Preferential sampling for presence/absence data and for fusion of presence/absence data with presence-only data. arXiv.org. https://arxiv.org/abs/1809.01322
 
@@ -206,6 +212,8 @@ Lezama-Ochoa, N., Pennino, M. G., Hall, M., Lopez, J., & Murua, H. (2020). Using
 
 Li W., Guo Q., Elkan C. (2011) Can we model the probability of presence of species without absence data? Ecography 34: 1096–1105.
 
+Liu, C., White, M., & Newell, G. (2011). Measuring and comparing the accuracy of species distribution models with presence–absence data. Ecography, 34, 232–243.
+
 Lobo J. M., Jime´nez-Valverde A., Hortal J. (2010) The uncertain nature of absences and their importance in species distribution modelling. Ecography 33: 103–114.
 
 Lorena A. C., Jacintho L. F. O., Siqueira M. F., Giovanni R. D., Lohmann L. G., et al. (2011) Comparing machine learning classifiers in potential distribution modelling. Expert Systems with Applications 38: 5268–5275.
@@ -220,7 +228,11 @@ Pacifici, K., B. J. Reich, D. A.W. Miller, B. Gardner, G. Stauffer, S. Singh, A.
 
 Pearce, J., & Boyce, M. S. (2006). Modelling distribution and abundance with presence-only data. Journal of Applied Ecology, 43(3), 405–412. https://doi.org/10.1111/j.1365-2664.2005.01112.x
 
+Pearce, J., & Ferrier, S. (2000). Evaluating the predictive performance of habitat models developed using logistic regression. Ecol. Modell., 133, 225–245.
+
 Pennino, M. G., Vilela, R., Bellido, J. M. & Mendoza, M. Comparing methodological approaches to model occurrence patterns of marine species. in Research Advances in Marine Resources (Eds: Norton, K.). (Nova Publisher, ISBN: 978-1-53612-177-3, 2017).
+
+Peters, J., Baets, B. D., Verhoest, N. E. C., Samson, R., Degroeve, S., Becker, P. D., & Huybrechts, W. (2007). Random forests as a tool for ecohydrological distribution modelling. Ecol. Model., 207, 304–318.
 
 Peterson A. T. (2006) Uses and Requirements of Ecological Niche Models and Related Distributional Models. Biodiversity Informatics 3: 59–72.
 
@@ -240,8 +252,16 @@ Senay SD, Worner SP, Ikeda T (2013) Novel Three-Step Pseudo-Absence Selection Te
 
 Soberon J., Peterson A. T. (2005) Interpretation of models of fundamental ecological niches and species’ distriputional areas. Biodiversity Informatics 2: 1–10.
 
+Strobl, C., Malley, J. D., & Tutz, G. (2009). An introduction to recursive partitioning: Rationale, application and characteristics of Classification and Regression Trees, Bagging and Random Forests. Psychol. Methods, 14, 323–348.
+
+Valavi, R., Guillera-Arroita, G., Lahoz-Monfort, J. J., & Elith, J. (2021). Predictive performance of presence‐only species distribution models: a benchmark study with reproducible code. Ecological Monographs, 92(1). https://doi.org/10.1002/ecm.1486
+
 Wisz, M. S., & Guisan, A. (2009). Do pseudo-absence selection strategies influence species distribution models and their predictions? An information-theoretic approach based on simulated data. BMC Ecology, 9(1), 8. https://doi.org/10.1186/1472-6785-9-8
 
 Warton, D. I., & Shepherd, L. (2010). Poisson point process models solve the “pseudo-absence problem” for presence-only data in ecology. The Annals of Applied Statistics, 4(3). https://doi.org/10.1214/10-aoas331
 
 Zarnetske, P. L., Edwards, T. C., & Moisen, G. G. (2007). HABITAT CLASSIFICATION MODELING WITH INCOMPLETE DATA: PUSHING THE HABITAT ENVELOPE. Ecological Applications, 17(6), 1714–1726. https://doi.org/10.1890/06-1312.1
+
+Zhang, L., Huettmann, F., Zhang, X., Liu, S., Park, S., Yu, Z., & Mi, C. (2019). The use of classification and regression algorithms using the random forests method with presence-only data to model species’ distribution. MethodsX, 6, 2281–2292. https://doi.org/10.1016/j.mex.2019.09.035
+
+Zhang, L., Wang, L., Liu, S., Sun, P., Yu, Z., Huang, S., & Zhang, X. (2017). An evaluation of four threshold selection methods in species occurrence modelling with random forest: case studies with Davidia involucrata and Cunninghamia lanceolata. Chin. J. Plant Ecol., 41, 387–395.
