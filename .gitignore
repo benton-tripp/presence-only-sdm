@@ -8,7 +8,6 @@ benton-tripp.github.io/
 .ssh/*
 docs/archive/*
 notebooks/archive/*
-!docs/btripp_literature_review_gis630.pdf
 
 
 # Keep these data files
@@ -70,3 +69,7 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+
+
+!docs/btripp_literature_review_gis630.pdf
