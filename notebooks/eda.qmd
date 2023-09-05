@@ -1,17 +1,219 @@
 ---
 title: "Exploratory Analysis, Pseudo-Absence Generation, Autocorrelation Mitigation, Feature Engineering, and Train/Test Splitting"
 author: "Benton Tripp"
-format: html
-editor: source
-toc: true
-toc-depth: 3
-code-folding: show
-theme: readable
+format: 
+  html:
+    editor: source
+    toc: true
+    toc-depth: 3
+    code-folding: true
+    theme: readable
+
 ---
 
-## Train/Test Splitting (Observation Data)
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F)
 
-## Initial EDA
+library(ggplot2)
+library(ggpubr)
+library(maps)
+library(mapdata)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(quarto)
+library(raster)
+library(sf)
+library(purrr)
+
+```
+
+## Visualize all Observations by State & Species
+
+```{r generate-plots}
+#| code-fold: true
+#| code-summary: "Show code"
+
+data(us.cities)
+
+# Get major cities for each sample region (state)
+.states <- c("OR", "VT", "CO", "NC")
+top.cities <- purrr::map_df(.states, function(s) {
+  out <- us.cities %>% 
+  filter(country.etc==s) %>%
+  mutate(city = gsub(paste0(" ", s), "", name)) %>%
+  arrange(-pop)
+  if (s == "OR") {
+    out <- out %>% 
+      head() %>%
+      filter(!(city %in% c("Gresham", "Hillsboro", "Corvallis",
+                           "Beaverton", "Springfield")))
+  } else if (s == "CO") {
+    out <- out %>%
+      head() %>%
+      filter(!(city %in% c("Thornton", "Lakewood", "Aurora")))
+  } else if (s == "NC") {
+    out <- out %>%
+      head() %>%
+      filter(!(city %in% c("Greensboro", "Durham", "Fayetteville")))
+  } else {
+    out <- out %>% head()
+  }
+  out
+})
+
+# Load the map data
+states <- map_data("state") %>% 
+  filter(region %in% c("oregon", "north carolina", "colorado", "vermont"))
+
+# Load your data
+data.files <- list.files("../data")[list.files("../data") %like% "encoded_data_"] %>%
+  file.path("../data", .)
+df <- purrr::map(data.files, ~readr::read_csv(.x) %>%
+                   mutate(state = gsub(".csv", "", 
+                                       gsub("../data/encoded_data_", "", .x)))
+                 ) %>% 
+  data.table::rbindlist() %>%
+  suppressMessages()
+
+caps.after.ws <- function(string) {
+  gsub("(?<=\\s)([a-z])", "\\U\\1", string, perl = T)
+}
+
+# Put in long format for plotting
+df.long <- df %>%
+  tidyr::pivot_longer(cols = starts_with("species_"),
+               names_to = "species",
+               values_to = "observed") %>%
+  filter(observed == 1) %>%
+  mutate(species = gsub("species_", "", species),
+         spec.state = interaction(species, state, sep = "|"))
+
+# Define a function to create a plot for each species
+plot.for.species <- function(ss) {
+  spec.state.spl <- stringr::str_split(ss, "\\|")[[1]]
+  st.abbr <- spec.state.spl[[2]]
+  
+  st <- case_when(st.abbr == "CO" ~ "colorado",
+                  st.abbr == "NC" ~ "north carolina",
+                  st.abbr == "VT" ~ "vermont",
+                  st.abbr == "OR" ~ "oregon",
+                  T ~ "")
+  spec <- spec.state.spl[[1]]
+  title <- caps.after.ws(paste(st.abbr, gsub("_", " ", spec), 
+                             "Observations, 2016-2019"))
+
+  p <- ggplot(data = states %>% filter(region == st)) +
+    geom_polygon(aes(x = long, y = lat, group = group),
+                 fill = "#989875", color = "black") +
+    geom_point(data = df.long %>% filter(spec.state == ss), 
+               aes(x = longitude, y = latitude), 
+               size=1, alpha=.5, fill = "red", shape=21) +
+    geom_point(data = top.cities %>% filter(country.etc == st.abbr), 
+               aes(x=long, y=lat),
+               fill="gold", color="black", size=3.5, shape = 21) + 
+    geom_text(data = top.cities %>% filter(country.etc == st.abbr), 
+              aes(x=long, y=lat, label=city),
+              color="white", hjust=case_when(st.abbr=="NC"~.2,
+                                               st.abbr=="VT"~.65,
+                                               T~.5),
+              vjust=ifelse(st.abbr=="NC", -.65, 1.5),
+              size=4) + 
+    coord_map() +
+    ggtitle(title) +
+    theme_minimal() +
+    theme(panel.background = element_blank(),
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid = element_blank())
+
+  data.table(
+    state=st.abbr,
+    species=spec,
+    plot=list(p)
+  )
+}
+
+# Create a list of plots
+plots <- purrr::map_df(unique(df.long$spec.state), ~plot.for.species(.x))
+
+```
+
+```{r ruddy-duck-plot, echo=F}
+
+# Plot Ruddy Duck plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "ruddy_duck"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r bk-plot, echo=F}
+
+# Plot Belted Kingfisher plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "belted_kingfisher"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r wt-plot, echo=F}
+
+# Plot Wild Turkey plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "wild_turkey"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r ssh-plot, echo=F}
+
+# Plot Sharp-Shinned Hawk plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "sharp_shinned_hawk"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r dw-plot, echo=F}
+
+# Plot Downy Woodpecker Plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "downy_woodpecker"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r sww-plot, echo=F}
+
+# Plot Cedar Waxwing Plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "cedar_waxwing"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r shc-plot, echo=F}
+
+# Plot Sandhill Crane Plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "sandhill_crane"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+```{r sanderling-plot, echo=F}
+
+# Plot Sanderling Plots
+do.call(ggpubr::ggarrange, 
+        c(plots[species == "sanderling"]$plot, 
+          list(nrow=2, ncol=2)))
+
+```
+
+## Train/Test Splitting (Observation Data)
 
 ## Pseudo-Absence Generation
 
