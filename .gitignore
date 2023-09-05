@@ -7,6 +7,7 @@ docs/articles/*
 benton-tripp.github.io/
 .ssh/*
 notebooks/nul
+docs/archive/*
 
 
 # Keep these data files
