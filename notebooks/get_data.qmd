@@ -1043,6 +1043,39 @@ convert_hydro_gdb()
 
 ```
 
+```{r, eval=F}
+
+library(sf)
+
+convert.hydro.gdb <- function(data.path = "../data/hydrography/",
+                              gdb.name = "hydrusm010g.gdb_nt00897/hydrusm010g.gdb",
+                              data.sets = c("Coastline", "Waterbody"),
+                              output.path = "../data/hydrography/") {
+  
+  # Iterate over each dataset and convert
+  for (ds in data.sets) {
+    gdb.path <- file.path(data.path, gdb.name, ds)
+    
+    # Check if the path exists before trying to read it
+    if (dir.exists(gdb.path)) {
+      # Read the geodatabase layer using st_read
+      data <- st_read(dsn = file.path(data.path, gdb.name), layer = ds, quiet = T)
+      
+      # Write the shapefile
+      st_write(obj = data, dsn = file.path(output.path, paste0(ds, ".shp")), 
+               quiet = T)
+      
+      cat(sprintf("Converted %s from geodatabase to shapefile.\n", ds))
+    } else {
+      cat(sprintf("Cannot find the dataset %s at %s\n", ds, gdb.path))
+    }
+  }
+}
+
+convert.hydro.gdb()
+
+```
+
 2.  Load waterbody data & State Boundary data as dataframes
     a.  Remove "Lake Dry" features from waterbody data
     b.  Create binary values in waterbody and boundary datasets (waterbody data -\> 0, boundary data -\> 1)
@@ -1194,6 +1227,90 @@ for state in states:
 
 ```
 
+
+```{r, eval=F}
+
+library(sf)
+library(stars)
+library(terra)
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+data.path <- "../data"
+hyd.data.path <- file.path(data.path, "hydrography")
+states <- c("CO", "NC", "OR", "VT")
+resolution <- 5000  # in the same units as your CRS
+
+update.array <- function(arr) {
+  arr.updated <- matrix(as.numeric(NA), nrow = nrow(arr), ncol = ncol(arr))
+  
+  # Perform the dilation operation multiple times
+  dilated1 <- terra::focal(arr, w = matrix(1,3,3), fun = max)
+  dilated2 <- terra::focal(dilated1, w = matrix(1,3,3), fun = max)
+  dilated3 <- terra::focal(dilated2, w = matrix(1,3,3), fun = max)
+  dilated4 <- terra::focal(dilated3, w = matrix(1,3,3), fun = max)
+  
+  arr.updated[dilated1 == 1 & arr != 1] <- 0.8
+  arr.updated[dilated2 == 1 & dilated1 != 1] <- 0.6
+  arr.updated[dilated3 == 1 & dilated2 != 1] <- 0.4
+  arr.updated[dilated4 == 1 & dilated3 != 1] <- 0.2
+  arr.updated[arr == -1] <- -1
+  arr.updated[arr == 1] <- 1
+  
+  return(arr.updated)
+}
+
+cat("Reading waterbody data...\n")
+gdf <- st_read(file.path(hyd.data.path, 'Waterbody.shp'))
+
+# Filter out records where Feature == "Lake Dry"
+gdf <- gdf %>% filter(Feature != "Lake Dry")
+
+# Overwrite the original shapefile
+st_write(gdf, file.path(hyd.data.path, 'Waterbody.shp'))
+
+gdf$raster.value <- 0
+
+for (state in states) {
+  cat(paste("Reading", state, "boundary data...\n"))
+  state.boundary <- st_read(file.path(data.path, paste0(state, "_State_Boundaries.shp")))
+  
+  state.boundary$raster.value <- 1
+  
+  cat("Reprojecting...\n")
+  gdf <- st_transform(gdf, crs = 5070)
+  state.boundary <- st_transform(state.boundary, crs = 5070)
+  
+  cat("Combining US states...\n")
+  state.boundary <- st_union(state.boundary)
+  
+  bounds <- st_bbox(state.boundary)
+  
+  xs <- seq(from = bounds["xmin"], to = bounds["xmax"], by = resolution)
+  ys <- seq(from = bounds["ymin"], to = bounds["ymax"], by = resolution)
+  grid.points <- expand.grid(xs, ys) %>%
+    st_as_sf(coords = c("Var1", "Var2"), crs = 5070) %>%
+    rename(X = Var1, Y = Var2)
+  
+  grid.points$is.within.bounds <- as.integer(st_within(grid.points, state.boundary))
+  grid.points$is.water <- as.integer(st_within(grid.points, gdf))
+  grid.points[is.na(grid.points$is.water), "is.water"] <- -1
+  grid.points <- grid.points %>%
+    select(-X, -Y) %>%
+    st_as_sf()
+  
+  raster <- st_rasterize(grid.points)
+  raster.updated <- update.array(raster)
+  
+  out.fn <- file.path(hyd.data.path, paste0(state, "_Waterbody.tif"))
+  terra::writeRaster(raster.updated, out.fn, overwrite = TRUE)
+  
+  cat(paste("Writing final raster for", state, "...\n"))
+}
+
+```
+
 3.  Load coast data
   a.  Apply 7500 Meter buffer to lines to convert to polygons
 
@@ -1206,6 +1323,31 @@ arcpy.analysis.Buffer("../data/hydrography/Coastline.shp",
                       "../data/hydrography/Coastline_Buffer.shp", 
                         "7500 Meters", dissolve_option="ALL")
  
+```
+
+```{r, eval=F}
+
+# Load required packages
+library(sf)
+
+# Set file paths
+input.path <- "../data/hydrography/Coastline.shp"
+output.path <- "../data/hydrography/Coastline.Buffer.shp"
+
+# Read the shapefile
+coastline <- st_read(input.path)
+
+# Create buffer
+coastline.buffer <- st_buffer(coastline, dist = 7500)
+
+# Merge all buffered features into a single feature
+coastline.buffer.merged <- st_union(coastline.buffer)
+
+# Write the buffered feature back to a shapefile
+st_write(coastline.buffer.merged, output.path)
+
+cat("Buffer operation completed.\n")
+
 ```
 
   b. Convert buffered coastline to raster
@@ -1265,6 +1407,48 @@ with rasterio.open(out_fn, 'w', **meta) as dst:
 
 print("Raster file created successfully!")
  
+```
+
+```{r, eval=F}
+
+# Load required packages
+library(sf)
+library(stars)
+
+# Define your desired resolution
+resolution <- 5000
+
+# Load the coastline buffer shapefile
+coastline.buffer <- st_read('../data/hydrography/Coastline_Buffer.shp')
+
+# Reproject the coastline buffer to the desired CRS
+coastline.buffer <- st_transform(coastline.buffer, crs = 5070)
+
+# Determine the extent of the coastline buffer
+ext <- st_bbox(coastline.buffer)
+
+# Create a grid of points within this extent
+grid <- expand.grid(x = seq(ext$xmin, ext$xmax, by = resolution), 
+                    y = seq(ext$ymin, ext$ymax, by = resolution))
+
+# Convert to sf object
+points <- st_as_sf(grid, coords = c("x", "y"), crs = 5070)
+
+# Assign each point a value based on whether it falls within the coastline buffer polygon or not
+points$is.buffer <- as.integer(st_within(points, coastline.buffer))
+
+# Convert to stars object
+raster.grid <- st_rasterize(points)
+
+# Define the output filename
+out.fn <- '../data/hydrography/Coastline_Buffer_Raster.tif'
+
+# Save to raster file
+write_stars(raster.grid, out.fn, driver = "GTiff", overwrite = T)
+
+# Message
+cat("Raster file created successfully!\n")
+
 ```
 
   c. Apply [general raster pre-Processing steps] to intermediate raster
@@ -1383,26 +1567,28 @@ shp.to.raster <- function(vector.ds, raster.fn, akey) {
   size.y <- ceiling((ext[4] - ext[3]) / pixel.size)
 
   # Create the raster dataset
-  rast.ds <- rast(nrows=size.y, ncols=size.x, xmin=ext[1], xmax=ext[2], ymin=ext[3], ymax=ext[4])
+  rast.ds <- rast(nrows=size.y, ncols=size.x, xmin=ext[1], xmax=ext[2], 
+                  ymin=ext[3], ymax=ext[4])
   proj <- crs(vec)
   crs(rast.ds) <- proj
   
   # Rasterize
   rast.ds <- rasterize(vec, rast.ds, field=akey, fun=max) # assuming we want to retain the max value where polygons overlap
-  writeRaster(rast.ds, raster.fn, overwrite=TRUE)
+  writeRaster(rast.ds, raster.fn, overwrite=T)
 }
 
 # Load the shapefile into an sf object
 gdf <- st_read("../data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp")
 
 # Create a tibble that maps each unique MUSYM to a unique integer
-musym.codes <- tibble(MUSYM = unique(gdf$MUSYM), MUSYM_CODE = 1:length(unique(gdf$MUSYM)))
+musym.codes <- tibble(MUSYM = unique(gdf$MUSYM), 
+                      MUSYM_CODE = 1:length(unique(gdf$MUSYM)))
 
 # Merge the MUSYM_CODE field into the sf object
 gdf <- left_join(gdf, musym.codes, by = "MUSYM")
 
 # Save the sf object back to a shapefile
-st_write(gdf, "../data/soil/codes/gsmsoilmu_a_us.shp", delete_dsn = TRUE)
+st_write(gdf, "../data/soil/codes/gsmsoilmu_a_us.shp", delete_dsn = T)
 
 vector.ds <- "../data/soil/codes/gsmsoilmu_a_us.shp"
 raster.fn <- "../data/soil/raster/gsmsoilmu_a_us.tif"
