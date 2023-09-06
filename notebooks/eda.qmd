@@ -23,9 +23,10 @@ library(readr)
 library(data.table)
 library(knitr)
 library(quarto)
-library(raster)
 library(sf)
 library(purrr)
+library(caret)
+library(terra)
 
 ```
 
@@ -213,7 +214,94 @@ do.call(ggpubr::ggarrange,
 
 ```
 
+## Explore Explanatory Rasters
+
+```{r land-cover-eda}
+
+lc.files <- paste0("../data/land_cover/", 
+                   list.files("../data/land_cover", pattern="\\.tif$"))
+lc.names <- gsub("\\.tif", "", 
+                 gsub("\\.\\./data/land_cover/land_cover_", "", lc.files))
+names(lc.files) <- lc.names
+
+terra.any <- function(rast) {
+  freqs <- terra::freq(rast)
+  any(freqs[,1] == 1)
+}
+
+process.lc.rasters <- function(f) {
+  cat(paste0("Loading raster from ", f, "...\n"))
+  r <- terra::rast(f)
+  # Identify cells with value 128
+  mask <- r == 128
+  cat("Checking for improperly formatted NA values...\n")
+  if (terra.any(mask)) {
+    cat("Updating NA values...\n")
+    # Set those cells to NA
+    r[mask] <- NA
+    .path <- "../data/land_cover/"
+    f.name <- gsub(.path, "", f)
+    f.tmp <- gsub(.path, "", f.name) %>%
+      paste0(.path, "temp_", .)
+    if (!file.exists(f.tmp)) terra::writeRaster(r, f.tmp)
+  }
+  return(r)
+}
+
+lc.raster.file.cleanup <- function(f, .path="../data/land_cover/") {
+  f.name <- gsub(.path, "", f)
+  if (stringr::str_starts(f.name, "temp_")) {
+    non.tmp <- gsub("\\.tif", "", gsub("temp_", "", f.name))
+    non.tmp.list <- list.files(.path, pattern=non.tmp)
+    non.tmp.list <- non.tmp.list[!stringr::str_starts(non.tmp.list, "temp_")]
+    purrr::walk(non.tmp.list, ~file.remove(paste0(.path, .x)))
+    file.rename(paste0(.path, f.name), paste0(.path, non.tmp, ".tif"))
+  }
+}
+
+lc.rasters <- lapply(lc.files, process.lc.rasters)
+# purrr::walk(list.files("../data/land_cover/", pattern="\\.tif$"),
+#             ~lc.raster.file.cleanup(.x))
+names(lc.rasters) <- lc.names
+
+plot(lc.rasters$CO)
+
+```
+
 ## Train/Test Splitting (Observation Data)
+
+```{r}
+
+stratified.split.idx <- function(df, p=0.8, lat.lon.bins=25) {
+  # Cut along lat/lon values to create grids (lat.bin & lon.bin)
+  # lat.lon.bins is the number of divisions you want
+  df$lat.bin <- cut(df$latitude, breaks=lat.lon.bins, labels = F)
+  df$lon.bin <- cut(df$longitude, breaks=lat.lon.bins, labels = F)
+  
+  # Create a new variable combining the stratification variables
+  df %>%
+    mutate(strata = paste(lat.bin, lon.bin, species, state)) %>%
+    pull(strata) %>%
+    # Create the data partitions
+    createDataPartition(., p = p, list = F) %>%
+    suppressWarnings()
+}
+
+prepare.data <- function(df, p) {
+  train.index <- stratified.split.idx(df, p=p)
+  df.train <- df[train.index, ]
+  df.test <- df[-train.index, ]
+  
+  list(train = df.train, 
+       test = df.test,
+       index = train.index)
+}
+
+train.test <- prepare.data(df.long, .8)
+train <- df[train.test$index,]
+test <- df[-train.test$index,]
+
+```
 
 ## Pseudo-Absence Generation
 
@@ -224,6 +312,10 @@ do.call(ggpubr::ggarrange,
 ## Autocorrelation Mitigation
 
 ## Feature Engineering
+
+### Land Cover Hierarchical Updates to Categories
+
+Each of the 20 different Land Cover Categories falls under a "parent" category (see [National Land Cover Database Class Legend and Description](https://www.mrlc.gov/data/legends/national-land-cover-database-class-legend-and-description)).
 
 ### Dimensionality Reduction
 
