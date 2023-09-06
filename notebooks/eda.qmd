@@ -229,39 +229,13 @@ terra.any <- function(rast) {
   any(freqs[,1] == 1)
 }
 
-process.lc.rasters <- function(f) {
+get.lc.rasters <- function(f) {
   cat(paste0("Loading raster from ", f, "...\n"))
   r <- terra::rast(f)
-  # Identify cells with value 128
-  mask <- r == 128
-  cat("Checking for improperly formatted NA values...\n")
-  if (terra.any(mask)) {
-    cat("Updating NA values...\n")
-    # Set those cells to NA
-    r[mask] <- NA
-    .path <- "../data/land_cover/"
-    f.name <- gsub(.path, "", f)
-    f.tmp <- gsub(.path, "", f.name) %>%
-      paste0(.path, "temp_", .)
-    if (!file.exists(f.tmp)) terra::writeRaster(r, f.tmp)
-  }
   return(r)
 }
 
-lc.raster.file.cleanup <- function(f, .path="../data/land_cover/") {
-  f.name <- gsub(.path, "", f)
-  if (stringr::str_starts(f.name, "temp_")) {
-    non.tmp <- gsub("\\.tif", "", gsub("temp_", "", f.name))
-    non.tmp.list <- list.files(.path, pattern=non.tmp)
-    non.tmp.list <- non.tmp.list[!stringr::str_starts(non.tmp.list, "temp_")]
-    purrr::walk(non.tmp.list, ~file.remove(paste0(.path, .x)))
-    file.rename(paste0(.path, f.name), paste0(.path, non.tmp, ".tif"))
-  }
-}
-
-lc.rasters <- lapply(lc.files, process.lc.rasters)
-# purrr::walk(list.files("../data/land_cover/", pattern="\\.tif$"),
-#             ~lc.raster.file.cleanup(.x))
+lc.rasters <- lapply(lc.files, get.lc.rasters)
 names(lc.rasters) <- lc.names
 
 plot(lc.rasters$CO)

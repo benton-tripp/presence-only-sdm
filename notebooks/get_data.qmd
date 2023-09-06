@@ -67,6 +67,47 @@ for sa in state_abbreviations:
 
 ```
 
+
+```{r, eval=F}
+
+# Load necessary libraries
+library(sf)
+library(terra)
+
+# Set the path for the shapefile
+shapefile_path <- "../data/US_State_Boundaries/US_State_Boundaries.shp"
+
+# Load the shapefile into an sf object
+gdf <- st_read(shapefile_path)
+
+# Transform the coordinate reference system to EPSG:5070
+gdf <- st_transform(gdf, crs = 5070)
+
+# Define the state abbreviations
+state_abbreviations <- c("CO", "NC", "OR", "VT")
+
+# Set the output directory
+output_dir <- "../data/US_State_Boundaries"
+
+# Create the output directory if it doesn't exist
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+
+# Loop through state abbreviations and save individual shapefiles
+for (sa in state_abbreviations) {
+  tryCatch({
+    state_gdf <- gdf[gdf$STATE_ABBR == sa, ]
+    output_path <- file.path(output_dir, paste0(sa, "_State_Boundaries.shp"))
+    st_write(state_gdf, output_path, quiet = TRUE)
+  }, error = function(e) {
+    message(paste0('Failed to save shapefile for state ', sa, ': ', e$message))
+  })
+}
+
+```
+
+
 ## eBird Data
 
 There are four regions explored in this analysis from 2016 through 2019 (corresponding to the 4 boundary datasets):
@@ -268,21 +309,96 @@ def general_raster_preprocessing(
         # Resample the reprojected raster to 2500 x 2500 meters resolution using 
         # the nearest neighbor algorithm
         print(f"Resampling {raster} to 2500x2500 meters...")
-        resampled_raster = arcpy.Resample_management(reprojected_raster, None, "2500 2500", "NEAREST")
+        resampled_raster = arcpy.Resample_management(reprojected_raster, 
+          None, "2500 2500", "NEAREST")
         
         # Loop through each state in the states list
         for state in states:
             # Construct the file path to the state boundary shapefile
-            state_path = os.path.join(state_boundary_path, state + state_file_suffix)
+            state_path = os.path.join(state_boundary_path, 
+              state + state_file_suffix)
             
-            # Extract the area of the resampled raster that intersects with the state boundary
+            # Extract the area of the resampled raster that intersects 
+            # with the state boundary
             print(f"Extracting {state} data using state mask...")
-            out_state_raster = arcpy.sa.ExtractByMask(reprojected_raster, state_path)
+            out_state_raster = arcpy.sa.ExtractByMask(reprojected_raster,
+              state_path)
             
-            # Save the extracted raster to a new file with state abbreviation appended to name
-            out_state_raster.save(os.path.join(out_path, out_raster_name + "_" + state + ".tif"))
+            # Save the extracted raster to a new file with state 
+            # abbreviation appended to name
+            out_state_raster.save(os.path.join(out_path, 
+              out_raster_name + "_" + state + ".tif"))
 
 ```
+
+```{r, eval=F}
+
+library(terra)
+
+general.raster.preprocessing <- function(
+  raster.name,
+  out.raster.name,
+  data.path = "../data",
+  state.boundary.path = "../data/US_State_Boundaries",
+  states = c("NC", "CO", "OR", "VT"),
+  state.file.suffix = "_State_Boundaries.shp",
+  out.path = "../gis630/data",
+  crs = 5070,
+  wildcard = "*.tif",
+  resampling.scale = 2500
+) {
+  # Example usage:
+  # general.raster.preprocessing(
+  #   raster.name = "canopy/nlcd_2016_treecanopy_2019_08_31",
+  #   out.raster.name = "canopy",
+  #   out.path = "../data/canopy"
+  # )
+
+  # List all the raster files in the workspace directory
+  rasters <- list.files(path = file.path(data.path, raster.name), 
+                        pattern = wildcard, 
+                        full.names = T)
+  print(paste("Rasters:", rasters))
+  
+  # Loop through each raster file in the list
+  for (raster.path in rasters) {
+    
+    # Read raster
+    raster <- rast(raster.path)
+    
+    # Reproject
+    reprojected.raster <- project(raster, crs(paste0("EPSG:", crs)))
+    
+    # Resample
+    resampled.raster <- terra::aggregate(
+      reprojected.raster, 
+      fact=c(resampling.scale/terra::res(reprojected.raster)[1],
+             resampling.scale/terra::res(reprojected.raster)[2]), 
+      fun = mean, 
+      expand = T)
+    
+    # Loop through each state
+    for (state in states) {
+      # Construct the file path to the state boundary shapefile
+      state.path <- file.path(state.boundary.path, 
+                              paste0(state, state.file.suffix))
+      
+      # Load state shape
+      state.shape <- vect(state.path)
+      
+      # Mask raster by state shape
+      masked.raster <- terra::mask(resampled.raster, state.shape)
+      
+      # Save raster
+      writeRaster(masked.raster, 
+                  file.path(out.path, paste0(out.raster.name, "_", state, ".tif")))
+    }
+  }
+}
+
+
+```
+
 
 *Ensure that extents match for each raster.*
 
@@ -346,8 +462,57 @@ combine_dem_parts(dem_dir="../data/dem/raw_dem", output_dir="../data/dem")
 general_raster_preprocessing(
     raster_name="dem", 
     out_raster_name="dem",
-    out_path="dem"
+    out_path="../data/dem"
 )
+
+```
+
+```{r, eval=F}
+
+library(terra)
+
+# Recursive function to list rasters in a directory and its subdirectories
+list.rasters.recursive <- function(directory, raster.list = character(0)) {
+  rasters <- list.files(directory, pattern = "\\.adf$", recursive = T, 
+                        full.names = T)
+  
+  if (length(rasters) > 0) {
+    raster.list <- c(raster.list, rasters)
+  }
+  
+  return(unique(raster.list))
+}
+
+combine.dem.parts <- function(dem.dir = "../data/dem/raw_dem", 
+                             output.dir = "../data/dem", 
+                             output.raster.name = "mosaic_dem") {
+  
+  # Get list of rasters recursively
+  rasters <- list.rasters.recursive(dem.dir)
+  
+  # Read the individual rasters
+  raster.list <- lapply(rasters, rast)
+  
+  # Combine/Mosaic the rasters
+  mosaic.raster <- mosaic(raster.list, fun = mean) # "mean" can be replaced with another function if desired
+  
+  # Save the combined raster
+  writeRaster(mosaic.raster, file.path(output.dir, paste0(output.raster.name, ".tif")))
+  
+  print("Mosaic completed successfully!")
+}
+
+# Combine rasters in the "raw_dem" folder
+combine.dem.parts(dem.dir = "../data/dem/raw_dem", output.dir = "../data/dem")
+
+# Use the combined raster for the general raster preprocessing
+general.raster.preprocessing(
+  raster.name = "dem", 
+  out.raster.name = "dem",
+  out.path = "../data/dem",
+  resample.scale=5000
+)
+
 
 ```
 
@@ -359,9 +524,21 @@ general_raster_preprocessing(
 
 # Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
 general_raster_preprocessing(
-    raster_name="urban_imperviousness", 
-    out_raster_name="urban_imperviousness",
-    out_path="../data/urban_imperviousness"
+  raster_name="urban_imperviousness", 
+  out_raster_name="urban_imperviousness",
+  out_path="../data/urban_imperviousness"
+)
+
+```
+
+```{r, eval=F}
+
+# Use the combined raster for the general raster preprocessing
+general.raster.preprocessing(
+    raster.name="urban_imperviousness", 
+    out.raster.name="urban_imperviousness",
+    out.path="../data/urban_imperviousness",
+    resample.scale=5000
 )
 
 ```
@@ -381,51 +558,64 @@ general_raster_preprocessing(
 
 ```
 
+```{r, eval=F}
+
+# Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+general.raster.preprocessing(
+    raster.name="land_cover/nlcd_2019_land_cover_l48_20210604", 
+    out.raster.name="land_cover",
+    out.path="../data/land_cover",
+    resample.scale=5000
+)
+
+```
+
 2. Set values of 128 to NA
 
-```{python, eval=F}
+```{r, eval=F}
 
-# Import libraries
-import arcpy
-import os
-import shutil
-from arcpy.sa import Con
-from arcpy.sa import Raster
+library(terra)
 
-def fix_lc_na(data_path, na_val, states=["CO", "NC", "OR", "VT"]):
+terra.any <- function(r) {
+  freqs <- freq(r)
+  any(freqs[,1] == 1)
+}
 
-  for state in states:
+fix.lc.na <- function(data.path, na.val, states=c("CO", "NC", "OR", "VT")) {
   
+  for (state in states) {
+    
     # Set path of the input raster
-    input_raster_path = os.path.join(data_path, f"land_cover_{state}.tif")
+    input.raster.path <- file.path(data.path, paste0("land_cover_", state, ".tif"))
     
     # Create a temporary output path
-    temp_output_path = os.path.join(data_path, f"temp_land_cover_{state}.tif")
+    temp.output.path <- file.path(data.path, paste0("temp_land_cover_", 
+                                                    state, ".tif"))
     
     # Read the input raster
-    input_raster = Raster(input_raster_path)
+    cat(paste0("Loading raster from ", input.raster.path, "...\n"))
+    input.raster <- rast(input.raster.path)
     
-    # Use the Con tool to set values of the defined na value to NoData
-    output_raster = Con(input_raster != na_val, input_raster)
-    
-    # Save the output raster to the temporary file path
-    output_raster.save(temp_output_path)
-  
-    # Delete raster variables to release locks on the files
-    del input_raster
-    del output_raster
-  
-    # Allow arcpy to perform garbage collection
-    arcpy.ClearWorkspaceCache_management()
-    
-    temp_files = [os.path.join(data_path, f) for f in os.listdir(data_path) if f.startswith("temp_")]
-    
-    for file in temp_files:
-      # Move the temporary file to the original file path
-      shutil.move(file, file.replace("temp_", ""))
-    
-fix_lc_na(data_path="../data/land_cover", na_val=128)
-    
+    # Identify cells with value 128
+    msk <- input.raster == 128
+    cat("Checking for improperly formatted NA values...\n")
+    if (terra.any(msk)) {
+      cat("Updating NA values...\n")
+      # Set those cells to NA
+      input.raster[msk] <- NA
+      
+      # Save the output raster to the temporary file path
+      cat("Saving updated raster...\n")
+      writeRaster(input.raster, temp.output.path)
+      
+      # Remove temporary prefix and overwrite the original raster
+      file.rename(temp.output.path, input.raster.path)
+    }
+  }
+}
+
+fix.lc.na(data.path="../data/land_cover", na.val=128)
+
 ```
 
 ### Canopy
@@ -439,6 +629,19 @@ general_raster_preprocessing(
     raster_name="canopy/nlcd_2016_treecanopy_2019_08_31", 
     out_raster_name="canopy",
     out_path="../data/canopy"
+)
+
+```
+
+```{r, eval=F}
+
+# Using the combined raster, apply "general raster preprocessing" 
+# (resample, reproject, mask)
+general.raster.preprocessing(
+    raster.name="canopy/nlcd_2016_treecanopy_2019_08_31", 
+    out.raster.name="canopy",
+    out.path="../data/canopy",
+    resample.scale=5000
 )
 
 ```
@@ -517,6 +720,83 @@ def get_weather_data(data_path:str) -> None:
     print("Finished.")
             
 get_weather_data("../data")
+
+```
+
+```{r, eval=F}
+
+get.weather.data <- function(data.path) {
+  # Downloads and processes weather raster data for specified variables and 
+  # years at a 4km resolution 
+  # and 30-year monthly normals at an 800m resolution. The function downloads,
+  #  aggregates, and resamples 
+  # the rasters before trimming them to the North Carolina boundary.
+  
+  if (!dir.exists(data.path)) {
+    stop(paste("Data path '", data.path, "' not found."))
+  }
+  
+  vars <- c("ppt", "tmax", "tmin")
+  
+  # Setup for yearly 4km resolution 
+  yrs <- c(2017, 2018, 2019)
+  pairs <- expand.grid(vars, yrs)
+  
+  # Setup for 30 year normal monthly 800m resolution
+  mnths <- sprintf("%02d", 1:12)
+  norm.pairs <- expand.grid(vars, mnths)
+  
+  ### Get Raster Data ######
+  cat("Getting explanatory Weather Rasters...\n")
+  
+  # Data documentation https://www.prism.oregonstate.edu/documents/PRISM_downloads_web_service.pdf
+  out.path <- file.path(data.path, "weather/")
+  dir.create(out.path, recursive = TRUE, showWarnings = FALSE)
+  
+  # 4km yearly data (for 2017-2019)
+  for (i in 1:nrow(pairs)) {
+    v <- pairs[i, 1]
+    y <- pairs[i, 2]
+    
+    dwnld.out <- file.path(out.path, paste0(v, "_", y, ".zip"))
+    dwnld.path <- file.path(out.path, paste0(v, "_", y))
+    
+    if (!dir.exists(dwnld.path)) {
+      url <- paste0("https://services.nacse.org/prism/data/public/4km/", v, "/", y)
+      cat(paste("Downloading weather data from", url, "...\n"))
+      download.file(url, dwnld.out)
+      cat(paste("Saved", v, "/", y, "to", dwnld.out, "\n"))
+      unzip(dwnld.out, exdir = dwnld.path)
+      cat(paste("Extracted", v, "/", y, "from", dwnld.out, "to", dwnld.path, "\n"))
+      file.remove(dwnld.out)
+    }
+  }
+  
+  # 800m monthly data (30 year normals)
+  for (i in 1:nrow(norm.pairs)) {
+    v <- norm.pairs[i, 1]
+    m <- norm.pairs[i, 2]
+    
+    dwnld.out <- file.path(out.path, paste0(v, "_", m, ".zip"))
+    dwnld.path <- file.path(out.path, paste0(v, "_", m))
+    
+    if (!dir.exists(dwnld.path)) {
+      url <- paste0("https://services.nacse.org/prism/data/public/normals/800m/", 
+                    v, "/", m)
+      cat(paste("Downloading weather data from", url, "...\n"))
+      download.file(url, dwnld.out)
+      cat(paste("Saved", v, "/", m, "to", dwnld.out, "\n"))
+      unzip(dwnld.out, exdir = dwnld.path)
+      cat(paste("Extracted", v, "/", m, "from", dwnld.out, "to", dwnld.path, "\n"))
+      file.remove(dwnld.out)
+    }
+  }
+  
+  cat("Finished.\n")
+}
+
+get.weather.data("../data")
+
 
 ```
 
@@ -653,6 +933,91 @@ print("Finished.)
 
 ```
 
+
+```{r, eval=F}
+
+library(sf)
+library(stars)
+library(terra)
+
+get.rasters.from.dir <- function(var, periods, out.path) {
+  rasters <- list()
+  for(p in periods) {
+    dir.path <- file.path(out.path, paste0(var, "_", p))
+    raster.file <- list.files(path = dir.path, pattern = paste0(var, "\\.bil$"),
+                              full.names = T)[1]
+    rasters[[p]] <- rast(raster.file)
+  }
+  return(rasters)
+}
+
+data.path <- "../data/weather"
+wspace <- "../data/weather/aggregated"
+if(!dir.exists(wspace)) {
+  dir.create(wspace)
+}
+max.temp.data <- "max_temp.tif"
+min.temp.data <- "min_temp.tif"
+avg.prcp.data <- "avg_prcp.tif"
+states <- c("CO", "NC", "OR", "VT")
+vars <- c("ppt", "tmax", "tmin")
+yrs <- 2017:2019
+pairs <- expand.grid(vars, yrs)
+
+mnths <- sprintf("%02d", 1:12)
+norm.pairs <- expand.grid(vars, mnths)
+
+for(v in vars) {
+  cat(paste0("Checking ", v, "...\n"))
+  out.path <- file.path(wspace, v)
+  if(!dir.exists(out.path)) {
+    dir.create(out.path)
+  }
+  raster.name <- ifelse(v == "tmax", max.temp.data, 
+                       ifelse(v == "tmin", min.temp.data, avg.prcp.data))
+  rasters <- get.rasters.from.dir(v, yrs, data.path)
+  agg.func <- switch(v,
+                     tmax = "max",
+                     tmin = "min",
+                     ppt = "mean")
+  
+  agg.rasters <- cellStats(do.call(stack, rasters), fun = agg.func)
+  writeRaster(agg.rasters, file = file.path(out.path, raster.name), 
+              format = "GTiff", overwrite = T)
+  cat(paste0("Finished aggregating ", v, " for all years.\n"))
+  
+  rasters <- get.rasters.from.dir(v, mnths, data.path)
+  norm.raster.name <- paste0(v, "_30yr_800m.tif")
+  agg.rasters <- cellStats(do.call(stack, rasters), fun = agg.func)
+  writeRaster(agg.rasters, file = file.path(out.path, norm.raster.name), 
+              format = "GTiff", overwrite = T)
+  
+  initial.weight.4km <- 3.0
+  initial.weight.800m <- 3.0 / 30.0
+  total.weight <- initial.weight.4km + initial.weight.800m
+  normalized.weight.4km <- initial.weight.4km / total.weight
+  normalized.weight.800m <- initial.weight.800m / total.weight
+  
+  combined.raster <- rast(file.path(out.path, raster.name)) * 
+    normalized.weight.4km + 
+    rast(file.path(out.path, norm.raster.name)) * 
+    normalized.weight.800m
+  writeRaster(combined.raster, 
+              file = file.path(out.path, paste0("aggregated_", raster.name)), 
+              format = "GTiff", overwrite = T)
+  
+  general.raster.preprocessing(
+    raster.name = paste0("weather/aggregated/", v),
+    out.raster.name = v,
+    out.path = "../data/weather",
+    wildcard = "agg*"
+  )
+}
+
+cat("Finished.\n")
+
+```
+
 ### Hydrography (Water Bodies & Coasts)
 
 Hydrography Pre-Processing Steps:
@@ -683,10 +1048,10 @@ convert_hydro_gdb()
     b.  Create binary values in waterbody and boundary datasets (waterbody data -\> 0, boundary data -\> 1)
     c.  Reproject CRS of both to EPSG:5070
     d.  Perform unary union on boundary data, calculate total bounds
-    e.  Get all points in US boundary using bounds and a resolution of 2500 meters
+    e.  Get all points in US boundary using bounds and a resolution of 5000 meters
     f.  Join points with water body data; Set oceans/great lakes to `nodata` using preset binary values
     g.  Set metadata and export waterbody data to raster
-    h.  Create "zones" based on distance from water bodies using binary dilation (i.e., on a water body is 1, 0 to 2500 meters away is 0.8, etc.)
+    h.  Create "zones" based on distance from water bodies using binary dilation (i.e., on a water body is 1, 0 to 5000 meters away is 0.8, etc.)
     i.  Output raster
 
 ```{python, eval=F}
@@ -703,7 +1068,7 @@ from scipy.ndimage import binary_dilation
 data_path = "../data"
 hyd_data_path = os.path.join(data_path, "hydrography")
 states = ["CO", "NC", "OR", "VT"]
-resolution = 2500  # in the same units as your CRS
+resolution = 5000  # in the same units as your CRS
 
 def update_array(arr):
     # Create a copy of the array to hold the updated values
@@ -830,7 +1195,7 @@ for state in states:
 ```
 
 3.  Load coast data
-  a.  Apply 5000 Meter buffer to lines to convert to polygons
+  a.  Apply 7500 Meter buffer to lines to convert to polygons
 
 ```{python, eval=F}
 
@@ -839,7 +1204,7 @@ import arcpy
 
 arcpy.analysis.Buffer("../data/hydrography/Coastline.shp", 
                       "../data/hydrography/Coastline_Buffer.shp", 
-                        "5000 Meters", dissolve_option="ALL")
+                        "7500 Meters", dissolve_option="ALL")
  
 ```
 
@@ -855,7 +1220,7 @@ from shapely.geometry import Point
 import numpy as np
 
 # Define your desired resolution
-resolution = 2500  # in the same units as your CRS
+resolution = 5000  # in the same units as your CRS
 
 # Load the coastline buffer shapefile
 coastline_buffer = gpd.read_file('../data/hydrography/Coastline_Buffer.shp')
@@ -913,6 +1278,19 @@ general_raster_preprocessing(
     wildcard="Coastline_Buffer*"
 )
  
+```
+
+
+```{r, eval=F}
+
+general.raster.preprocessing(
+    raster.name="hydrography", 
+    out.raster.name="coastline",
+    out.path="../data/hydrography",
+    wildcard="Coastline_Buffer*",
+    raster.scale=5000
+)
+
 ```
 
 ### Soil
@@ -986,6 +1364,54 @@ shp_to_raster(vector_ds, raster_fn, akey="MUSYM_CODE")
 
 ```
 
+```{r, eval=F}
+
+library(terra)
+library(sf)
+library(tidyverse)
+
+# Open the data source
+vector.ds <- "../data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp"
+raster.fn <- "../data/soil/raster/gsmsoilmu_a_us.tif"
+
+shp.to.raster <- function(vector.ds, raster.fn, akey) {
+  vec <- vect(vector.ds)
+  pixel.size <- 0.01  # Define this according to your needs
+  
+  ext <- ext(vec)
+  size.x <- ceiling((ext[2] - ext[1]) / pixel.size)
+  size.y <- ceiling((ext[4] - ext[3]) / pixel.size)
+
+  # Create the raster dataset
+  rast.ds <- rast(nrows=size.y, ncols=size.x, xmin=ext[1], xmax=ext[2], ymin=ext[3], ymax=ext[4])
+  proj <- crs(vec)
+  crs(rast.ds) <- proj
+  
+  # Rasterize
+  rast.ds <- rasterize(vec, rast.ds, field=akey, fun=max) # assuming we want to retain the max value where polygons overlap
+  writeRaster(rast.ds, raster.fn, overwrite=TRUE)
+}
+
+# Load the shapefile into an sf object
+gdf <- st_read("../data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp")
+
+# Create a tibble that maps each unique MUSYM to a unique integer
+musym.codes <- tibble(MUSYM = unique(gdf$MUSYM), MUSYM_CODE = 1:length(unique(gdf$MUSYM)))
+
+# Merge the MUSYM_CODE field into the sf object
+gdf <- left_join(gdf, musym.codes, by = "MUSYM")
+
+# Save the sf object back to a shapefile
+st_write(gdf, "../data/soil/codes/gsmsoilmu_a_us.shp", delete_dsn = TRUE)
+
+vector.ds <- "../data/soil/codes/gsmsoilmu_a_us.shp"
+raster.fn <- "../data/soil/raster/gsmsoilmu_a_us.tif"
+shp.to.raster(vector.ds, raster.fn, akey="MUSYM_CODE")
+
+
+```
+
+
 6.  Apply [general raster pre-Processing steps] to intermediate raster
 
 ```{python, eval=F}
@@ -994,6 +1420,17 @@ general_raster_preprocessing(
     raster_name="soil", 
     out_raster_name="soil",
     out_path="../data/soil"
+)
+
+```
+
+```{r, eval=F}
+
+general.raster.preprocessing(
+    raster.name="soil", 
+    out.raster.name="soil",
+    out.path="../data/soil",
+    resample.scale=5000
 )
 
 ```
@@ -1010,7 +1447,8 @@ Vegetation Index Pre-Processing Steps:
 for season in ["Spring", "Summer", "Fall", "Winter"]:
     try:
         print(f"Applying raster preprocessing for {season}...")
-        # Using the combined raster, apply "general raster preprocessing" (resample, reproject, mask)
+        # Using the combined raster, apply "general raster preprocessing" 
+        # (resample, reproject, mask)
         general_raster_preprocessing(
             raster_name=f"NDVI/US_eVSH_NDVI-{season}-2021", 
             out_raster_name=f"{season}_NDVI",
@@ -1021,6 +1459,33 @@ for season in ["Spring", "Summer", "Fall", "Winter"]:
     except Exception as e:
         print(f"An error occurred while processing {season}: {str(e)}")
 print("Finished.")
+
+```
+
+```{r, eval=F}
+
+library(sf)
+library(stars)
+library(terra)
+
+# Iterate through each season
+for (season in c("Spring", "Summer", "Fall", "Winter")) {
+  cat(paste0("Applying raster preprocessing for ", season, "...\n"))
+  tryCatch({
+    # Using the combined raster, apply "general raster preprocessing" 
+    # (resample, reproject, mask)
+    general.raster.preprocessing(
+      raster.name=paste0("NDVI/US_eVSH_NDVI-", season, "-2021"), 
+      out.raster.name=paste0(season, "_NDVI"),
+      out.path="../data/NDVI",
+      wildcard="*1KM.VI_NDVI*",
+      raster.type="TIF")
+    cat("-----------------\n")
+  }, error = function(e) {
+    cat(paste0("An error occurred while processing ", season, ": ", e$message, "\n"))
+  })
+}
+cat("Finished.\n")
 
 ```
 
@@ -1128,6 +1593,68 @@ file_paths_dict = get_file_paths_dict(verbose=True)
 
 ```
 
+```{r, eval=F}
+
+library(stringr)
+library(purrr)
+
+get.file.paths.list <- function(
+  base.path = "../data",
+  states = c("CO", "NC", "OR", "VT"),
+  categories = c(
+    "canopy/canopy_",
+    "dem/dem_",
+    "hydrography/coastline_",
+    "hydrography/Waterbody",
+    "land_cover/land_cover_",
+    "NDVI/Fall_NDVI_",
+    "NDVI/Spring_NDVI_",
+    "NDVI/Summer_NDVI_",
+    "NDVI/Winter_NDVI_",
+    "soil/soil_",
+    "urban_imperviousness/urban_imperviousness_",
+    "weather/ppt_",
+    "weather/tmax_",
+    "weather/tmin_"
+  ), verbose = F) {
+  
+  file.paths.list <- list()
+  
+  for(category in categories) {
+    category.name <- str_split(category, "/")[[1]][1]
+    filename.prefix <- str_split(category, "/")[[1]][2]
+    
+    for(state in states) {
+      if(filename.prefix == "Waterbody") {
+        file.path <- paste0(base.path, "/", category.name, "/", state, "_", filename.prefix, ".tif")
+      } else {
+        file.path <- paste0(base.path, "/", category, state, ".tif")
+      }
+      inner.key <- gsub("_$", "", filename.prefix)
+      file.paths.list[[category.name]][[inner.key]][[state]] <- file.path
+    }
+  }
+  
+  if(verbose) {
+    walk(file.paths.list, function(category) {
+      cat(names(category), ":\n")
+      walk(category, function(subcategory) {
+        cat("  ", names(subcategory), ":\n")
+        walk(subcategory, function(path, state) {
+          cat("    ", state, ": ", path, "\n")
+        })
+      })
+    })
+  }
+  
+  return(file.paths.list)
+}
+
+file.paths.list <- get.file.paths.list(verbose=T)
+
+
+```
+
 2.  Check for dimension conformity:
 
 ```{python, eval=F}
@@ -1167,6 +1694,30 @@ for category, subcategories in file_paths_dict.items():
 #         OR dimensions: (243, 285)
 #         VT dimensions: (114, 61)
 # ...
+
+```
+
+```{r, eval=F}
+
+library(terra)
+
+for(category in names(file.paths.list)) {
+  cat(category, ":\n")
+  
+  for(subcategory in names(file.paths.list[[category]])) {
+    cat("  ", subcategory, ":\n")
+    
+    for(state in names(file.paths.list[[category]][[subcategory]])) {
+      file.path <- file.paths.list[[category]][[subcategory]][[state]]
+      tryCatch({
+        raster <- rast(file.path)
+        cat("    ", state, " dimensions: ", dim(raster)[2:1], "\n")
+      }, error = function(e) {
+        cat("    ", state, ": Could not read file. ", conditionMessage(e), "\n")
+      })
+    }
+  }
+}
 
 ```
 
@@ -1224,7 +1775,8 @@ def resample_raster(src_path, dst_path, dst_crs, target, resampling=Resampling.n
 
     # Apply the mask in a separate step
     with rasterio.open(dst_path, 'r+') as dst:  # Open in read/write mode
-        out_image, out_transform = mask(dst, mask_geom, crop=True, nodata=dst.nodata)
+        out_image, out_transform = mask(dst, mask_geom, crop=True,
+                                        nodata=dst.nodata)
         dst.write(out_image)
         dst.transform = out_transform
 
@@ -1255,6 +1807,75 @@ print("Finished.")
 
 ```
 
+```{r, eval=F}
+
+library(sf)
+library(stars)
+library(terra)
+library(purrr)
+
+dst.crs <- "EPSG:5070"
+data.path <- "../data"
+
+resample.raster <- function(src.path, dst.path, dst.crs, target, 
+                            resampling = "nearest") {
+  
+  # Reading the target raster
+  tar <- rast(target)
+  
+  # Create the masking polygon from the target raster
+  ext <- ext(tar)
+  mask.geom <- st_as_sfc(st_bbox(c(ext[1], ext[3], ext[2], 
+                                   ext[4]), crs = crs(tar)))
+  
+  # Read the source raster
+  src <- rast(src.path)
+  
+  # Reprojecting the raster
+  reprojected.raster <- project(src, dst.crs, method = resampling)
+  
+  # Aligning the raster to match target dimensions
+  aligned.raster <- align(reprojected.raster, tar)
+  
+  # Applying the mask to the raster
+  masked.raster <- mask(aligned.raster, mask.geom)
+  
+  # Write to the destination file
+  writeRaster(masked.raster, dst.path)
+  
+}
+
+target.raster.list <- file.paths.list[["NDVI"]][["Fall_NDVI"]]
+outpath <- file.path(data.path, "rasters")
+dir.create(outpath, showWarnings = FALSE)
+
+walk2(file.paths.list, names(file.paths.list), function(categories, category.name) {
+  walk2(categories, names(categories), function(subcategories, subcategory.name) {
+    walk2(subcategories, names(subcategories), function(file.path, state) {
+      raster.name <- tools::file_path_sans_ext(basename(file.path))
+      cat("Resampling and transforming", raster.name, "...\n")
+      destination.raster <- file.path(outpath, raster.name, '.tif')
+      if(file.path == target.raster.list[[state]]) {
+        file.copy(file.path, destination.raster)
+      } else {
+        if(grepl("land_cover", raster.name) || grepl("soil", raster.name)) {
+          resampling.method <- "nearest"
+        } else {
+          resampling.method <- "bilinear"
+        }
+        resample.raster(file.path, destination.raster, dst.crs,
+                        target.raster.list[[state]], resampling.method)
+      }
+    })
+  })
+})
+
+cat("Fixing land cover NA values...\n")
+fix.lc.na(data.path = "../data/rasters", na.val = 0)
+cat("Finished.\n")
+
+```
+
 5.  Check that all shapes match (by state):
 
 ```{python, eval=F}
@@ -1274,6 +1895,31 @@ for file_name in os.listdir(folder_path):
         with rasterio.open(file_path) as src:
             # Print the shape of the raster file
             print(f'Shape of {file_name}: {src.shape}')
+
+```
+
+```{r, eval=F}
+
+library(fs)
+library(terra)
+
+folder.path <- '../data/rasters'
+
+# Get the list of files in the folder
+file.list <- fs::dir_ls(folder.path, regexp = "\\.tif$")
+
+# Loop through all the .tif files in the folder
+for (file.path in file.list) {
+  
+  # Open the raster file
+  raster.obj <- terra::rast(file.path)
+  
+  # Print the shape of the raster file
+  file.name <- fs::path_file(file.path)
+  cat(sprintf("Shape of %s: %s\n", file.name, 
+              paste0(dim(raster.obj), collapse = " x ")))
+}
+
 
 ```
 
@@ -1336,9 +1982,66 @@ for state in states:
 
 ```
 
-2.  Define pre-processed raster paths; Use `arcpy.sa.ExtractMultiValuesToPoints` to extract raster values to the points in the bird data
+```{r, eval=F}
+
+# Import libraries
+library(readr)  
+library(sf)
+library(dplyr)
+library(fs)    
+
+data.path <- '../data/'
+states <- c("CO", "NC", "OR", "VT")
+
+for (state in states) {
+  
+  input.name <- paste0("observations_", state, ".csv")
+  output.file <- paste0("observations_", state, ".shp")
+
+  cat(sprintf("Reading %s data...\n", state))
+
+  bird.data.path <- fs::path_join(c(data.path, input.name))
+  df <- readr::read_csv(bird.data.path)
+
+  # Convert the bird data to a sf object
+  cat(sprintf("Converting %s data to sf...\n", state))
+  geo.df <- st_as_sf(df, coords = c("longitude", "latitude"), crs = 4326)
+
+  # Define target CRS
+  target.crs <- "EPSG:5070"
+  cat(sprintf("Updating CRS for %s...\n", state))
+  
+  # If the bird data is not in the correct CRS, convert it
+  if (st_crs(geo.df) != target.crs) {
+    geo.df <- st_transform(geo.df, target.crs)
+  }
+
+  cat(sprintf("Getting centroid of %s data...\n", state))
+  # Get centroid of the entire sightings
+  centroid <- st_centroid(st_union(geo.df))
+
+  cat(sprintf("Calculating distances from centroid for %s...\n", state))
+  # Assign each point a distance attribute, being the distance from the centroid
+  geo.df$distance <- st_distance(geo.df, centroid)
+
+  cat(sprintf("Sorting by distance from centroid in %s data...\n", state))
+  # Sort the sf object by the distance attribute
+  geo.df <- geo.df %>% arrange(distance)
+
+  cat(sprintf("Saving %s data to %s...\n", state, output.file))
+  # Drop the distance attribute (we don't need it anymore)
+  geo.df$distance <- NULL
+  
+  st_write(geo.df, fs::path_join(c(data.path, output.file)))
+  
+  cat("--------------\n")
+}
+
+```
+
+4.  Define pre-processed raster paths; Use `arcpy.sa.ExtractMultiValuesToPoints` to extract raster values to the points in the bird data
     -   canopy, dem, coast, waterbody, land_cover, soil, urban_imp, avg_prcp, max_tmp, min_tmp, ndvi_spring, ndvi_summer, ndvi_fall, ndvi_winter
-3.  Use `arcpy.analysis.Select` to select points that have non-null raster values for all raster layers
+5.  Use `arcpy.analysis.Select` to select points that have non-null raster values for all raster layers
 
 ```{python no-null-obs, eval=F}
 
@@ -1420,8 +2123,87 @@ for state in states:
     
 ```
 
-4.  Perform One-Hot Encoding on species (`common_name`)
-5.  Export final result to .csv file
+```{r, eval=F}
+
+# Import libraries
+library(readr) 
+library(sf)   
+library(dplyr)   
+library(terra)  
+library(fs)
+
+data.path <- '../data/'
+
+states <- c("CO", "NC", "OR", "VT")
+
+for (state in states) {
+  
+  input.name <- paste0("observations_", state, ".shp")
+  out.name <- paste0("all_data_", state, ".shp")
+  output.no.null <- paste0("all_data_no_null_", state, ".shp")
+  csvfile <- fs::path_join(c(data.path, paste0("final_data_", state, ".csv")))
+  
+  raster.path <- fs::path_join(c(data.path, "rasters"))
+  
+  # Create a named list to store raster paths
+  raster.paths <- list()
+  
+  # Loop through all the files in the folder
+  for (file.name in fs::dir_ls(raster.path, regexp = paste0('.*', state, '.*\\.tif$'))) {
+    raster.name <- fs::path_file(file.name) %>%
+      fs::path_ext_remove() %>%
+      stringr::str_remove(paste0("(_", state, "|", state, "_)"))
+    raster.paths[[raster.name]] <- file.name
+  }
+
+  cat(sprintf("Extracting points to values for %s...\n", state))
+  
+  # Load observations shapefile
+  obs <- st_read(fs::path_join(c(data.path, input.name)))
+  
+  # Extract raster values to the points
+  for (r_name in names(raster.paths)) {
+    r <- terra::rast(raster.paths[[r_name]])
+    obs[[r_name]] <- terra::extract(r, obs)
+  }
+  
+  cat(sprintf("Selecting non-null points for %s...\n", state))
+  
+  # Select points that have non-null raster values for all raster layers
+  non_null_condition <- !rowSums(is.na(obs[names(raster.paths)])) 
+  obs_no_null <- obs[non_null_condition,]
+  
+  # Write to a shapefile
+  st_write(obs_no_null, fs::path_join(c(data.path, output.no.null)))
+  
+  # Save as CSV
+  cat(sprintf("Saving %s final data to csv...\n", state))
+  write_csv(as.data.frame(obs_no_null), csvfile)
+  
+  # Fix names
+  cat("Fixing column names...\n")
+  df <- read_csv(csvfile)
+  df <- df %>%
+    rename(
+      common_name = common_nam,
+      observations = observatio,
+      ndvi_spring = Spring_NDV,
+      ndvi_summer = Summer_NDV,
+      ndvi_winter = Winter_NDV,
+      ndvi_fall = Fall_NDVI,
+      urban_imperviousness = urban_impe
+    )
+  
+  write_csv(df, csvfile)
+  cat(sprintf('%s column names: %s\n', state, paste(names(df), collapse = ', ')))
+  cat("Finished.\n")
+  cat("--------------\n")
+}
+
+```
+
+6.  Perform One-Hot Encoding on species (`common_name`)
+7.  Export final result to .csv file
 
 ```{python final-data, eval=F}
 
@@ -1442,6 +2224,39 @@ for state in states:
     # Save the encoded DataFrame to a new CSV file
     encoded_csvfile = os.path.join(data_path, "encoded_data_" + state + ".csv")
     df_encoded.to_csv(encoded_csvfile, index=False)
+
+```
+
+```{r, eval=F}
+
+# Import libraries
+library(readr) 
+library(tidyr)   
+library(dplyr) 
+library(fs)
+
+for (state in states) {
+  
+  csvfile <- fs::path_join(c(data.path, paste0("final_data_", state, ".csv")))
+  
+  # Load the CSV file
+  df <- read_csv(csvfile)
+  
+  # Perform one-hot encoding on the "common_name" field
+  df.encoded <- df %>%
+    mutate(common.name = paste0("species_", tolower(common.name))) %>%
+    mutate(common.name = gsub(" ", "_", common.name)) %>%
+    mutate(common.name = gsub("-", "_", common.name)) %>%
+    pivot_wider(names_from = common.name, values_from = common.name, 
+                values_fill = list(common.name = 0), values_fn = length) %>%
+    bind_cols(df, .)
+  
+  # Save the encoded DataFrame to a new CSV file
+  encoded.csvfile <- fs::path_join(c(data.path, paste0("encoded_data_", state, ".csv")))
+  write_csv(df.encoded, encoded.csvfile)
+  
+  cat(sprintf("Processed and saved one-hot encoded data for %s.\n", state))
+}
 
 ```
 
@@ -1568,148 +2383,4 @@ for (state in c("CO", "NC", "OR", "VT")) {
 # Print plots
 plots_list$NC
 
-```
-
-```{r, include=F, eval=F}
-
-library(raster)
-library(ggplot2)
-library(sf)
-
-# Create a data frame with all combinations of states and variables
-pairs <- expand.grid(state = c("CO", "NC", "OR", "VT"),
-                     variable = c("urban_imperviousness", "tmin", "tmax", "ppt", "soil", "Summer_NDVI",
-                                  "Spring_NDVI", "Fall_NDVI", "Winter_NDVI", "Waterbody", "coastline", 
-                                  "land_cover", "canopy", "dem"))
-
-# Use pmap_df to iterate over the rows of the data frame
-map_df <- purrr::pmap_df(pairs, function(state, variable) {
-  variable <- as.character(variable)
-  if (variable == "Waterbody") {
-    fname <- paste0("../data/rasters/", state, "_", variable, ".tif")
-  } else {
-    fname <- paste0("../data/rasters/", variable, "_", state, ".tif")
-  }
-  map_file_name <- paste0("maps/", variable, "_", state, ".png")
-  
-  if (!file.exists(map_file_name)) {
-    # Load raster data
-    r <- raster(fname)
-    if (variable == "land_cover") {
-      na_value <- 128
-      rcl_matrix <- c(na_value, na_value, NA) # from_value, to_value, new_value (NA)
-      r <- reclassify(r, rcl_matrix, right='infinity', include.lowest=T)
-    }
-    
-    # Step 2: Convert the raster to a dataframe
-    df <- as.data.frame(r, xy = T)
-    df <- df %>% 
-      rename(!!sym(variable) := names(.)[3]) %>%
-      filter(!is.na(across(starts_with(names(.[3])))))
-    
-    if (variable == "land_cover") {
-      df[, 3] <- factor(df[, 3])
-      
-      # Custom palette with 16 distinct colors
-      custom_palette <- c("#1B1E28", "#263859", "#1D4E89", "#AAAAAA", "#227C84", "#27816B",
-                          "#006400", "#719546", "#A2843D", "#CCCDEF", "#228B22", "#013220",
-                          "#C42348", "#101010", "#701E7C", "#3C2484")
-      
-    }
-    
-    # Step 3: Plot the raster with ggplot2
-    p <- ggplot(df, aes(x = x, y = y, fill = !!sym(variable))) +
-      geom_tile() +
-      coord_equal() # This ensures that the plot doesn't get skewed
-    if (variable == "land_cover") {
-      p <- p + scale_fill_manual(values = custom_palette) 
-    } else {
-      p <- p + scale_fill_gradientn(colors = rev(viridis::viridis(256)), na.value = "transparent") 
-    }
-    p <- p + theme_minimal() +
-      theme(axis.title = element_blank(), # Remove axis titles
-            axis.text = element_blank(), # Remove axis text
-            axis.ticks = element_blank(), # Remove axis ticks
-            panel.grid.major = element_blank(), # Remove major grid
-            panel.grid.minor = element_blank(), # Remove minor grid
-            legend.position = "none", # Remove legend
-            plot.margin = unit(c(.1,.1,.1,.1), "cm")) + 
-      labs(title = paste0(state, " - ", gsub("_", " ", variable))) # Add title
-    
-    ggsave(map_file_name, p, dpi=400, scale=1.5, height=2)
-  }
-  data.frame(
-    state=state,
-    variable=variable,
-    map=map_file_name
-  )
-})
-
-```
-
-
-```{html, include=F, eval=F}
-<script>
-  // List of states and variables
-  let states = ["NC", "OR", "CO", "VT"];
-  let variables = [
-    "land_cover",
-    "coastline",
-    "canopy",
-    "dem",
-    "urban_imperviousness",
-    "tmin",
-    "tmax",
-    "ppt",
-    "soil",
-    "Summer_NDVI",
-    "Spring_NDVI",
-    "Fall_NDVI",
-    "Winter_NDVI",
-    "Waterbody",
-  ];
-
-  // Create dropdowns for state and variable
-  let stateDropdown = $("<select style='margin-left:41%;'></select>");
-  $.each(states, function (i, state) {
-    stateDropdown.append($("<option></option>").text(state));
-  });
-  $("body").append(stateDropdown);
-
-  let variableDropdown = $("<select style='margin-left:15px;'></select>");
-  $.each(variables, function (i, variable) {
-    variableDropdown.append($("<option></option>").text(variable));
-  });
-  $("body").append(variableDropdown);
-
-  // Create a div to hold the image
-  let mapDiv = $("<div style='width:60%; margin:25px; padding-top:15px; display: flex; justify-content: center; align-items:center; background:#eeeeee;'></div>");
-  $("body").append(mapDiv);
-
-  // Function to update the display based on the selected state and variable
-  function updateDisplay() {
-    let selectedState = stateDropdown.val();
-    let selectedVariable = variableDropdown.val();
-
-    // Create the filename for the png file
-    let pngFilename = `maps/${selectedVariable}_${selectedState}.png`;
-
-    // Remove the old image if it exists
-    mapDiv.empty();
-
-    // Create an img tag to embed the png file
-    let img = $("<img>")
-      .attr("src", pngFilename)
-      .attr("width", "90%")
-      .attr("height", "90%");
-    mapDiv.append(img);
-  }
-
-  // Event listeners for the dropdowns
-  stateDropdown.change(updateDisplay);
-  variableDropdown.change(updateDisplay);
-
-  // Initial display
-  updateDisplay();
-</script>
 ```
