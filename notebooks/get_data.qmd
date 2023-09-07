@@ -78,7 +78,7 @@ library(terra)
 shapefile_path <- "../data/US_State_Boundaries/US_State_Boundaries.shp"
 
 # Load the shapefile into an sf object
-gdf <- st_read(shapefile_path)
+gdf <- st_read(shapefile.path)
 
 # Transform the coordinate reference system to EPSG:5070
 gdf <- st_transform(gdf, crs = 5070)
@@ -512,7 +512,6 @@ general.raster.preprocessing(
   out.path = "../data/dem",
   resample.scale=5000
 )
-
 
 ```
 
