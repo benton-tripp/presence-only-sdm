@@ -277,10 +277,11 @@ fix.raster.na <- function(data.path,
   }
 }
 
+
 # Recursive function to list directories containing .adf files
 # Usage:
 # raster.directories <- list.raster.dirs.recursive("your_start_directory_path")
-list.rasters.recursive <- function(directory.path) {
+list.adf.rasters.recursive <- function(directory.path) {
   
   # List all directories recursively
   all.dirs <- list.dirs(directory.path, recursive = T, full.names = T)
@@ -326,7 +327,7 @@ general.raster.preprocessing <- function(
                           full.names = T)
   } else {
     # List directories containing .adf files
-    rasters <- list.rasters.recursive(data.path)
+    rasters <- list.adf.rasters.recursive(data.path)
   }
   
   cat("Rasters:", paste(rasters, collapse=", "), "\n")
@@ -492,7 +493,7 @@ combine.dem.parts <- function(dem.dir = "data/dem/raw_dem",
   out.name <- file.path(output.dir, paste0(output.raster.name, ".tif"))
   
   # Get list of rasters recursively
-  rasters <- list.rasters.recursive(dem.dir)
+  rasters <- list.adf.rasters.recursive(dem.dir)
   
   # Read the first raster
   cat("1: Reading first raster from", rasters[1], "out of", 
@@ -991,163 +992,69 @@ cat("Finished NDVI pre-processing.\n")
 # Final Pre-Processing Steps (Ensuring Shape/Size Conformity)
 
 
-get.file.paths.list <- function(
-    base.path = "data",
-    states = c("CO", "NC", "OR", "VT"),
-    categories = c(
-      "canopy/canopy_",
-      "dem/dem_",
-      "hydrography/coastline_",
-      "hydrography/Waterbody",
-      "land_cover/land_cover_",
-      "NDVI/Fall_NDVI_",
-      "NDVI/Spring_NDVI_",
-      "NDVI/Summer_NDVI_",
-      "NDVI/Winter_NDVI_",
-      "soil/soil_",
-      "urban_imperviousness/urban_imperviousness_",
-      "weather/ppt_",
-      "weather/tmax_",
-      "weather/tmin_"
-    ), verbose = F) {
+# Function to intersect two extents
+intersect.extents <- function(ext1, ext2) {
+  xmin <- max(ext1[1], ext2[1])
+  xmax <- min(ext1[2], ext2[2])
+  ymin <- max(ext1[3], ext2[3])
+  ymax <- min(ext1[4], ext2[4])
   
-  file.paths.list <- list()
+  if (xmin > xmax | ymin > ymax) {
+    stop("The extents do not overlap!")
+  }
   
-  for(category in categories) {
-    category.name <- str_split(category, "/")[[1]][1]
-    filename.prefix <- str_split(category, "/")[[1]][2]
+  ext(c(xmin, xmax, ymin, ymax))
+}
+
+if (!all(file.exists(paste0("data/final_rasters/", states, ".tif")))) {
+  all.rasters <- map(states, function(s) {
+    files <- list.files("data", pattern=paste0("_", s, "\\.tif$"), 
+                        recursive=T, full.names=T)
     
-    for(state in states) {
-      if(filename.prefix == "Waterbody") {
-        file.path <- paste0(base.path, "/", category.name, "/", state,
-                            "_", filename.prefix, ".tif")
-      } else {
-        file.path <- paste0(base.path, "/", category, state, ".tif")
-      }
-      inner.key <- gsub("_$", "", filename.prefix)
-      file.paths.list[[category.name]][[inner.key]][[state]] <- file.path
-    }
-  }
-  
-  if(verbose) {
-    walk(file.paths.list, function(category) {
-      cat(names(category), ":\n")
-      walk(category, function(subcategory) {
-        cat("  ", names(subcategory), ":\n")
-        walk(subcategory, function(path, state) {
-          cat("    ", state, ": ", path, "\n")
-        })
-      })
-    })
-  }
-  
-  return(file.paths.list)
-}
-
-file.paths.list <- get.file.paths.list(verbose=T)
-
-for(category in names(file.paths.list)) {
-  cat(category, ":\n")
-  
-  for(subcategory in names(file.paths.list[[category]])) {
-    cat("  ", subcategory, ":\n")
+    rasters <- map(files, ~rast(.x))
     
-    for(state in names(file.paths.list[[category]][[subcategory]])) {
-      file.path <- file.paths.list[[category]][[subcategory]][[state]]
-      tryCatch({
-        raster <- rast(file.path)
-        cat("    ", state, " dimensions: ", dim(raster)[2:1], "\n")
-      }, error = function(e) {
-        cat("    ", state, ": Could not read file. ", conditionMessage(e), "\n")
-      })
-    }
-  }
-}
-
-
-dst.crs <- "EPSG:5070"
-data.path <- "data"
-
-resample.raster <- function(src.path, dst.path, dst.crs, target, 
-                            resampling = "nearest") {
-  
-  # Reading the target raster
-  tar <- rast(target)
-  
-  # Create the masking polygon from the target raster
-  ext <- ext(tar)
-  mask.geom <- st_as_sfc(st_bbox(c(ext[1], ext[3], ext[2], 
-                                   ext[4]), crs = crs(tar)))
-  
-  # Read the source raster
-  src <- rast(src.path)
-  
-  # Reprojecting the raster
-  reprojected.raster <- project(src, dst.crs, method = resampling)
-  
-  # Aligning the raster to match target dimensions
-  aligned.raster <- align(reprojected.raster, tar)
-  
-  # Applying the mask to the raster
-  masked.raster <- mask(aligned.raster, mask.geom)
-  
-  # Write to the destination file
-  writeRaster(masked.raster, dst.path)
-  
-}
-
-target.raster.list <- file.paths.list[["NDVI"]][["Fall_NDVI"]]
-outpath <- file.path(data.path, "rasters")
-dir.create(outpath, showWarnings = FALSE)
-
-walk2(file.paths.list, names(file.paths.list), function(categories, category.name) {
-  walk2(categories, names(categories), function(subcategories, subcategory.name) {
-    walk2(subcategories, names(subcategories), function(file.path, state) {
-      raster.name <- tools::file_path_sans_ext(basename(file.path))
-      cat("Resampling and transforming", raster.name, "...\n")
-      destination.raster <- file.path(outpath, raster.name, '.tif')
-      if(file.path == target.raster.list[[state]]) {
-        file.copy(file.path, destination.raster)
-      } else {
-        if(grepl("land_cover", raster.name) || grepl("soil", raster.name)) {
-          resampling.method <- "nearest"
-        } else {
-          resampling.method <- "bilinear"
-        }
-        resample.raster(file.path, destination.raster, dst.crs,
-                        target.raster.list[[state]], resampling.method)
-      }
-    })
+    # Get extent intersect, and update raster extents
+    extents <- map(rasters, ~ext(.x) %>% as.vector())
+    ext.intersect <- reduce(extents, intersect.extents)
+    rasters <- map(rasters, ~crop(.x, ext.intersect))
+    
+    # Align all rasters to common grid
+    rasters <- map(rasters[2:length(rasters)], ~project(.x, rasters[[1]]))
+    
+    # Check extents, resolutions, and CRS of each raster
+    extents <- map(rasters, ~ext(.x) %>% as.vector())
+    resolutions <- map(rasters, ~res(.x))
+    .crs <- map(rasters, ~crs(.x))
+    
+    # Set names
+    .names <- map_chr(rasters, ~names(.x))
+    names(files) <- .names
+    names(rasters) <- .names
+    names(extents) <- .names
+    names(resolutions) <- .names
+    names(.crs) <- .names
+    # Return list
+    list(
+      files=files,
+      rasters=rasters %>% reduce(c), # Make raster stack
+      ext=extents,
+      ext.intersect=ext.intersect,
+      res=resolutions,
+      crs=.crs,
+      names=.names
+    )
   })
-})
-
-cat("Fixing land cover NA values...\n")
-fix.lc.na(data.path = "data/rasters", na.val = 0)
-cat("Finished.\n")
-
-
-
-folder.path <- 'data/rasters'
-
-# Get the list of files in the folder
-file.list <- fs::dir_ls(folder.path, regexp = "\\.tif$")
-
-# Loop through all the .tif files in the folder
-for (file.path in file.list) {
   
-  # Open the raster file
-  raster.obj <- terra::rast(file.path)
+  names(all.rasters) <- states
   
-  # Print the shape of the raster file
-  file.name <- fs::path_file(file.path)
-  cat(sprintf("Shape of %s: %s\n", file.name, 
-              paste0(dim(raster.obj), collapse = " x ")))
+  if (!dir.exists("data/final_rasters")) dir.create("data/final_rasters")
+  walk(states, ~writeRaster(all.rasters[[.x]]$rasters, 
+                            paste0("data/final_rasters/", .x, ".tif"),
+                            overwrite=T))
 }
-
 
 
 data.path <- 'data/'
-states <- c("CO", "NC", "OR", "VT")
 
 for (state in states) {
   
