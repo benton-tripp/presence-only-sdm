@@ -1,8 +1,11 @@
 <PAMDataset>
   <PAMRasterBand band="1">
-    <Description>dem_NC</Description>
+    <Description>coastline_NC</Description>
   </PAMRasterBand>
   <PAMRasterBand band="2">
+    <Description>dem_NC</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="3">
     <Description>NLCD_Land</Description>
     <GDALRasterAttributeTable tableType="thematic">
       <FieldDefn index="0">
@@ -173,22 +176,22 @@
       </Row>
     </GDALRasterAttributeTable>
   </PAMRasterBand>
-  <PAMRasterBand band="3">
+  <PAMRasterBand band="4">
     <Description>Fall_NDVI_NC</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="4">
+  <PAMRasterBand band="5">
     <Description>Spring_NDVI_NC</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="5">
+  <PAMRasterBand band="6">
     <Description>Summer_NDVI_NC</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="6">
+  <PAMRasterBand band="7">
     <Description>Winter_NDVI_NC</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="7">
+  <PAMRasterBand band="8">
     <Description>urban_imperviousness_NC</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="8">
+  <PAMRasterBand band="9">
     <Description>waterbody_NC</Description>
   </PAMRasterBand>
 </PAMDataset>

@@ -879,67 +879,63 @@ if (!all(file.exists(paste0("data/waterbody/waterbody_", states, ".tif")))) {
 
 # COASTLINE ---------------------------------------------------------------
 
+# Convert coastline shapefile to raster
+process.coastline.shp <- function(out.path,
+                                  data.path="data/hydrography",
+                                  states=c("CO", "VT", "NC", "OR")) {
+  out.file <- file.path(out.path, 'Coastline.tif')
+  if (!file.exists(out.file)) {
+    if (!dir.exists(out.path)) dir.create(out.path)
+    
+    cat("Cleaning coastline data...\n")
+    
+    # Read data
+    gdf <- st_read(file.path(data.path, 'Coastline.shp'))
+    
+    # Reproject
+    cat("Reprojecting...\n")
+    gdf <- st_transform(gdf, crs = 5070)
+    
+    # Buffer
+    cat("Buffering coastline vectors...\n")
+    gdf <- st_buffer(gdf, dist = 500)
+    
+    gdf$coastline <- 1
+    
+    cat("Converting to raster using template...\n")
+    
+    # Initialize raster resolution at 1km prior to dilation
+    # (will be updated to desired resolution)
+    template.raster <- ext(gdf) %>% 
+      rast(res=rep(1e3, 2), crs=crs(gdf))
+    
+    r <- terra::rasterize(gdf, template.raster, 
+                          field="coastline", values=1, background=0)
+    
+    # Add dilation
+    r.updated <- update.wb.array(r)
+    
+    # Save raster
+    terra::writeRaster(r.updated, out.file, overwrite=T)
+  }
+}
 
-# Set file paths
-input.path <- "data/hydrography/Coastline.shp"
-output.path <- "data/hydrography/Coastline.Buffer.shp"
 
-# Read the shapefile
-coastline <- st_read(input.path)
+process.coastline.shp(out.path=file.path(ext.data.path, "coastline"),
+                      data.path=file.path(ext.data.path, "hydrography"))
 
-# Create buffer
-coastline.buffer <- st_buffer(coastline, dist = 7500)
+# Apply General Raster Pre-Processing to Waterbodies
+if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="coastline", 
+    out.path="data/coastline",
+    out.raster.name="coastline",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
+}
 
-# Merge all buffered features into a single feature
-coastline.buffer.merged <- st_union(coastline.buffer)
-
-# Write the buffered feature back to a shapefile
-st_write(coastline.buffer.merged, output.path)
-
-cat("Buffer operation completed.\n")
-
-
-# Define your desired resolution
-resolution <- 5000
-
-# Load the coastline buffer shapefile
-coastline.buffer <- st_read('data/hydrography/Coastline_Buffer.shp')
-
-# Reproject the coastline buffer to the desired CRS
-coastline.buffer <- st_transform(coastline.buffer, crs = 5070)
-
-# Determine the extent of the coastline buffer
-ext <- st_bbox(coastline.buffer)
-
-# Create a grid of points within this extent
-grid <- expand.grid(x = seq(ext$xmin, ext$xmax, by = resolution), 
-                    y = seq(ext$ymin, ext$ymax, by = resolution))
-
-# Convert to sf object
-points <- st_as_sf(grid, coords = c("x", "y"), crs = 5070)
-
-# Assign each point a value based on whether it falls within the coastline buffer polygon or not
-points$is.buffer <- as.integer(st_within(points, coastline.buffer))
-
-# Convert to stars object
-raster.grid <- st_rasterize(points)
-
-# Define the output filename
-out.fn <- 'data/hydrography/Coastline_Buffer_Raster.tif'
-
-# Save to raster file
-write_stars(raster.grid, out.fn, driver = "GTiff", overwrite = T)
-
-# Message
-cat("Raster file created successfully!\n")
-
-general.raster.preprocessing(
-  raster.name="hydrography", 
-  out.raster.name="coastline",
-  out.path="data/hydrography",
-  wildcard="Coastline_Buffer*",
-  raster.scale=5000
-)
 
 
 
