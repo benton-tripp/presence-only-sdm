@@ -583,17 +583,45 @@ if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
   )
 }
 
+# VEGETATION INDEX --------------------------------------------------------
+
+# Iterate through each season
+for (season in c("Spring", "Summer", "Fall", "Winter")) {
+  if (!all(file.exists(file.path("data/NDVI", paste0(season, "_NDVI_", 
+                                                     states, ".tif"))))) {
+    cat(paste0("Applying raster preprocessing for ", season, "...\n"))
+    tryCatch({
+      # Using the combined raster, apply "general raster preprocessing" 
+      # (resample, reproject, mask)
+      
+      general.raster.preprocessing(
+        data.path=ext.data.path,
+        raster.name=paste0("NDVI/US_eVSH_NDVI-", season, "-2021"), 
+        out.raster.name=paste0(season, "_NDVI"),
+        out.path="data/NDVI",
+        wildcard="*1KM\\.VI_NDVI.*\\.tif$",
+        resolution=5000)
+      cat("-----------------\n")
+    }, error = function(e) {
+      cat(paste0("An error occurred while processing ", season, ": ", e$message, "\n"))
+    })
+  }
+}
 
 # CANOPY ------------------------------------------------------------------
 
-# Using the combined raster, apply "general raster preprocessing" 
-# (resample, reproject, mask)
-general.raster.preprocessing(
-  raster.name="canopy/nlcd_2016_treecanopy_2019_08_31", 
-  out.raster.name="canopy",
-  out.path="data/canopy",
-  resolution=5000
-)
+# Apply "general raster preprocessing" 
+
+if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="canopy/nlcd_tcc_CONUS_2016_v2021-4", 
+    out.raster.name="canopy",
+    out.path="data/canopy",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
+}
 
 # WEATHER -----------------------------------------------------------------
 
@@ -748,107 +776,108 @@ for(v in vars) {
 cat("Finished weather data pre-processing.\n")
 
 
-# HYDROGRAPHY (WATER BODIES AND COASTS) ------------------------------------
+# HYDROGRAPHY PREPROCESSING ------------------------------------
 
 convert.hydro.gdb <- function(data.path = "data/hydrography/",
                               gdb.name = "hydrusm010g.gdb_nt00897/hydrusm010g.gdb",
                               data.sets = c("Coastline", "Waterbody"),
                               output.path = "data/hydrography/") {
-  
+  if (!dir.exists(output.path)) dir.create(output.path)
+  gdb.path <- file.path(data.path, gdb.name)
   # Iterate over each dataset and convert
   for (ds in data.sets) {
-    gdb.path <- file.path(data.path, gdb.name, ds)
-    
-    # Check if the path exists before trying to read it
-    if (dir.exists(gdb.path)) {
+    out.file <- file.path(output.path, paste0(ds, ".shp"))
+    if (!file.exists(out.file)) {
       # Read the geodatabase layer using st_read
       data <- st_read(dsn = file.path(data.path, gdb.name), layer = ds, quiet = T)
-      
       # Write the shapefile
-      st_write(obj = data, dsn = file.path(output.path, paste0(ds, ".shp")), 
-               quiet = T)
-      
+      st_write(obj = data, dsn = out.file, quiet = T)
       cat(sprintf("Converted %s from geodatabase to shapefile.\n", ds))
-    } else {
-      cat(sprintf("Cannot find the dataset %s at %s\n", ds, gdb.path))
     }
+  } 
+}
+
+convert.hydro.gdb(data.path=file.path(ext.data.path, "hydrography"),
+                  output.path=file.path(ext.data.path, "hydrography")) %>%
+  suppressWarnings()
+
+
+# WATERBODY ---------------------------------------------------------------
+
+update.wb.array <- function(r) {
+  r.updated <- copy(r)
+  
+  w <- matrix(1,3,3)
+  # Perform the dilation operation multiple times
+  dilated1 <- terra::focal(r, w = w, fun = max)
+  dilated2 <- terra::focal(dilated1, w =w, fun = max)
+  dilated3 <- terra::focal(dilated2, w = w, fun = max)
+  dilated4 <- terra::focal(dilated3, w = w, fun = max)
+  
+  r.updated[dilated4 == 1] <- 0.2
+  r.updated[dilated3 == 1] <- 0.4
+  r.updated[dilated2 == 1] <- 0.6
+  r.updated[dilated1 == 1] <- 0.8
+  r.updated[r == 1] <- 1
+  
+  return(r.updated)
+}
+
+# Convert waterbody shapefile to raster
+process.waterbody.shp <- function(out.path,
+                                  data.path="data/hydrography",
+                                  states=c("CO", "VT", "NC", "OR")) {
+  out.file <- file.path(out.path, 'Waterbody.tif')
+  if (!file.exists(out.file)) {
+    if (!dir.exists(out.path)) dir.create(out.path)
+    
+    cat("Cleaning waterbody data...\n")
+    gdf <- st_read(file.path(data.path, 'Waterbody.shp'))
+    
+    # Filter out records where Feature == "Lake Dry"
+    gdf <- gdf %>% filter(Feature != "Lake Dry")
+    
+    gdf$waterbody <- 1
+    
+    cat("Reprojecting...\n")
+    gdf <- st_transform(gdf, crs = 5070)
+    
+    cat("Converting to raster using template...\n")
+    
+    # Initialize raster resolution at 1km prior to dilation
+    # (will be updated to desired resolution)
+    template.raster <- ext(gdf) %>% 
+      rast(res=rep(1e3, 2), crs=crs(gdf))
+    
+    r <- terra::rasterize(gdf, template.raster, 
+                               field="waterbody", values=1, background=0)
+    
+    # Add dilation
+    r.updated <- update.wb.array(r)
+    
+    # Save raster
+    terra::writeRaster(r.updated, out.file, overwrite=T)
   }
 }
 
-convert.hydro.gdb()
+process.waterbody.shp(out.path=file.path(ext.data.path, "waterbody"),
+                      data.path=file.path(ext.data.path, "hydrography"))
 
-
-data.path <- "data"
-hyd.data.path <- file.path(data.path, "hydrography")
-states <- c("CO", "NC", "OR", "VT")
-resolution <- 5000  # in the same units as your CRS
-
-update.array <- function(arr) {
-  arr.updated <- matrix(as.numeric(NA), nrow = nrow(arr), ncol = ncol(arr))
-  
-  # Perform the dilation operation multiple times
-  dilated1 <- terra::focal(arr, w = matrix(1,3,3), fun = max)
-  dilated2 <- terra::focal(dilated1, w = matrix(1,3,3), fun = max)
-  dilated3 <- terra::focal(dilated2, w = matrix(1,3,3), fun = max)
-  dilated4 <- terra::focal(dilated3, w = matrix(1,3,3), fun = max)
-  
-  arr.updated[dilated1 == 1 & arr != 1] <- 0.8
-  arr.updated[dilated2 == 1 & dilated1 != 1] <- 0.6
-  arr.updated[dilated3 == 1 & dilated2 != 1] <- 0.4
-  arr.updated[dilated4 == 1 & dilated3 != 1] <- 0.2
-  arr.updated[arr == -1] <- -1
-  arr.updated[arr == 1] <- 1
-  
-  return(arr.updated)
+# Apply General Raster Pre-Processing to Waterbodies
+if (!all(file.exists(paste0("data/waterbody/waterbody_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="waterbody", 
+    out.path="data/waterbody",
+    out.raster.name="waterbody",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
 }
 
-cat("Reading waterbody data...\n")
-gdf <- st_read(file.path(hyd.data.path, 'Waterbody.shp'))
 
-# Filter out records where Feature == "Lake Dry"
-gdf <- gdf %>% filter(Feature != "Lake Dry")
 
-# Overwrite the original shapefile
-st_write(gdf, file.path(hyd.data.path, 'Waterbody.shp'))
-
-gdf$raster.value <- 0
-
-for (state in states) {
-  cat(paste("Reading", state, "boundary data...\n"))
-  state.boundary <- st_read(file.path(data.path, paste0(state, "_State_Boundaries.shp")))
-  
-  state.boundary$raster.value <- 1
-  
-  cat("Reprojecting...\n")
-  gdf <- st_transform(gdf, crs = 5070)
-  state.boundary <- st_transform(state.boundary, crs = 5070)
-  
-  cat("Combining US states...\n")
-  state.boundary <- st_union(state.boundary)
-  
-  bounds <- st_bbox(state.boundary)
-  
-  xs <- seq(from = bounds["xmin"], to = bounds["xmax"], by = resolution)
-  ys <- seq(from = bounds["ymin"], to = bounds["ymax"], by = resolution)
-  grid.points <- expand.grid(xs, ys) %>%
-    st_as_sf(coords = c("Var1", "Var2"), crs = 5070) %>%
-    rename(X = Var1, Y = Var2)
-  
-  grid.points$is.within.bounds <- as.integer(st_within(grid.points, state.boundary))
-  grid.points$is.water <- as.integer(st_within(grid.points, gdf))
-  grid.points[is.na(grid.points$is.water), "is.water"] <- -1
-  grid.points <- grid.points %>%
-    select(-X, -Y) %>%
-    st_as_sf()
-  
-  raster <- st_rasterize(grid.points)
-  raster.updated <- update.array(raster)
-  
-  out.fn <- file.path(hyd.data.path, paste0(state, "_Waterbody.tif"))
-  terra::writeRaster(raster.updated, out.fn, overwrite = TRUE)
-  
-  cat(paste("Writing final raster for", state, "...\n"))
-}
+# COASTLINE ---------------------------------------------------------------
 
 
 # Set file paths
@@ -963,28 +992,6 @@ general.raster.preprocessing(
   resolution=5000
 )
 
-
-# VEGETATION INDEX --------------------------------------------------------
-
-# Iterate through each season
-for (season in c("Spring", "Summer", "Fall", "Winter")) {
-  cat(paste0("Applying raster preprocessing for ", season, "...\n"))
-  tryCatch({
-    # Using the combined raster, apply "general raster preprocessing" 
-    # (resample, reproject, mask)
-    general.raster.preprocessing(
-      data.path=ext.data.path,
-      raster.name=paste0("NDVI/US_eVSH_NDVI-", season, "-2021"), 
-      out.raster.name=paste0(season, "_NDVI"),
-      out.path="data/NDVI",
-      wildcard="*1KM\\.VI_NDVI.*\\.tif$",
-      resolution=5000)
-    cat("-----------------\n")
-  }, error = function(e) {
-    cat(paste0("An error occurred while processing ", season, ": ", e$message, "\n"))
-  })
-}
-cat("Finished NDVI pre-processing.\n")
 
 
 # FINAL PRE-PROCESSING STEPS ----------------------------------------------
