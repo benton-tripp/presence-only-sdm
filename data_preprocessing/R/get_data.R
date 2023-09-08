@@ -402,6 +402,9 @@ general.raster.preprocessing <- function(
           rm(reprojected.raster)
           gc()
           
+          # Rename final raster
+          names(resampled.raster) <- paste0(out.raster.name, "_", state)
+          
           # Save raster
           cat("\tSaving to", state.out.file, "\n")
           writeRaster(resampled.raster, state.out.file)
@@ -550,30 +553,34 @@ if (!all(file.exists(paste0("data/dem/dem_", states, ".tif")))) {
 
 # URBAN IMPERVIOUSNESS ----------------------------------------------------
 
-# Use the combined raster for the general raster pre-processing
-general.raster.preprocessing(
-  data.path = ext.data.path,
-  raster.name="urban_imperviousness", 
-  out.raster.name="urban_imperviousness",
-  out.path="data/urban_imperviousness",
-  resolution=5000,
-  wildcard="\\.tif$"
-)
+if (!all(file.exists(paste0("data/urban_imperviousness/urban_imperviousness_", 
+                            states, ".tif")))) {
+  # Use the combined raster for the general raster pre-processing
+  general.raster.preprocessing(
+    data.path = ext.data.path,
+    raster.name="urban_imperviousness", 
+    out.raster.name="urban_imperviousness",
+    out.path="data/urban_imperviousness",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
+}
 
 
 # LAND COVER --------------------------------------------------------------
 
-# Using the combined raster, apply "general raster preprocessing" 
-# (resample, reproject, mask)
-general.raster.preprocessing(
-  data.path = ext.data.path,
-  raster.name="land_cover/nlcd_2019_land_cover_l48_20210604", 
-  out.raster.name="land_cover",
-  out.path="data/land_cover",
-  resolution=5000,
-  wildcard="\\.tif$",
-  agg="modal"
-)
+if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
+  # Apply "general raster preprocessing" 
+  general.raster.preprocessing(
+    data.path = ext.data.path,
+    raster.name="land_cover/nlcd_2019_land_cover_l48_20210604", 
+    out.raster.name="land_cover",
+    out.path="data/land_cover",
+    resolution=5000,
+    wildcard="\\.tif$",
+    agg="modal"
+  )
+}
 
 
 # CANOPY ------------------------------------------------------------------
@@ -586,7 +593,6 @@ general.raster.preprocessing(
   out.path="data/canopy",
   resolution=5000
 )
-
 
 # WEATHER -----------------------------------------------------------------
 
