@@ -1,7 +1,6 @@
 
 ### Getting the Data - Bird Species Observations and Environmental Rasters
 
-
 # SETUP -------------------------------------------------------------------
 
 # Load necessary libraries
@@ -17,7 +16,7 @@ library(purrr)
 library(stringr)
 library(fs)
 
-setwd("C:/users/bento/gis630_data_preprocessing")
+setwd("C:/users/bento/gis630/data_preprocessing")
 
 # Hard coded path for data saved in external hard drive
 ext.data.path <- "D:/AvianAnalyticsData"
@@ -94,27 +93,24 @@ if (!all(file.exists(output.paths))) {
 # -   Wild Turkey
 
 # Species Observation Data Pre-Processing Steps:
-# 1.  Download each of the regions from the eBird Download Page 
+# 1. Download each of the regions from the eBird Download Page 
 # (https://ebird.org/data/download), filtered by date range (you will 
 # need to request access annually). They will initially be downloaded 
 # as compressed folders, so the contents will need to be extracted. 
 # There is also an eBird API, but the use of the API is beyond the 
 # scope of this project.
-# 2.  Using the R `auk` package (https://cornelllabofornithology.github.io/auk/), 
-# the contents can be filtered and saved within the project data directory:
+# 2. Using the R `auk` package (https://cornelllabofornithology.github.io/auk/), 
+# the contents can be filtered and saved within the project data directory.
 
-auk_set_ebd_path("data", overwrite = T)
 
-# Specify where your eBird datasets were downloaded to
-ebird.download.dir <- "data/ebird_downloads"
+# Specify where your eBird datasets were downloaded to;
+ebird.download.dirs <- list.dirs(file.path(ext.data.path, "ebird_downloads"))[-1]
 
-if (!dir.exists(ebird.download.dir)) {
-  dir.create(ebird.download.dir)
-}
+# Specify where the outputs should be saved
+ebird.output.dir <- file.path(ext.data.path, "ebird")
 
-for (sa in states) {
-  dname <- file.path(ebird.download.dir, sa)
-  if (!dir.exists(dname)) dir.create(dname)
+if (!dir.exists(ebird.output.dir)) {
+  dir.create(ebird.output.dir)
 }
 
 # Define species
@@ -124,64 +120,108 @@ species <- c("Sandhill Crane", "Sharp-shinned Hawk",
              "Belted Kingfisher", "Ruddy Duck")
 
 # Parse eBird downloads
-for (dir in list.dirs(ebird.download.dir)[-1]) {
+for (dir in ebird.download.dirs) {
+  # Set the path to EBD text files
+  # auk_set_ebd_path(dir, overwrite = T)
+  cat("Processing species observation data at", dir, "\n")
   # List .txt files that start with "ebd_"
-  in.file <- list.files(path = dir, pattern = "^ebd_.*\\.txt$", full.names = T)[[1]]
+  in.files <- list.files(path = dir, pattern = "^ebd_.*\\.txt$", full.names = T)
+
+  .sampl <- in.files[grepl("*sampling\\.txt$", in.files)]
+  in.file <- in.files[!grepl("*sampling\\.txt$", in.files)]
+  
   # Use regular expression to extract state abbreviation
   state.abbreviation <- sub(".*_US-([A-Z]{2})_.*", "\\1", in.file)
-  out.file <- paste0("data/", state.abbreviation, ".txt")
-  # Read in the filtered data using the `auk` library, saving to `out.file`
-  auk_ebd(in.file) %>%
-    auk_species(species = species) %>% 
-    auk_filter(file = out.file, overwrite=T, execute=T)
+  out.file <- file.path(ebird.output.dir, paste0(state.abbreviation, ".txt"))
+  
+  out.sampling.file <- file.path(ebird.output.dir, 
+                                 paste0("sampling_", state.abbreviation, ".txt"))
+  if (!file.exists(out.file) & !file.exists(out.sampling.file)) {
+    # Read in the filtered data using the `auk` library, saving to `out.file`
+    auk_ebd(in.file, .sampl) %>%
+      auk_species(species = species) %>% 
+      auk_complete() %>% # Add this to keep only complete checklists
+      auk_filter(file = out.file, file_sampling = out.sampling.file, 
+                 overwrite=T, execute=T)
+    
+    # Remove "Problem" records
+    df <- readr::read_delim(out.file, delim = "\t", 
+                            show_col_types = F) %>% 
+      suppressWarnings()
+    df.samp <- readr::read_delim(out.sampling.file, delim = "\t", 
+                                 show_col_types = F) %>%
+      suppressWarnings()
+    p <- problems(df)
+    p.s <- problems(df.samp)
+    if (nrow(p) > 0) {
+      df <- df %>% slice(-p$row)
+      readr::write_delim(df, out.file, delim="\t")
+    }
+    if (nrow(p.s) > 0) {
+      df.samp <- df.samp %>% slice(-p$row)
+      readr::write_delim(df.samp, out.sampling.file, delim="\t")
+    }
+  }
 }
 
-# Show examples (NC data)
-# 
-# Import kable and leaflet
-# library(kable)
-# library(leaflet)
-# 
-# readr::read_delim("data/NC.txt", delim = "\t") %>%
-#   group_by(`COMMON NAME`) %>%
-#   summarize(count = n()) %>%
-#   kable()
-#   
-# 
-# # Read in sample data
-# nc.shc <- readr::read_delim("data/NC.txt", delim = "\t") %>%
-#   dplyr::filter(`COMMON NAME` == "Sandhill Crane")
-# 
-# leaflet(nc.shc) %>%
-#   addTiles() %>%  # This adds the OpenStreetMap tiles
-#   addMarkers(~LONGITUDE, ~LATITUDE) %>%
-#   setView(lng = mean(nc.shc$LONGITUDE), lat = mean(nc.shc$LATITUDE), zoom = 7) %>%
-#   addProviderTiles(providers$Stamen.Toner)
-
+# PREPROCESS OBSERVATION DATA ---------------------------------------------
 
 # Some basic pre-processing
 preprocess.obs <- function(data.path) {
-  data <- readr::read_delim(data.path, delim = "\t")
-  names(data) <- gsub(" ", "_", tolower(names(data)))
+  data <- readr::read_delim(data.path, delim = "\t", show_col_types = F) %>%
+    suppressMessages()
+  names(data) <- gsub(" ", "\\.", tolower(names(data)))
   data <- data %>%
-    filter(approved == 1) %>%
-    dplyr::select(common_name, observation_count, latitude, longitude) %>%
-    group_by(common_name, latitude, longitude) %>%
-    summarize(observation_count = sum(as.numeric(observation_count), na.rm=T)) %>%
+    filter(approved == 1 & observation.count != "X") %>%
+    dplyr::select(common.name, observation.count, latitude, longitude) %>%
+    group_by(common.name, latitude, longitude) %>%
+    summarize(observation.count = sum(as.numeric(observation.count), na.rm=T),
+              .groups="keep") %>%
     ungroup() %>%
     as.data.table()
   return(data)
 }
 
+ebird.path <- "data/ebird"
+if (!dir.exists(ebird.path)) dir.create(ebird.path)
+
 obs <- purrr::map(states, function(.x) {
-  out <- preprocess.obs(paste0("data/", .x, ".txt"))
-  fwrite(out, paste0("data/observations_", .x, ".csv"))
+  cat("Getting preprocessed observation data in", .x, "\n")
+  out.file <- file.path(ebird.path, paste0(.x, ".csv"))
+  if (!file.exists(out.file)) {
+    out <- preprocess.obs(file.path(ebird.output.dir, paste0(.x, ".txt")))
+    fwrite(out, out.file)
+  } else {
+    out <- fread(out.file)
+  }
   out
 })
 
 names(obs) <- states
 
+# Example 1: (NC data)
+knitr::kable(obs$NC[, .(.N), by=.(common.name)])
 
+# |common.name        |     N|
+# |:------------------|-----:|
+# |Belted Kingfisher  | 15460|
+# |Cedar Waxwing      | 15904|
+# |Downy Woodpecker   | 45310|
+# |Ruddy Duck         |  3405|
+# |Sanderling         |  4955|
+# |Sandhill Crane     |   377|
+# |Sharp-shinned Hawk |  4126|
+# |Wild Turkey        |  8674|
+
+# Example 2: NC Sandhill Crane Map
+nc.shc <- obs$NC[common.name == "Sandhill Crane"]
+
+leaflet::leaflet(nc.shc) %>%
+  leaflet::addTiles() %>%  # This adds the OpenStreetMap tiles
+  leaflet::addMarkers(~longitude, ~latitude) %>%
+  leaflet::setView(lng = mean(nc.shc$longitude), 
+                   lat = mean(nc.shc$latitude), zoom = 7) %>%
+  leaflet::addProviderTiles(leaflet::providers$Stamen.Toner)
 
 # RASTER PREPROCESSING ----------------------------------------------------
 # General Raster Pre-Processing Steps
