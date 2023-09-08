@@ -33,7 +33,7 @@ theme: readable
     -   [Hydrography (Water Bodies & Coast) \| Source Page](https://apps.nationalmap.gov/downloader/#/)
         -   [Download](https://prd-tnm.s3.amazonaws.com/StagedProducts/Small-scale/data/Hydrography/hydrusm010g.gdb_nt00897.tar.gz)
     -   [Soil \| Source Page](https://www.nrcs.usda.gov/resources/data-and-reports/gridded-national-soil-survey-geographic-database-gnatsgo)
-        -   [Download](https://nrcs.app.box.com/v/soils/folder/191790828371)
+        -   [Download](https://nrcs.app.box.com/v/soils/file/1122196282596)
     -   Vegetation Index
         -   [USGS Earth Explorer](https://earthexplorer.usgs.gov/) (eVIIRS NDVI, 02/23/21-03/08/21 1km; 05/04/21-05/17/21 1km; 09/07/21-09/20/21 1km; 11/30/21-12/13/21 1km)
 

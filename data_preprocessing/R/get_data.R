@@ -941,8 +941,61 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
 
 # SOIL --------------------------------------------------------------------
 
+# Convert soil shapefile to raster
+process.soil.shp <- function(out.path,
+                             data.path="data/soil",
+                             states=c("CO", "VT", "NC", "OR")) {
+  out.file <- file.path(out.path, 'Soil.tif')
+  if (!file.exists(out.file)) {
+    if (!dir.exists(out.path)) dir.create(out.path)
+    
+    cat("Cleaning soil data...\n")
+    
+    # Read data
+    gdf <- st_read(
+      file.path(
+        data.path, 
+        'wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp'
+      )
+    )
+    
+    # Reproject
+    cat("Reprojecting...\n")
+    gdf <- st_transform(gdf, crs = 5070)
+    
+    
+    cat("Converting to raster using template...\n")
+    
+    # Initialize raster resolution at 1km prior to dilation
+    # (will be updated to desired resolution)
+    template.raster <- ext(gdf) %>% 
+      rast(res=rep(1e3, 2), crs=crs(gdf))
+
+    r <- terra::rasterize(gdf, template.raster)
+    
+    # Save raster
+    terra::writeRaster(r.updated, out.file, overwrite=T)
+  }
+}
+
+
+process.soil.shp(out.path=file.path(ext.data.path, "soil"),
+                 data.path=file.path(ext.data.path, "soil"))
+
+# Apply General Raster Pre-Processing to Waterbodies
+if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="coastline", 
+    out.path="data/coastline",
+    out.raster.name="coastline",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
+}
+
 # Open the data source
-vector.ds <- "data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp"
+vector.ds <- "data/soil/"
 raster.fn <- "data/soil/raster/gsmsoilmu_a_us.tif"
 
 shp.to.raster <- function(vector.ds, raster.fn, akey) {
