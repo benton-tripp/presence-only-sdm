@@ -189,9 +189,21 @@
     <Description>Winter_NDVI_NC</Description>
   </PAMRasterBand>
   <PAMRasterBand band="8">
-    <Description>urban_imperviousness_NC</Description>
+    <Description>avg_prcp_NC</Description>
   </PAMRasterBand>
   <PAMRasterBand band="9">
+    <Description>soil_NC</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="10">
+    <Description>tmax_NC</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="11">
+    <Description>tmin_NC</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="12">
+    <Description>urban_imperviousness_NC</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="13">
     <Description>waterbody_NC</Description>
   </PAMRasterBand>
 </PAMDataset>

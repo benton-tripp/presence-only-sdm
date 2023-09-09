@@ -189,6 +189,18 @@
     <Description>Winter_NDVI_OR</Description>
   </PAMRasterBand>
   <PAMRasterBand band="8">
+    <Description>avg_prcp_OR</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="9">
+    <Description>soil_OR</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="10">
+    <Description>tmax_OR</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="11">
+    <Description>tmin_OR</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="12">
     <Description>urban_imperviousness_OR</Description>
     <GDALRasterAttributeTable tableType="thematic">
       <FieldDefn index="0">
@@ -932,7 +944,7 @@
       </Row>
     </GDALRasterAttributeTable>
   </PAMRasterBand>
-  <PAMRasterBand band="9">
+  <PAMRasterBand band="13">
     <Description>waterbody_OR</Description>
   </PAMRasterBand>
 </PAMDataset>

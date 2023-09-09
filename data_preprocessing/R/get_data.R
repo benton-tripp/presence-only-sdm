@@ -172,9 +172,10 @@ preprocess.obs <- function(data.path) {
     suppressMessages()
   names(data) <- gsub(" ", "\\.", tolower(names(data)))
   data <- data %>%
-    filter(approved == 1 & observation.count != "X") %>%
-    dplyr::select(common.name, observation.count, latitude, longitude) %>%
-    group_by(common.name, latitude, longitude) %>%
+    filter(observation.date >= as.Date("2010-01-01") & 
+             approved == 1 & observation.count != "X") %>%
+    dplyr::select(common.name, observation.count, latitude, longitude) %>% #observation.date
+    group_by(common.name, latitude, longitude) %>% 
     summarize(observation.count = sum(as.numeric(observation.count), na.rm=T),
               .groups="keep") %>%
     ungroup() %>%
@@ -199,29 +200,68 @@ obs <- purrr::map(states, function(.x) {
 
 names(obs) <- states
 
-# Example 1: (NC data)
-knitr::kable(obs$NC[, .(.N), by=.(common.name)])
-
+# > knitr::kable(obs$CO[, .(.N), by=.(common.name)])
+# 
 # |common.name        |     N|
 # |:------------------|-----:|
-# |Belted Kingfisher  | 15460|
-# |Cedar Waxwing      | 15904|
-# |Downy Woodpecker   | 45310|
-# |Ruddy Duck         |  3405|
-# |Sanderling         |  4955|
-# |Sandhill Crane     |   377|
-# |Sharp-shinned Hawk |  4126|
-# |Wild Turkey        |  8674|
+# |Belted Kingfisher  | 10929|
+# |Cedar Waxwing      |  8998|
+# |Downy Woodpecker   | 20673|
+# |Ruddy Duck         |  3868|
+# |Sanderling         |   319|
+# |Sandhill Crane     |  4191|
+# |Sharp-shinned Hawk |  5402|
+# |Wild Turkey        |  6531|
 
-# Example 2: NC Sandhill Crane Map
-nc.shc <- obs$NC[common.name == "Sandhill Crane"]
+# > knitr::kable(obs$NC[, .(.N), by=.(common.name)])
+# 
+# |common.name        |     N|
+# |:------------------|-----:|
+# |Belted Kingfisher  | 15022|
+# |Cedar Waxwing      | 15496|
+# |Downy Woodpecker   | 44576|
+# |Ruddy Duck         |  3325|
+# |Sanderling         |  4810|
+# |Sandhill Crane     |   363|
+# |Sharp-shinned Hawk |  3905|
+# |Wild Turkey        |  8473|
 
-leaflet::leaflet(nc.shc) %>%
-  leaflet::addTiles() %>%  # This adds the OpenStreetMap tiles
-  leaflet::addMarkers(~longitude, ~latitude) %>%
-  leaflet::setView(lng = mean(nc.shc$longitude), 
-                   lat = mean(nc.shc$latitude), zoom = 7) %>%
-  leaflet::addProviderTiles(leaflet::providers$Stamen.Toner)
+# > knitr::kable(obs$OR[, .(.N), by=.(common.name)])
+# 
+# |common.name        |     N|
+# |:------------------|-----:|
+# |Belted Kingfisher  | 16217|
+# |Cedar Waxwing      | 23769|
+# |Downy Woodpecker   | 23319|
+# |Ruddy Duck         |  5127|
+# |Sanderling         |  1388|
+# |Sandhill Crane     |  6203|
+# |Sharp-shinned Hawk |  6917|
+# |Wild Turkey        |  7002|
+
+# > knitr::kable(obs$VT[, .(.N), by=.(common.name)])
+# 
+# |common.name        |     N|
+# |:------------------|-----:|
+# |Belted Kingfisher  |  5390|
+# |Cedar Waxwing      | 10775|
+# |Downy Woodpecker   | 14525|
+# |Ruddy Duck         |   153|
+# |Sanderling         |    78|
+# |Sandhill Crane     |   281|
+# |Sharp-shinned Hawk |  2059|
+# |Wild Turkey        |  6099|
+
+
+# NC Sandhill Crane Map
+# nc.shc <- obs$NC[common.name == "Sandhill Crane"]
+# 
+# leaflet::leaflet(nc.shc) %>%
+#   leaflet::addTiles() %>%  # This adds the OpenStreetMap tiles
+#   leaflet::addMarkers(~longitude, ~latitude) %>%
+#   leaflet::setView(lng = mean(nc.shc$longitude), 
+#                    lat = mean(nc.shc$latitude), zoom = 7) %>%
+#   leaflet::addProviderTiles(leaflet::providers$Stamen.Toner)
 
 # RASTER PREPROCESSING ----------------------------------------------------
 # General Raster Pre-Processing Steps
@@ -623,18 +663,15 @@ if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
   )
 }
 
-# WEATHER -----------------------------------------------------------------
+# DOWNLOAD WEATHER RASTERS ------------------------------------------------
 
-get.weather.data <- function(data.path) {
-  # Downloads and processes weather raster data for specified variables and 
-  # years at a 4km resolution 
-  # and 30-year monthly normals at an 800m resolution. The function downloads,
-  #  aggregates, and resamples 
-  # the rasters before trimming them to the North Carolina boundary.
+# Downloads and processes weather raster data for specified variables and 
+# years at a 4km resolution and 30-year monthly normals at an 800m resolution.
+get.weather.data <- function(data.path,
+                             out.dir="weather") {
   
-  if (!dir.exists(data.path)) {
-    stop(paste("Data path '", data.path, "' not found."))
-  }
+  out.path <- file.path(data.path, out.dir)
+  if (!dir.exists(out.path)) dir.create(out.path)
   
   vars <- c("ppt", "tmax", "tmin")
   
@@ -649,9 +686,8 @@ get.weather.data <- function(data.path) {
   ### Get Raster Data ######
   cat("Getting explanatory Weather Rasters...\n")
   
-  # Data documentation https://www.prism.oregonstate.edu/documents/PRISM_downloads_web_service.pdf
-  out.path <- file.path(data.path, "weather/")
-  dir.create(out.path, recursive = TRUE, showWarnings = FALSE)
+  # Data documentation:
+  # https://www.prism.oregonstate.edu/documents  /PRISM_downloads_web_service.pdf
   
   # 4km yearly data (for 2017-2019)
   for (i in 1:nrow(pairs)) {
@@ -662,13 +698,14 @@ get.weather.data <- function(data.path) {
     dwnld.path <- file.path(out.path, paste0(v, "_", y))
     
     if (!dir.exists(dwnld.path)) {
+      dir.create(dwnld.path)
       url <- paste0("https://services.nacse.org/prism/data/public/4km/", v, "/", y)
       cat(paste("Downloading weather data from", url, "...\n"))
       download.file(url, dwnld.out)
       cat(paste("Saved", v, "/", y, "to", dwnld.out, "\n"))
       unzip(dwnld.out, exdir = dwnld.path)
       cat(paste("Extracted", v, "/", y, "from", dwnld.out, "to", dwnld.path, "\n"))
-      file.remove(dwnld.out)
+      # file.remove(dwnld.out)
     }
   }
   
@@ -688,93 +725,131 @@ get.weather.data <- function(data.path) {
       cat(paste("Saved", v, "/", m, "to", dwnld.out, "\n"))
       unzip(dwnld.out, exdir = dwnld.path)
       cat(paste("Extracted", v, "/", m, "from", dwnld.out, "to", dwnld.path, "\n"))
-      file.remove(dwnld.out)
+      # file.remove(dwnld.out)
     }
   }
   
   cat("Finished getting weather data.\n")
 }
 
-get.weather.data("data")
+get.weather.data(ext.data.path)
 
 
+# AGGREGATE WEATHER RASTERS ------------------------------------------------------
 
-get.rasters.from.dir <- function(var, periods, out.path) {
-  rasters <- list()
-  for(p in periods) {
-    dir.path <- file.path(out.path, paste0(var, "_", p))
-    raster.file <- list.files(path = dir.path, pattern = paste0(var, "\\.bil$"),
-                              full.names = T)[1]
-    rasters[[p]] <- rast(raster.file)
+aggregate.weather <- function(data.path,
+                              raster.dir="weather",
+                              out.dir="weather/aggregated",
+                              states=c("CO", "NC", "OR", "VT"),
+                              vars=c("ppt", "tmax", "tmin"),
+                              yrs=2017:2019) {
+  out.path <- file.path(data.path, out.dir)
+  raster.path <- file.path(data.path, raster.dir)
+  if (!dir.exists(out.path)) dir.create(out.path)
+  
+  max.temp.data <- "max_temp.tif"
+  min.temp.data <- "min_temp.tif"
+  avg.prcp.data <- "avg_prcp.tif"
+  
+  pairs <- expand.grid(vars, yrs)
+  mnths <- sprintf("%02d", 1:12)
+  norm.pairs <- expand.grid(vars, mnths)
+  
+  for(v in vars) {
+    raster.name <- ifelse(v == "tmax", max.temp.data, 
+                          ifelse(v == "tmin", min.temp.data, 
+                                 avg.prcp.data))
+    v.agg.file <-  file.path(out.path, paste0("aggregated_", raster.name))
+    if (!file.exists(v.agg.file)) {
+      
+      cat(paste0("Checking ", v, "...\n"))
+      v.path <- file.path(out.path, v)
+      agg.func <- switch(v,
+                         tmax = max,
+                         tmin = min,
+                         ppt = mean,
+                         function(x) x) # default to just return the value
+      
+      # Yearly rasters
+      rasters <- list.files(raster.path, full.names=T, 
+                            recursive=T, pattern="ppt_stable_4km.*\\.bil$")
+      r <- rast(rasters)
+      agg.r <- terra::app(r, fun=agg.func)
+      
+      # Monthly rasters
+      norm.rasters <- list.files(raster.path, full.names=T, 
+                                 recursive=T, pattern="ppt_30yr.*\\.bil$")
+      
+      r.norm <- rast(norm.rasters)
+      agg.r.norm <- terra::app(r.norm, fun=agg.func)
+      
+      # Aggregate with weights
+      initial.weight.4km <- 3.0
+      initial.weight.800m <- 3.0 / 30.0
+      total.weight <- initial.weight.4km + initial.weight.800m
+      normalized.weight.4km <- initial.weight.4km / total.weight
+      normalized.weight.800m <- initial.weight.800m / total.weight
+      
+      # Resample to match res
+      agg.r.resampled <- resample(agg.r, agg.r.norm, method="bilinear")
+
+      combined.raster <- (agg.r.resampled * normalized.weight.4km) + 
+        (agg.r.norm * normalized.weight.800m)
+      
+      # Write result
+      writeRaster(combined.raster, 
+                  file = v.agg.file, 
+                  overwrite = T)
+    }
   }
-  return(rasters)
+  
+  cat("Finished weather data pre-processing.\n")
 }
 
-data.path <- "data/weather"
-wspace <- "data/weather/aggregated"
-if(!dir.exists(wspace)) {
-  dir.create(wspace)
-}
-max.temp.data <- "max_temp.tif"
-min.temp.data <- "min_temp.tif"
-avg.prcp.data <- "avg_prcp.tif"
-states <- c("CO", "NC", "OR", "VT")
-vars <- c("ppt", "tmax", "tmin")
-yrs <- 2017:2019
-pairs <- expand.grid(vars, yrs)
+aggregate.weather(ext.data.path)
 
-mnths <- sprintf("%02d", 1:12)
-norm.pairs <- expand.grid(vars, mnths)
 
-for(v in vars) {
-  cat(paste0("Checking ", v, "...\n"))
-  out.path <- file.path(wspace, v)
-  if(!dir.exists(out.path)) {
-    dir.create(out.path)
-  }
-  raster.name <- ifelse(v == "tmax", max.temp.data, 
-                        ifelse(v == "tmin", min.temp.data, avg.prcp.data))
-  rasters <- get.rasters.from.dir(v, yrs, data.path)
-  agg.func <- switch(v,
-                     tmax = "max",
-                     tmin = "min",
-                     ppt = "mean")
-  
-  agg.rasters <- cellStats(do.call(stack, rasters), fun = agg.func)
-  writeRaster(agg.rasters, file = file.path(out.path, raster.name), 
-              format = "GTiff", overwrite = T)
-  cat(paste0("Finished aggregating ", v, " for all years.\n"))
-  
-  rasters <- get.rasters.from.dir(v, mnths, data.path)
-  norm.raster.name <- paste0(v, "_30yr_800m.tif")
-  agg.rasters <- cellStats(do.call(stack, rasters), fun = agg.func)
-  writeRaster(agg.rasters, file = file.path(out.path, norm.raster.name), 
-              format = "GTiff", overwrite = T)
-  
-  initial.weight.4km <- 3.0
-  initial.weight.800m <- 3.0 / 30.0
-  total.weight <- initial.weight.4km + initial.weight.800m
-  normalized.weight.4km <- initial.weight.4km / total.weight
-  normalized.weight.800m <- initial.weight.800m / total.weight
-  
-  combined.raster <- rast(file.path(out.path, raster.name)) * 
-    normalized.weight.4km + 
-    rast(file.path(out.path, norm.raster.name)) * 
-    normalized.weight.800m
-  writeRaster(combined.raster, 
-              file = file.path(out.path, paste0("aggregated_", raster.name)), 
-              format = "GTiff", overwrite = T)
-  
+# AVERAGE PRECIPITATION ---------------------------------------------------
+
+# Apply General Raster Pre-Processing to precipitation
+if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
   general.raster.preprocessing(
-    raster.name = paste0("weather/aggregated/", v),
-    out.raster.name = v,
-    out.path = "data/weather",
-    wildcard = "agg*"
+    data.path=ext.data.path,
+    raster.name="weather/aggregated", 
+    out.path="data/prcp",
+    out.raster.name="avg_prcp",
+    resolution=5000,
+    wildcard="avg_prcp\\.tif$"
   )
 }
 
-cat("Finished weather data pre-processing.\n")
+# MINIMUM TEMPERATURE -----------------------------------------------------
 
+# Apply General Raster Pre-Processing to minimum temp
+if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="weather/aggregated", 
+    out.path="data/tmin",
+    out.raster.name="tmin",
+    resolution=5000,
+    wildcard="min_temp\\.tif$"
+  )
+}
+
+# MAXIMUM TEMPERATURE -----------------------------------------------------
+
+# Apply General Raster Pre-Processing to maximum temp
+if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="weather/aggregated", 
+    out.path="data/tmax",
+    out.raster.name="tmax",
+    resolution=5000,
+    wildcard="max_temp\\.tif$"
+  )
+}
 
 # HYDROGRAPHY PREPROCESSING ------------------------------------
 
@@ -924,7 +999,7 @@ process.coastline.shp <- function(out.path,
 process.coastline.shp(out.path=file.path(ext.data.path, "coastline"),
                       data.path=file.path(ext.data.path, "hydrography"))
 
-# Apply General Raster Pre-Processing to Waterbodies
+# Apply General Raster Pre-Processing to coastline
 if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
   general.raster.preprocessing(
     data.path=ext.data.path,
@@ -941,112 +1016,23 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
 
 # SOIL --------------------------------------------------------------------
 
-# Convert soil shapefile to raster
-process.soil.shp <- function(out.path,
-                             data.path="data/soil",
-                             states=c("CO", "VT", "NC", "OR")) {
-  out.file <- file.path(out.path, 'Soil.tif')
-  if (!file.exists(out.file)) {
-    if (!dir.exists(out.path)) dir.create(out.path)
-    
-    cat("Cleaning soil data...\n")
-    
-    # Read data
-    gdf <- st_read(
-      file.path(
-        data.path, 
-        'wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp'
-      )
-    )
-    
-    # Reproject
-    cat("Reprojecting...\n")
-    gdf <- st_transform(gdf, crs = 5070)
-    
-    
-    cat("Converting to raster using template...\n")
-    
-    # Initialize raster resolution at 1km prior to dilation
-    # (will be updated to desired resolution)
-    template.raster <- ext(gdf) %>% 
-      rast(res=rep(1e3, 2), crs=crs(gdf))
-
-    r <- terra::rasterize(gdf, template.raster)
-    
-    # Save raster
-    terra::writeRaster(r.updated, out.file, overwrite=T)
-  }
-}
-
-
-process.soil.shp(out.path=file.path(ext.data.path, "soil"),
-                 data.path=file.path(ext.data.path, "soil"))
-
-# Apply General Raster Pre-Processing to Waterbodies
-if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
+# Apply General Raster Pre-Processing to Soil
+if (!all(file.exists(paste0("data/soil/soil_", states, ".tif")))) {
   general.raster.preprocessing(
     data.path=ext.data.path,
-    raster.name="coastline", 
-    out.path="data/coastline",
-    out.raster.name="coastline",
+    raster.name="soil/FY2023_gNATSGO_mukey_grid", 
+    out.path="data/soil",
+    out.raster.name="soil",
     resolution=5000,
-    wildcard="\\.tif$"
+    wildcard="\\.tif$",
+    agg="modal"
   )
 }
-
-# Open the data source
-vector.ds <- "data/soil/"
-raster.fn <- "data/soil/raster/gsmsoilmu_a_us.tif"
-
-shp.to.raster <- function(vector.ds, raster.fn, akey) {
-  vec <- vect(vector.ds)
-  pixel.size <- 0.01  # Define this according to your needs
-  
-  ext <- ext(vec)
-  size.x <- ceiling((ext[2] - ext[1]) / pixel.size)
-  size.y <- ceiling((ext[4] - ext[3]) / pixel.size)
-  
-  # Create the raster dataset
-  rast.ds <- rast(nrows=size.y, ncols=size.x, xmin=ext[1], xmax=ext[2], 
-                  ymin=ext[3], ymax=ext[4])
-  proj <- crs(vec)
-  crs(rast.ds) <- proj
-  
-  # Rasterize
-  rast.ds <- rasterize(vec, rast.ds, field=akey, fun=max) # assuming we want to retain the max value where polygons overlap
-  writeRaster(rast.ds, raster.fn, overwrite=T)
-}
-
-# Load the shapefile into an sf object
-gdf <- st_read("data/soil/wss_gsmsoil_US_[2016-10-13]/spatial/gsmsoilmu_a_us.shp")
-
-# Create a tibble that maps each unique MUSYM to a unique integer
-musym.codes <- tibble(MUSYM = unique(gdf$MUSYM), 
-                      MUSYM_CODE = 1:length(unique(gdf$MUSYM)))
-
-# Merge the MUSYM_CODE field into the sf object
-gdf <- left_join(gdf, musym.codes, by = "MUSYM")
-
-# Save the sf object back to a shapefile
-st_write(gdf, "data/soil/codes/gsmsoilmu_a_us.shp", delete_dsn = T)
-
-vector.ds <- "data/soil/codes/gsmsoilmu_a_us.shp"
-raster.fn <- "data/soil/raster/gsmsoilmu_a_us.tif"
-shp.to.raster(vector.ds, raster.fn, akey="MUSYM_CODE")
-
-general.raster.preprocessing(
-  raster.name="soil", 
-  out.raster.name="soil",
-  out.path="data/soil",
-  resolution=5000
-)
-
 
 
 # FINAL PRE-PROCESSING STEPS ----------------------------------------------
 
 # Final Pre-Processing Steps (Ensuring Shape/Size Conformity)
-
 
 # Function to intersect two extents
 intersect.extents <- function(ext1, ext2) {
@@ -1062,6 +1048,7 @@ intersect.extents <- function(ext1, ext2) {
   ext(c(xmin, xmax, ymin, ymax))
 }
 
+# Get all rasters
 if (!all(file.exists(paste0("data/final_rasters/", states, ".tif")))) {
   all.rasters <- map(states, function(s) {
     files <- list.files("data", pattern=paste0("_", s, "\\.tif$"), 
@@ -1109,121 +1096,67 @@ if (!all(file.exists(paste0("data/final_rasters/", states, ".tif")))) {
                             overwrite=T))
 }
 
-
-data.path <- 'data/'
-
+# Combine rasters and observations
 for (state in states) {
   
-  input.name <- paste0("observations_", state, ".csv")
-  output.file <- paste0("observations_", state, ".shp")
+  input.file <- file.path("data", "ebird", paste0(state, ".csv"))
+  output.file <- file.path("data", "ebird", paste0(state, ".shp"))
   
-  cat(sprintf("Reading %s data...\n", state))
-  
-  bird.data.path <- fs::path_join(c(data.path, input.name))
-  df <- readr::read_csv(bird.data.path)
-  
-  # Convert the bird data to a sf object
-  cat(sprintf("Converting %s data to sf...\n", state))
-  geo.df <- st_as_sf(df, coords = c("longitude", "latitude"), crs = 4326)
-  
-  # Define target CRS
-  target.crs <- "EPSG:5070"
-  cat(sprintf("Updating CRS for %s...\n", state))
-  
-  # If the bird data is not in the correct CRS, convert it
-  if (st_crs(geo.df) != target.crs) {
+  if (!file.exists(output.file)) {
+    cat(sprintf("Reading %s data...\n", state))
+    
+    df <- fread(input.file)
+    
+    # Convert the bird data to a sf object
+    cat(sprintf("Converting %s data to sf...\n", state))
+    geo.df <- st_as_sf(df, coords = c("longitude", "latitude"), crs = 4326)
+    
+    # Define target CRS and update
+    target.crs <- "EPSG:5070"
+    cat(sprintf("Updating CRS for %s...\n", state))
     geo.df <- st_transform(geo.df, target.crs)
+    
+    # Get centroid of the entire sightings
+    cat(sprintf("Getting centroid of %s data...\n", state))
+    centroid <- st_centroid(st_union(geo.df))
+    
+    # Assign each point a distance attribute, being the distance from the centroid
+    cat(sprintf("Calculating distances from centroid for %s...\n", state))
+    geo.df$distance <- st_distance(geo.df, centroid)
+    
+    # Sort the sf object by the distance attribute
+    cat(sprintf("Sorting by distance from centroid in %s data...\n", state))
+    geo.df <- geo.df %>% arrange(distance)
+    
+    # Drop the distance attribute 
+    cat(sprintf("Saving %s data to %s...\n", state, output.file))
+    geo.df$distance <- NULL
+    
+    st_write(geo.df, output.file) %>% suppressWarnings()
+    cat("--------------\n")
   }
   
-  cat(sprintf("Getting centroid of %s data...\n", state))
-  # Get centroid of the entire sightings
-  centroid <- st_centroid(st_union(geo.df))
-  
-  cat(sprintf("Calculating distances from centroid for %s...\n", state))
-  # Assign each point a distance attribute, being the distance from the centroid
-  geo.df$distance <- st_distance(geo.df, centroid)
-  
-  cat(sprintf("Sorting by distance from centroid in %s data...\n", state))
-  # Sort the sf object by the distance attribute
-  geo.df <- geo.df %>% arrange(distance)
-  
-  cat(sprintf("Saving %s data to %s...\n", state, output.file))
-  # Drop the distance attribute (we don't need it anymore)
-  geo.df$distance <- NULL
-  
-  st_write(geo.df, fs::path_join(c(data.path, output.file)))
-  
-  cat("--------------\n")
-}
-
-
-data.path <- 'data/'
-
-states <- c("CO", "NC", "OR", "VT")
-
-for (state in states) {
-  
-  input.name <- paste0("observations_", state, ".shp")
-  out.name <- paste0("all_data_", state, ".shp")
-  output.no.null <- paste0("all_data_no_null_", state, ".shp")
-  csvfile <- fs::path_join(c(data.path, paste0("final_data_", state, ".csv")))
-  
-  raster.path <- fs::path_join(c(data.path, "rasters"))
-  
-  # Create a named list to store raster paths
-  raster.paths <- list()
-  
-  # Loop through all the files in the folder
-  for (file.name in fs::dir_ls(raster.path, regexp = paste0('.*', state, '.*\\.tif$'))) {
-    raster.name <- fs::path_file(file.name) %>%
-      fs::path_ext_remove() %>%
-      stringr::str_remove(paste0("(_", state, "|", state, "_)"))
-    raster.paths[[raster.name]] <- file.name
+  if (!dir.exists(file.path("data", "final"))) dir.create(file.path("data", "final"))
+  out.file.all <- file.path("data", "final", paste0("all_data_", state, ".rds"))
+  if (!file.exists(out.file.all)) {
+    r <- all.rasters[[state]]$rasters
+    r.names <- all.rasters[[state]]$names
+    
+    cat(sprintf("Extracting points to values for %s...\n", state))
+    # Load observations shapefile
+    geo.df <- st_read(output.file)
+    
+    # Extract raster values
+    for (r.name in r.names) {
+      geo.df[[gsub(paste0("_", state), "", r.name)]] <- terra::extract(r[[r.name]], geo.df)
+    }
+    
+    saveRDS(geo.df, out.file.all)
+    cat("--------------\n")
   }
-  
-  cat(sprintf("Extracting points to values for %s...\n", state))
-  
-  # Load observations shapefile
-  obs <- st_read(fs::path_join(c(data.path, input.name)))
-  
-  # Extract raster values to the points
-  for (r_name in names(raster.paths)) {
-    r <- terra::rast(raster.paths[[r_name]])
-    obs[[r_name]] <- terra::extract(r, obs)
-  }
-  
-  cat(sprintf("Selecting non-null points for %s...\n", state))
-  
-  # Select points that have non-null raster values for all raster layers
-  non_null_condition <- !rowSums(is.na(obs[names(raster.paths)])) 
-  obs_no_null <- obs[non_null_condition,]
-  
-  # Write to a shapefile
-  st_write(obs_no_null, fs::path_join(c(data.path, output.no.null)))
-  
-  # Save as CSV
-  cat(sprintf("Saving %s final data to csv...\n", state))
-  write_csv(as.data.frame(obs_no_null), csvfile)
-  
-  # Fix names
-  cat("Fixing column names...\n")
-  df <- read_csv(csvfile)
-  df <- df %>%
-    rename(
-      common_name = common_nam,
-      observations = observatio,
-      ndvi_spring = Spring_NDV,
-      ndvi_summer = Summer_NDV,
-      ndvi_winter = Winter_NDV,
-      ndvi_fall = Fall_NDVI,
-      urban_imperviousness = urban_impe
-    )
-  
-  write_csv(df, csvfile)
-  cat(sprintf('%s column names: %s\n', state, paste(names(df), collapse = ', ')))
-  cat("Finished.\n")
-  cat("--------------\n")
-}
+} 
+
+
 
 
 for (state in states) {
