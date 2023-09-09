@@ -399,18 +399,6 @@ general.raster.preprocessing <- function(
           rm(masked.raster)
           gc()
           
-          
-          ### TODO: FILL NUMERIC VARIATIONS OF NA VALUES WITH NA
-          # Check each:
-          # DEM - 
-          # Land Cover - 
-          # Canopy - 
-          # Urban Imperviousness -
-          # Weather - 
-          # Soil - 
-          # Hydrography - 
-          # NDVI - 
-  
           # Resample
           current.res <- terra::res(reprojected.raster)
           cat("\tCurrent Resolution:", current.res, "\n")
@@ -1036,52 +1024,52 @@ intersect.extents <- function(ext1, ext2) {
 }
 
 # Get all rasters
+
+all.rasters <- map(states, function(s) {
+  files <- list.files("data", pattern=paste0("_", s, "\\.tif$"), 
+                      recursive=T, full.names=T)
+  
+  rasters <- map(files, ~rast(.x))
+  
+  # Get extent intersect, and update raster extents
+  extents <- map(rasters, ~ext(.x) %>% as.vector())
+  ext.intersect <- reduce(extents, intersect.extents)
+  rasters <- map(rasters, ~crop(.x, ext.intersect))
+  
+  # Align all rasters to common grid
+  rasters <- map(rasters[2:length(rasters)], ~project(.x, rasters[[1]]))
+  
+  # Check extents, resolutions, and CRS of each raster
+  extents <- map(rasters, ~ext(.x) %>% as.vector())
+  resolutions <- map(rasters, ~res(.x))
+  .crs <- map(rasters, ~crs(.x))
+  
+  # Set names
+  .names <- map_chr(rasters, ~names(.x))
+  names(files) <- .names
+  names(rasters) <- .names
+  names(extents) <- .names
+  names(resolutions) <- .names
+  names(.crs) <- .names
+  # Return list
+  list(
+    files=files,
+    rasters=rasters %>% reduce(c), # Make raster stack
+    ext=extents,
+    ext.intersect=ext.intersect,
+    res=resolutions,
+    crs=.crs,
+    names=.names
+  )
+})
+
+names(all.rasters) <- states
 if (!all(file.exists(paste0("data/final_rasters/", states, ".tif")))) {
-  all.rasters <- map(states, function(s) {
-    files <- list.files("data", pattern=paste0("_", s, "\\.tif$"), 
-                        recursive=T, full.names=T)
-    
-    rasters <- map(files, ~rast(.x))
-    
-    # Get extent intersect, and update raster extents
-    extents <- map(rasters, ~ext(.x) %>% as.vector())
-    ext.intersect <- reduce(extents, intersect.extents)
-    rasters <- map(rasters, ~crop(.x, ext.intersect))
-    
-    # Align all rasters to common grid
-    rasters <- map(rasters[2:length(rasters)], ~project(.x, rasters[[1]]))
-    
-    # Check extents, resolutions, and CRS of each raster
-    extents <- map(rasters, ~ext(.x) %>% as.vector())
-    resolutions <- map(rasters, ~res(.x))
-    .crs <- map(rasters, ~crs(.x))
-    
-    # Set names
-    .names <- map_chr(rasters, ~names(.x))
-    names(files) <- .names
-    names(rasters) <- .names
-    names(extents) <- .names
-    names(resolutions) <- .names
-    names(.crs) <- .names
-    # Return list
-    list(
-      files=files,
-      rasters=rasters %>% reduce(c), # Make raster stack
-      ext=extents,
-      ext.intersect=ext.intersect,
-      res=resolutions,
-      crs=.crs,
-      names=.names
-    )
-  })
-  
-  names(all.rasters) <- states
-  
   if (!dir.exists("data/final_rasters")) dir.create("data/final_rasters")
   walk(states, ~writeRaster(all.rasters[[.x]]$rasters, 
                             paste0("data/final_rasters/", .x, ".tif"),
                             overwrite=T))
-}
+} 
 
 # Combine rasters and observations
 for (state in states) {
@@ -1135,40 +1123,26 @@ for (state in states) {
     
     # Extract raster values
     for (r.name in r.names) {
-      geo.df[[gsub(paste0("_", state), "", r.name)]] <- terra::extract(r[[r.name]], geo.df)
+      cat("\tExtracting", r.name, "values for", state, "\n")
+      x <- terra::extract(r[[r.name]], geo.df)[[r.name]]
+      geo.df[[gsub(paste0("_", state), "", r.name)]] <- x
     }
+    
+    # Fix names; Filter NA values
+    r.names <- gsub(paste0("_", state), "", r.names)
+    names(geo.df) <- c("common.name", "observations", "geometry", r.names)
+    geo.df$state <- state
+    geo.df <- geo.df %>%
+      filter(dplyr::if_all(r.names, ~!is.na(.))) %>%
+      select(common.name, state, everything()) %>%
+      mutate(urban_imperviousness = urban_imperviousness %>% 
+               as.character() %>% 
+               as.numeric()
+      ) %>%
+      suppressWarnings() 
     
     saveRDS(geo.df, out.file.all)
     cat("--------------\n")
   }
 } 
-
-
-
-
-for (state in states) {
-  
-  csvfile <- fs::path_join(c(data.path, paste0("final_data_", state, ".csv")))
-  
-  # Load the CSV file
-  df <- read_csv(csvfile)
-  
-  # Perform one-hot encoding on the "common_name" field
-  df.encoded <- df %>%
-    mutate(common.name = paste0("species_", tolower(common.name))) %>%
-    mutate(common.name = gsub(" ", "_", common.name)) %>%
-    mutate(common.name = gsub("-", "_", common.name)) %>%
-    pivot_wider(names_from = common.name, values_from = common.name, 
-                values_fill = list(common.name = 0), values_fn = length) %>%
-    bind_cols(df, .)
-  
-  # Save the encoded DataFrame to a new CSV file
-  encoded.csvfile <- fs::path_join(c(data.path, paste0("encoded_data_", state, ".csv")))
-  write_csv(df.encoded, encoded.csvfile)
-  
-  cat(sprintf("Processed and saved one-hot encoded data for %s.\n", state))
-}
-
-
-
 

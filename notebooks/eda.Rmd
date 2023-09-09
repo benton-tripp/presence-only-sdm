@@ -1,14 +1,15 @@
 ---
-title: "Exploratory Analysis, Pseudo-Absence Generation, Autocorrelation Mitigation, Feature Engineering, and Train/Test Splitting"
+title: "Exploratory Analysis"
 author: "Benton Tripp"
-format: 
-  html:
-    editor: source
+date: "`r Sys.Date()`"
+output:
+  html_document:
     toc: true
-    toc-depth: 3
-    code-folding: true
+    toc_float: true
+    code_folding: show
     theme: readable
-
+    df_print: paged
+  
 ---
 
 ```{r setup, include=F, warning=F, message=F}
@@ -30,11 +31,10 @@ library(terra)
 
 ```
 
+
 ## Visualize all Observations by State & Species
 
 ```{r generate-plots}
-#| code-fold: true
-#| code-summary: "Show code"
 
 data(us.cities)
 
@@ -69,20 +69,15 @@ states <- map_data("state") %>%
   filter(region %in% c("oregon", "north carolina", "colorado", "vermont"))
 
 # Load your data
-data.files <- list.files("../data/final", full.names=T) 
-state.abbr <- data.files %>% 
-  gsub("\\.rds$", "", .) %>%
-  purrr::map(function(.x) {
-    .x <- stringr::str_split(.x, "_")
-    .x[[1]][[length(.x[[1]])]]
-    })
-  
-df <- purrr::map2_df(data.files, state.abbr, function(f, s) {
-  d <- readRDS(f) %>% 
-    as.data.frame() 
-  browser()
-    mutate(d, state = s)
-})
+data.files <- list.files("../data/final", full.names = T)
+
+df <- purrr::map_df(data.files, readRDS)
+df <- purrr::map(data.files, ~readr::read_csv(.x) %>%
+                   mutate(state = gsub(".csv", "", 
+                                       gsub("../data/encoded_data_", "", .x)))
+                 ) %>% 
+  data.table::rbindlist() %>%
+  suppressMessages()
 
 caps.after.ws <- function(string) {
   gsub("(?<=\\s)([a-z])", "\\U\\1", string, perl = T)
