@@ -1,5 +1,5 @@
 ---
-title: "Getting the Data"
+title: "SDM Benchmark Study Part 1: Data Preparation"
 author: "Benton Tripp"
 date: "`r Sys.Date()`"
 output: 
@@ -16,12 +16,28 @@ output:
 
 # Notebook setup
 
-knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
+knitr::opts_chunk$set(echo = T, results="hide", 
+                      message=F, warning=F, cache=F, root.dir="..")
+
+```
+
+```{r render-github-doc, eval=F, echo=F}
+
+rmarkdown::render(input = "notebooks/get_data.Rmd", 
+                  output_format = "html_document", 
+                  output_file = "2023-09-10-sdm-benchmark-study-part-1-data-preparation.html",
+                  output_dir = "benton-tripp.github.io/_posts", 
+                  knit_root_dir = "C:/users/bento/gis630",
+                  output_options = list(html_preview = F))
 
 ```
 
 
 ## Overview
+
+This is just one of several posts that I will be making regarding a study that I am working on, focused on benchmarking and comparing different species distribution models (SDMs) using presence-only data. A review of the literature that I wrote on this subject can be found [here](https://benton-tripp.github.io/docs/lit_review.pdf). My GitHub repo for this project can be accessed [here](https://github.com/benton-tripp/presence-only-sdm).
+
+This post is focused on gathering and preparing the data that will be used throughout my project. More details on the data can be found in the links in the next section. 
 
 ## Data Sources
 
@@ -251,16 +267,34 @@ obs <- purrr::map(states, function(.x) {
 
 names(obs) <- states
 
+```
+
+```{r obs-summary, results='markup'}
+
 # View summary of data
 map_df(states, ~obs[[.x]][, .(.N, state=.x), by=.(common.name)]) %>%
   setorderv(c("common.name", "state")) %>%
-  knitr::kable()
+  DT::datatable(
+    filter='none',
+    selection='none',
+    rownames=F,
+    options=list(
+      paging=F,
+      searching=F,
+      orderMulti=T,
+      scrollY=400,
+      info=F,
+      lengthChange = F
+    )
+  ) %>%
+    DT::formatStyle(1:3, `font-size`="17px")
 
 ```
 
+
 Below is a brief snapshot of the data, filtered to `common.name == "Sandhill Crane"` in North Carolina:
 
-```{r nc-obs-example}
+```{r nc-obs-example, results='markup'}
 
 # NC Sandhill Crane Map
 nc.shc <- obs$NC[common.name == "Sandhill Crane"]
@@ -291,7 +325,6 @@ Before using raster data for analysis, it is crucial to preprocess them to ensur
 Following the pre-processing of all rasters, it will also be necessary to ensure that the extents of each of the rasters (by state) match, and to crop them if necessary to produce uniform extents.
 
 ```{r general-raster-preprocessing}
-
 
 # `terra` equivalent of base R `any()` function
 terra.any <- function(r) {
@@ -525,10 +558,15 @@ general.raster.preprocessing <- function(
 
 ### Digital Elevation Model (DEM) Pre-Processing
 
+The following steps are taken when merging and Pre-processing the DEM data downloaded from its [source](https://www.sciencebase.gov/catalog/item/5540e111e4b0a658d79395d9):
+
+1. Merge multiple DEM parts (the raw data download is divided into Great Plains, Northeast, Northwest, Southeast, Southwest, and Upper Midwest regions).
+2. Apply general pre-processing of DEM raster (see section on general pre-processing).
+
 ```{r dem-pp}
 
 # Combine DEM rasters (Source data has the US split into parts)
-# 
+
 # By default, `terra` does most of its work on the disk (as 
 # opposed to RAM). However, the temp data for this particular
 # process was using ~70GB of storage. This function is set up 
@@ -601,99 +639,13 @@ if (!all(file.exists(paste0("data/dem/dem_", states, ".tif")))) {
 
 ```
 
-### Urban Imperviousness Pre-Processing
-
-```{r ui-pp}
-
-if (!all(file.exists(paste0("data/urban_imperviousness/urban_imperviousness_", 
-                            states, ".tif")))) {
-  # Use the combined raster for the general raster pre-processing
-  general.raster.preprocessing(
-    data.path = ext.data.path,
-    raster.name="urban_imperviousness", 
-    out.raster.name="urban_imperviousness",
-    out.path="data/urban_imperviousness",
-    resolution=5000,
-    wildcard="\\.tif$"
-  )
-}
-
-```
-
-### Land Cover Pre-Processing
-
-```{r lc-pp}
-
-if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
-  # Apply "general raster preprocessing" 
-  general.raster.preprocessing(
-    data.path = ext.data.path,
-    raster.name="land_cover/nlcd_2019_land_cover_l48_20210604", 
-    out.raster.name="land_cover",
-    out.path="data/land_cover",
-    resolution=5000,
-    wildcard="\\.tif$",
-    agg="modal"
-  )
-}
-
-```
-
-### NDVI Pre-Processing
-
-```{r ndvi-pp}
-
-# Iterate through each season
-for (season in c("Spring", "Summer", "Fall", "Winter")) {
-  if (!all(file.exists(file.path("data/NDVI", paste0(season, "_NDVI_", 
-                                                     states, ".tif"))))) {
-    cat(paste0("Applying raster preprocessing for ", season, "...\n"))
-    tryCatch({
-      # Using the combined raster, apply "general raster preprocessing" 
-      # (resample, reproject, mask)
-      
-      general.raster.preprocessing(
-        data.path=ext.data.path,
-        raster.name=paste0("NDVI/US_eVSH_NDVI-", season, "-2021"), 
-        out.raster.name=paste0(season, "_NDVI"),
-        out.path="data/NDVI",
-        wildcard="*1KM\\.VI_NDVI.*\\.tif$",
-        resolution=5000)
-      cat("-----------------\n")
-    }, error = function(e) {
-      cat(paste0("An error occurred while processing ", season, ": ", e$message, "\n"))
-    })
-  }
-}
-
-```
-
-### Canopy Pre-Processing
-
-```{r canopy-pp}
-
-# Apply "general raster preprocessing" 
-
-if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
-  general.raster.preprocessing(
-    data.path=ext.data.path,
-    raster.name="canopy/nlcd_tcc_CONUS_2016_v2021-4", 
-    out.raster.name="canopy",
-    out.path="data/canopy",
-    resolution=5000,
-    wildcard="\\.tif$"
-  )
-}
-
-```
-
 ### Weather Rasters
 
 #### Download Weather Raster Data
 
-```{r weather-dwnld}
+In this section, the weather raster data is fetched from its source programmatically. The weather data variables considered are precipitation (ppt), maximum temperature (tmax), and minimum temperature (tmin). The annual weather data at a 4km resolution for the years 2017, 2018, and 2019. Additionally, monthly 30-year normal data is retrieved at an 800m resolution. After downloading, the data is stored in zipped format and then extracted.
 
-# DOWNLOAD WEATHER RASTERS ------------------------------------------------
+```{r weather-dwnld}
 
 # Downloads and processes weather raster data for specified variables and 
 # years at a 4km resolution and 30-year monthly normals at an 800m resolution.
@@ -768,9 +720,9 @@ get.weather.data(ext.data.path)
 
 #### Aggregate Weather Raster Data
 
-```{r agg-weather}
+The downloaded weather rasters are aggregated, considering both the yearly data and monthly 30-year normals. The aggregation involves determining weights for the different resolutions (4km and 800m) and then combining them accordingly.
 
-# AGGREGATE WEATHER RASTERS ------------------------------------------------------
+```{r agg-weather}
 
 aggregate.weather <- function(data.path,
                               raster.dir="weather",
@@ -845,9 +797,11 @@ aggregate.weather(ext.data.path)
 
 ```
 
-#### Average Precipitation Pre-Processing
+#### Average Precipitation, Min/Max Temperature Pre-Processing
 
-```{r prcp-pp}
+```{r weath-pp}
+
+# Average Precipitation
 
 # Apply General Raster Pre-Processing to precipitation
 if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
@@ -861,11 +815,7 @@ if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
   )
 }
 
-```
-
-#### Minimum Temperature Pre-Processing
-
-```{r tmin-pp}
+# Minimum Temperature 
 
 # Apply General Raster Pre-Processing to minimum temp
 if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
@@ -879,11 +829,7 @@ if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
   )
 }
 
-```
-
-#### Maximum Temperature Pre-Processing
-
-```{r tmax-pp}
+# Maximum Temperature 
 
 # Apply General Raster Pre-Processing to maximum temp
 if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
@@ -902,6 +848,8 @@ if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
 ### Hydrography Raster Data Conversion
 
 #### Extract from ESRI Geodatabase
+
+This section handles the extraction of hydrographic data from an ESRI Geodatabase. Two of the data sets, Coastline and Waterbody, within the geodatabase are converted into individual shapefile formats.
 
 ```{r hyd-pp}
 
@@ -931,6 +879,14 @@ convert.hydro.gdb(data.path=file.path(ext.data.path, "hydrography"),
 ```
 
 #### Convert Waterbody Shapefile to Raster & Pre-Process
+
+The waterbody data previously extracted as a shapefile is then transformed into raster format. The steps entail:
+
+1. Cleaning the data by filtering out specific undesirable features.
+2. Reprojecting the data into a standard coordinate reference system (CRS).
+3. Rasterizing the shapefile data with a default resolution.
+4. Using dilation to expand the waterbody boundaries in the raster. Dilation is a process to enlarge or expand a feature. In this context, the waterbody raster is dilated in multiple stages to represent different proximities to the water.
+5. Applying the general raster pre-processing steps.
 
 ```{r wb-pp}
 
@@ -1009,6 +965,14 @@ if (!all(file.exists(paste0("data/waterbody/waterbody_", states, ".tif")))) {
 
 #### Convert Coastline Shapefile to Raster & Pre-Process
 
+The coastline data, like the waterbody data, undergoes a conversion from shapefile to raster format. The steps are:
+
+1. Basic data cleaning and reprojection to a standard CRS.
+2. A buffer is applied to the coastline vectors. This adds a specified distance around the coastline, effectively creating a zone around the coast.
+3. Rasterization of the buffered coastline data.
+4. Dilation of the coastline raster to indicate proximity zones.
+5. General raster pre-processing.
+
 ```{r coast-pp}
 
 # Convert coastline shapefile to raster
@@ -1070,9 +1034,91 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
 
 ```
 
-### Soil Pre-Processing
+### General Pre-Processing of Remaining Rasters
 
-```{r soil-pp}
+The remaining rasters, upon downloading them from their respective sources, require no additional pre-processing other than the "general" pre-processing steps described previously:
+
+- Urban Imperviousness
+- Land Cover
+- NDVI
+- Tree Canopy
+- Soil Type
+
+```{r remaining-raster-pp}
+
+# Urban Imperviousness Pre-Processing
+
+if (!all(file.exists(paste0("data/urban_imperviousness/urban_imperviousness_", 
+                            states, ".tif")))) {
+  # Use the combined raster for the general raster pre-processing
+  general.raster.preprocessing(
+    data.path = ext.data.path,
+    raster.name="urban_imperviousness", 
+    out.raster.name="urban_imperviousness",
+    out.path="data/urban_imperviousness",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
+}
+
+
+# Land Cover Pre-Processing
+
+if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
+  # Apply "general raster preprocessing" 
+  general.raster.preprocessing(
+    data.path = ext.data.path,
+    raster.name="land_cover/nlcd_2019_land_cover_l48_20210604", 
+    out.raster.name="land_cover",
+    out.path="data/land_cover",
+    resolution=5000,
+    wildcard="\\.tif$",
+    agg="modal"
+  )
+}
+
+
+# NDVI Pre-Processing
+
+# Iterate through each season
+for (season in c("Spring", "Summer", "Fall", "Winter")) {
+  if (!all(file.exists(file.path("data/NDVI", paste0(season, "_NDVI_", 
+                                                     states, ".tif"))))) {
+    cat(paste0("Applying raster preprocessing for ", season, "...\n"))
+    tryCatch({
+      # Using the combined raster, apply "general raster preprocessing" 
+      # (resample, reproject, mask)
+      
+      general.raster.preprocessing(
+        data.path=ext.data.path,
+        raster.name=paste0("NDVI/US_eVSH_NDVI-", season, "-2021"), 
+        out.raster.name=paste0(season, "_NDVI"),
+        out.path="data/NDVI",
+        wildcard="*1KM\\.VI_NDVI.*\\.tif$",
+        resolution=5000)
+      cat("-----------------\n")
+    }, error = function(e) {
+      cat(paste0("An error occurred while processing ", season, ": ", e$message, "\n"))
+    })
+  }
+}
+
+# Canopy Pre-Processing
+
+# Apply "general raster preprocessing" 
+
+if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
+  general.raster.preprocessing(
+    data.path=ext.data.path,
+    raster.name="canopy/nlcd_tcc_CONUS_2016_v2021-4", 
+    out.raster.name="canopy",
+    out.path="data/canopy",
+    resolution=5000,
+    wildcard="\\.tif$"
+  )
+}
+
+# Soil Pre-Processing
 
 # Apply General Raster Pre-Processing to Soil
 if (!all(file.exists(paste0("data/soil/soil_", states, ".tif")))) {
@@ -1093,6 +1139,10 @@ if (!all(file.exists(paste0("data/soil/soil_", states, ".tif")))) {
 ## Final Raster Pre-Processing Steps
 
 ### Ensuring Shape/Size Conformity
+
+In order to use the rasters to be saved as layers in a single raster, they must exactly conform in resolution, CRS, and shape/extent. Due to slight variations in the datasets, the raster extents are not perfect (although they are nearly so). Now that all of the rasters are available, a common "intersect" region can be determined for each state, and all of the rasters for each state can be cropped to fit that region. 
+
+Once this is completed, the rasters can be joined into combined, multi-layer rasters and saved.
 
 ```{r ext-pp}
 
@@ -1161,6 +1211,8 @@ if (!all(file.exists(paste0("data/final_rasters/", states, ".tif")))) {
 ```
 
 ## Combine Raster and Observation Data
+
+When both the observation data and raster data pre-processing has been completed, points can be extracted from each of the rasters corresponding to the observation points. These tabular datasets are what will be used to train/test presence-only models.
 
 ```{r extract-rast}
 
