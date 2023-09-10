@@ -624,9 +624,6 @@ if (!all(file.exists(paste0("data/urban_imperviousness/urban_imperviousness_",
 
 ```{r lc-pp}
 
-
-# LAND COVER --------------------------------------------------------------
-
 if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
   # Apply "general raster preprocessing" 
   general.raster.preprocessing(
@@ -642,10 +639,9 @@ if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
 
 ```
 
+### NDVI Pre-Processing
 
 ```{r ndvi-pp}
-
-# VEGETATION INDEX --------------------------------------------------------
 
 # Iterate through each season
 for (season in c("Spring", "Summer", "Fall", "Winter")) {
@@ -672,9 +668,9 @@ for (season in c("Spring", "Summer", "Fall", "Winter")) {
 
 ```
 
-```{r canopy-pp}
+### Canopy Pre-Processing
 
-# CANOPY ------------------------------------------------------------------
+```{r canopy-pp}
 
 # Apply "general raster preprocessing" 
 
@@ -690,6 +686,10 @@ if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
 }
 
 ```
+
+### Weather Rasters
+
+#### Download Weather Raster Data
 
 ```{r weather-dwnld}
 
@@ -766,6 +766,7 @@ get.weather.data(ext.data.path)
 
 ```
 
+#### Aggregate Weather Raster Data
 
 ```{r agg-weather}
 
@@ -844,10 +845,9 @@ aggregate.weather(ext.data.path)
 
 ```
 
+#### Average Precipitation Pre-Processing
 
 ```{r prcp-pp}
-
-# AVERAGE PRECIPITATION ---------------------------------------------------
 
 # Apply General Raster Pre-Processing to precipitation
 if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
@@ -863,9 +863,9 @@ if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
 
 ```
 
-```{r tmin-pp}
+#### Minimum Temperature Pre-Processing
 
-# MINIMUM TEMPERATURE -----------------------------------------------------
+```{r tmin-pp}
 
 # Apply General Raster Pre-Processing to minimum temp
 if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
@@ -881,10 +881,9 @@ if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
 
 ```
 
+#### Maximum Temperature Pre-Processing
 
 ```{r tmax-pp}
-
-# MAXIMUM TEMPERATURE -----------------------------------------------------
 
 # Apply General Raster Pre-Processing to maximum temp
 if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
@@ -900,9 +899,11 @@ if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
 
 ```
 
-```{r hyd-pp}
+### Hydrography Raster Data Conversion
 
-# HYDROGRAPHY PREPROCESSING ------------------------------------
+#### Extract from ESRI Geodatabase
+
+```{r hyd-pp}
 
 convert.hydro.gdb <- function(data.path = "data/hydrography/",
                               gdb.name = "hydrusm010g.gdb_nt00897/hydrusm010g.gdb",
@@ -929,10 +930,9 @@ convert.hydro.gdb(data.path=file.path(ext.data.path, "hydrography"),
 
 ```
 
+#### Convert Waterbody Shapefile to Raster & Pre-Process
 
 ```{r wb-pp}
-
-# WATERBODY ---------------------------------------------------------------
 
 update.wb.array <- function(r) {
   r.updated <- copy(r)
@@ -1007,9 +1007,9 @@ if (!all(file.exists(paste0("data/waterbody/waterbody_", states, ".tif")))) {
 
 ```
 
-```{r coast-pp}
+#### Convert Coastline Shapefile to Raster & Pre-Process
 
-# COASTLINE ---------------------------------------------------------------
+```{r coast-pp}
 
 # Convert coastline shapefile to raster
 process.coastline.shp <- function(out.path,
@@ -1070,11 +1070,9 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
 
 ```
 
+### Soil Pre-Processing
 
 ```{r soil-pp}
-
-
-# SOIL --------------------------------------------------------------------
 
 # Apply General Raster Pre-Processing to Soil
 if (!all(file.exists(paste0("data/soil/soil_", states, ".tif")))) {
@@ -1162,9 +1160,7 @@ if (!all(file.exists(paste0("data/final_rasters/", states, ".tif")))) {
 
 ```
 
-
 ## Combine Raster and Observation Data
-
 
 ```{r extract-rast}
 
