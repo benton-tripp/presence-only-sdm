@@ -1086,10 +1086,6 @@ for (state in states) {
     cat(sprintf("Converting %s data to sf...\n", state))
     geo.df <- st_as_sf(df, coords = c("longitude", "latitude"), crs = 4326)
     
-    # Define target CRS and update
-    target.crs <- "EPSG:5070"
-    cat(sprintf("Updating CRS for %s...\n", state))
-    geo.df <- st_transform(geo.df, target.crs)
     
     # Get centroid of the entire sightings
     cat(sprintf("Getting centroid of %s data...\n", state))
@@ -1119,7 +1115,13 @@ for (state in states) {
     
     cat(sprintf("Extracting points to values for %s...\n", state))
     # Load observations shapefile
-    geo.df <- st_read(output.file)
+    geo.df <- st_read(output.file) 
+    
+    
+    # Define target CRS and update
+    target.crs <- "EPSG:5070"
+    cat(sprintf("Updating CRS for %s...\n", state))
+    geo.df <- st_transform(geo.df, target.crs)
     
     # Extract raster values
     for (r.name in r.names) {
@@ -1128,16 +1130,22 @@ for (state in states) {
       geo.df[[gsub(paste0("_", state), "", r.name)]] <- x
     }
     
+    # Update crs back
+    geo.df <- st_transform(geo.df, 4326)
+    
     # Fix names; Filter NA values
     r.names <- gsub(paste0("_", state), "", r.names)
     names(geo.df) <- c("common.name", "observations", "geometry", r.names)
     geo.df$state <- state
+    coords <- st_coordinates(geo.df) %>% as.data.frame() %>% setnames(c("lon", "lat"))
     geo.df <- geo.df %>%
+      cbind(coords) %>%
       filter(dplyr::if_all(r.names, ~!is.na(.))) %>%
-      select(common.name, state, everything()) %>%
+      select(common.name, state, lon, lat, everything()) %>%
       mutate(urban_imperviousness = urban_imperviousness %>% 
                as.character() %>% 
-               as.numeric()
+               as.numeric(),
+             
       ) %>%
       suppressWarnings() 
     

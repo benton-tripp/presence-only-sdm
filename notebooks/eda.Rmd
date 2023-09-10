@@ -71,46 +71,28 @@ states <- map_data("state") %>%
 # Load your data
 data.files <- list.files("../data/final", full.names = T)
 
-df <- purrr::map_df(data.files, readRDS)
-df <- purrr::map(data.files, ~readr::read_csv(.x) %>%
-                   mutate(state = gsub(".csv", "", 
-                                       gsub("../data/encoded_data_", "", .x)))
-                 ) %>% 
-  data.table::rbindlist() %>%
-  suppressMessages()
+df <- purrr::map_df(data.files, readRDS) 
 
 caps.after.ws <- function(string) {
   gsub("(?<=\\s)([a-z])", "\\U\\1", string, perl = T)
 }
 
-# Put in long format for plotting
-df.long <- df %>%
-  tidyr::pivot_longer(cols = starts_with("species_"),
-               names_to = "species",
-               values_to = "observed") %>%
-  filter(observed == 1) %>%
-  mutate(species = gsub("species_", "", species),
-         spec.state = interaction(species, state, sep = "|"))
-
 # Define a function to create a plot for each species
-plot.for.species <- function(ss) {
-  spec.state.spl <- stringr::str_split(ss, "\\|")[[1]]
-  st.abbr <- spec.state.spl[[2]]
-  
+plot.for.species <- function(spec, st.abbr) {
   st <- case_when(st.abbr == "CO" ~ "colorado",
                   st.abbr == "NC" ~ "north carolina",
                   st.abbr == "VT" ~ "vermont",
                   st.abbr == "OR" ~ "oregon",
                   T ~ "")
-  spec <- spec.state.spl[[1]]
+  
   title <- caps.after.ws(paste(st.abbr, gsub("_", " ", spec), 
                              "Observations, 2016-2019"))
-
+  
   p <- ggplot(data = states %>% filter(region == st)) +
     geom_polygon(aes(x = long, y = lat, group = group),
                  fill = "#989875", color = "black") +
-    geom_point(data = df.long %>% filter(spec.state == ss), 
-               aes(x = longitude, y = latitude), 
+    geom_point(data = df %>% filter(state == st.abbr & common.name == spec), 
+               aes(x = lon, y = lat), 
                size=1, alpha=.5, fill = "red", shape=21) +
     geom_point(data = top.cities %>% filter(country.etc == st.abbr), 
                aes(x=long, y=lat),
@@ -138,108 +120,96 @@ plot.for.species <- function(ss) {
   )
 }
 
+spec.state <- expand.grid(unique(df$common.name), unique(df$state)) %>%
+  rename(spec=Var1, st.abbr=Var2) 
+
 # Create a list of plots
-plots <- purrr::map_df(unique(df.long$spec.state), ~plot.for.species(.x))
+plots <- purrr::map2_df(spec.state$spec, 
+                        spec.state$st.abbr, 
+                        ~plot.for.species(.x, .y))
 
 ```
 
-```{r ruddy-duck-plot, echo=F}
+```{r ruddy-duck-plot, fig.height=8, fig.width=16}
 
 # Plot Ruddy Duck plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "ruddy_duck"]$plot, 
+        c(plots[species == "Ruddy Duck"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r bk-plot, echo=F}
+```{r bk-plot, fig.height=8, fig.width=16}
 
 # Plot Belted Kingfisher plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "belted_kingfisher"]$plot, 
+        c(plots[species == "Belted Kingfisher"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r wt-plot, echo=F}
+```{r wt-plot, fig.height=8, fig.width=16}
 
 # Plot Wild Turkey plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "wild_turkey"]$plot, 
+        c(plots[species == "Wild Turkey"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r ssh-plot, echo=F}
+```{r ssh-plot, fig.height=8, fig.width=16}
 
 # Plot Sharp-Shinned Hawk plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "sharp_shinned_hawk"]$plot, 
+        c(plots[species == "Sharp-shinned Hawk"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r dw-plot, echo=F}
+```{r dw-plot, fig.height=8, fig.width=16}
 
 # Plot Downy Woodpecker Plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "downy_woodpecker"]$plot, 
+        c(plots[species == "Downy Woodpecker"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r sww-plot, echo=F}
+```{r sww-plot, fig.height=8, fig.width=16}
 
 # Plot Cedar Waxwing Plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "cedar_waxwing"]$plot, 
+        c(plots[species == "Cedar Waxwing"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r shc-plot, echo=F}
+```{r shc-plot, fig.height=8, fig.width=16}
 
 # Plot Sandhill Crane Plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "sandhill_crane"]$plot, 
+        c(plots[species == "Sandhill Crane"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
-```{r sanderling-plot, echo=F}
+```{r sanderling-plot, fig.height=8, fig.width=16}
 
 # Plot Sanderling Plots
 do.call(ggpubr::ggarrange, 
-        c(plots[species == "sanderling"]$plot, 
+        c(plots[species == "Sanderling"]$plot, 
           list(nrow=2, ncol=2)))
 
 ```
 
 ## Explore Explanatory Rasters
 
-```{r land-cover-eda}
+```{r load-rasters}
 
-lc.files <- paste0("../data/land_cover/", 
-                   list.files("../data/land_cover", pattern="\\.tif$"))
-lc.names <- gsub("\\.tif", "", 
-                 gsub("\\.\\./data/land_cover/land_cover_", "", lc.files))
-names(lc.files) <- lc.names
-
-terra.any <- function(rast) {
-  freqs <- terra::freq(rast)
-  any(freqs[,1] == 1)
-}
-
-get.lc.rasters <- function(f) {
-  cat(paste0("Loading raster from ", f, "...\n"))
-  r <- terra::rast(f)
-  return(r)
-}
-
-lc.rasters <- lapply(lc.files, get.lc.rasters)
-names(lc.rasters) <- lc.names
-
-plot(lc.rasters$CO)
+states <- c("CO", "NC", "OR", "VT")
+r.files <- paste0("../data/final_rasters/", states, ".tif")
+r.list <- purrr::map(r.files, rast)
+names(r.list) <- states
 
 ```
 
@@ -247,23 +217,23 @@ plot(lc.rasters$CO)
 
 ```{r}
 
-stratified.split.idx <- function(df, p=0.8, lat.lon.bins=25) {
+stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
   # Cut along lat/lon values to create grids (lat.bin & lon.bin)
   # lat.lon.bins is the number of divisions you want
-  df$lat.bin <- cut(df$latitude, breaks=lat.lon.bins, labels = F)
-  df$lon.bin <- cut(df$longitude, breaks=lat.lon.bins, labels = F)
+  df$lat.bin <- cut(df$lat, breaks=lat.lon.bins, labels = F)
+  df$lon.bin <- cut(df$lon, breaks=lat.lon.bins, labels = F)
   
   # Create a new variable combining the stratification variables
   df %>%
-    mutate(strata = paste(lat.bin, lon.bin, species, state)) %>%
+    mutate(strata = paste(lat.bin, lon.bin, common.name, state)) %>%
     pull(strata) %>%
     # Create the data partitions
     createDataPartition(., p = p, list = F) %>%
     suppressWarnings()
 }
 
-prepare.data <- function(df, p) {
-  train.index <- stratified.split.idx(df, p=p)
+prepare.data <- function(df, p=.7, lat.lon.bins=25) {
+  train.index <- stratified.split.idx(df, p=p, lat.lon.bins = lat.lon.bins)
   df.train <- df[train.index, ]
   df.test <- df[-train.index, ]
   
@@ -272,7 +242,7 @@ prepare.data <- function(df, p) {
        index = train.index)
 }
 
-train.test <- prepare.data(df.long, .8)
+train.test <- prepare.data(df, .7)
 train <- df[train.test$index,]
 test <- df[-train.test$index,]
 

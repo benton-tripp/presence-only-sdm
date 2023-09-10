@@ -39,72 +39,56 @@ theme: readable
 
 ## Boundary Data
 
-For simplicity, only [data for the four states that are being used as observation areas](https://hub.arcgis.com/datasets/1612d351695b467eba75fdf82c10884f/explore?filters=eyJTVEFURV9BQkJSIjpbIkNPIiwiVlQiLCJOQyIsIk9SIl19&location=48.814319%2C163.610769%2C2.35) needs to be downloaded (as a .shp file). By default, the zipped files should be saved in *US_State_Boundaries.zip*. Extract the files into a folder of the same name within the data directory, and use the following Python code to split the states into separate files:
+There are four regions explored in this analysis from 2016 through 2019 (corresponding to the 4 boundary datasets):
 
-```{python, eval=F}
+-   Colorado, 2016-2019
+-   North Carolina, 2016-2019
+-   Oregon, 2016-2019
+-   Vermont, 2016-2019
 
-# import libraries
-import geopandas as gpd
-import os
+For simplicity, only data for the four states that are being used as observation area
+(https://hub.arcgis.com/datasets/1612d351695b467eba75fdf82c10884f/explore?filters=eyJTVEFURV9BQkJSIjpbIkNPIiwiVlQiLCJOQyIsIk9SIl19&location=48.814319%2C163.610769%2C2.35)
+ needs to be downloaded (as a .shp file). By default, the zipped files should be saved in *US_State_Boundaries.zip*. Extract the files into a folder of the same name within the data directory, and use the following code to split the states into separate files:
 
-# Load the shapefile into a GeoDataFrame
-gdf = gpd.read_file("../data/US_State_Boundaries/US_State_Boundaries.shp")
-gdf = gdf.to_crs("EPSG:5070")
-state_abbreviations = ["CO", "NC", "OR", "VT"]
-
-output_dir = "../data/US_State_Boundaries"
-
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
-
-for sa in state_abbreviations:
-    try:
-        state_gdf = gdf[gdf["STATE_ABBR"] == sa]
-        output_path = os.path.join(output_dir, f"{sa}_State_Boundaries.shp")
-        state_gdf.to_file(output_path)
-    except Exception as e:
-        print(f'Failed to save shapefile for state {sa}: {e}')
-
-```
-
-
-```{r, eval=F}
-
-# Load necessary libraries
-library(sf)
-library(terra)
-
-# Set the path for the shapefile
-shapefile_path <- "../data/US_State_Boundaries/US_State_Boundaries.shp"
-
-# Load the shapefile into an sf object
-gdf <- st_read(shapefile.path)
-
-# Transform the coordinate reference system to EPSG:5070
-gdf <- st_transform(gdf, crs = 5070)
+```{r boundary-data}
 
 # Define the state abbreviations
-state_abbreviations <- c("CO", "NC", "OR", "VT")
+states <- c("CO", "NC", "OR", "VT")
 
 # Set the output directory
-output_dir <- "../data/US_State_Boundaries"
+state.output.dir <- "data/US_State_Boundaries"
 
-# Create the output directory if it doesn't exist
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir)
+output.paths <- file.path(state.output.dir, 
+                         paste0(states, "_State_Boundaries.shp"))
+if (!all(file.exists(output.paths))) {
+  
+  # Create the output directory if it doesn't exist
+  if (!dir.exists(state.output.dir)) {
+    dir.create(state.output.dir)
+  }
+  
+  # Set the path for the shapefile
+  shapefile.path <- file.path(ext.data.path,
+                              "US_State_Boundaries/US_State_Boundaries.shp")
+  
+  # Load the shapefile into an sf object
+  gdf <- st_read(shapefile.path)
+  
+  # Transform the coordinate reference system to EPSG:5070
+  gdf <- st_transform(gdf, crs = 5070)
+  
+  
+  # Loop through state abbreviations and save individual shapefiles
+  for (sa in states) {
+    tryCatch({
+      state.gdf <- gdf[gdf$STATE_ABBR == sa, ]
+      output.path <- file.path(state.output.dir, paste0(sa, "_State_Boundaries.shp"))
+      if (!file.exists(output.path)) st_write(state.gdf, output.path, quiet = T)
+    }, error = function(e) {
+      message(paste0('Failed to save shapefile for state ', sa, ': ', e$message))
+    })
+  }
 }
-
-# Loop through state abbreviations and save individual shapefiles
-for (sa in state_abbreviations) {
-  tryCatch({
-    state_gdf <- gdf[gdf$STATE_ABBR == sa, ]
-    output_path <- file.path(output_dir, paste0(sa, "_State_Boundaries.shp"))
-    st_write(state_gdf, output_path, quiet = TRUE)
-  }, error = function(e) {
-    message(paste0('Failed to save shapefile for state ', sa, ': ', e$message))
-  })
-}
-
 ```
 
 

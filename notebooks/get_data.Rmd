@@ -1,0 +1,126 @@
+---
+title: "Getting the Data"
+author: "Benton Tripp"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: readable
+    df_print: paged
+  
+---
+
+```{r setup, include=F, warning=F, message=F}
+
+# SETUP -------------------------------------------------------------------
+
+
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F)
+
+# Load necessary libraries
+library(sf)
+library(terra)
+library(stars)
+library(auk)
+library(dplyr)
+library(readr)
+library(data.table)
+library(ggplot2)
+library(purrr)
+library(stringr)
+library(fs)
+
+setwd("C:/users/bento/gis630")
+
+# Hard coded path for data saved in external hard drive
+ext.data.path <- "D:/AvianAnalyticsData"
+
+```
+
+
+
+## Overview
+
+## Data Sources
+
+-   State Boundary Data
+    -   [ArcGIS Hub](https://hub.arcgis.com/datasets/1612d351695b467eba75fdf82c10884f/explore?filters=eyJTVEFURV9BQkJSIjpbIkNPIiwiVlQiLCJOQyIsIk9SIl19&location=48.814319%2C163.610769%2C2.35) (Shapefile download with filters set to the 4 states in question)
+-   eBird Observation Data
+    -   [eBird Data Access](https://ebird.org/data/download)
+-   Raster Data
+    -   [DEM \| Source Page](https://www.sciencebase.gov/catalog/item/5540e111e4b0a658d79395d9)
+        -   Download by regions (Great Plains, Northeast, Northwest, Southeast, Southwest, and Upper Midwest)
+    -   [Urban Imperviousness \| Source Page](https://www.mrlc.gov/data)
+        -   *NLCD 2019 Percent Developed Imperviousness (CONUS), NLCD 2019 Developed Imperviousness Descriptor (CONUS)*
+    -   [Land Cover](https://www.mrlc.gov/data)
+        -   *NLCD 2019 Land Cover (CONUS)*
+    -   [Canopy](https://www.mrlc.gov/data)
+        -   *NLCD 2016 USFS Tree Canopy Cover (CONUS)*
+    -   [Weather (min/max temperature, avg precipitation)](https://www.nacse.org/prism/)
+        -   Download weather raster data for "ppt", "tmax", "tmin", 2017-2019 at a 4km resolution and 30-year monthly normals at an 800m resolution
+        -   URL to download 4km data is: *https://services.nacse.org/prism/data/public/4km/*<VARIABLE>/<YEAR>
+        -   URL to download 800m data is *https://services.nacse.org/prism/data/public/normals/800m/*<VARIABLE>/<MONTH>
+    -   [Hydrography (Water Bodies & Coast) \| Source Page](https://apps.nationalmap.gov/downloader/#/)
+        -   [Download](https://prd-tnm.s3.amazonaws.com/StagedProducts/Small-scale/data/Hydrography/hydrusm010g.gdb_nt00897.tar.gz)
+    -   [Soil \| Source Page](https://www.nrcs.usda.gov/resources/data-and-reports/gridded-national-soil-survey-geographic-database-gnatsgo)
+        -   [Download](https://nrcs.app.box.com/v/soils/file/1122196282596)
+    -   Vegetation Index
+        -   [USGS Earth Explorer](https://earthexplorer.usgs.gov/) (eVIIRS NDVI, 02/23/21-03/08/21 1km; 05/04/21-05/17/21 1km; 09/07/21-09/20/21 1km; 11/30/21-12/13/21 1km)
+
+## Boundary Data
+
+There are four regions explored in this analysis from 2016 through 2019 (corresponding to the 4 boundary datasets):
+
+-   Colorado, 2016-2019
+-   North Carolina, 2016-2019
+-   Oregon, 2016-2019
+-   Vermont, 2016-2019
+
+For simplicity, only data for the four states that are being used as observation area
+(https://hub.arcgis.com/datasets/1612d351695b467eba75fdf82c10884f/explore?filters=eyJTVEFURV9BQkJSIjpbIkNPIiwiVlQiLCJOQyIsIk9SIl19&location=48.814319%2C163.610769%2C2.35)
+ needs to be downloaded (as a .shp file). By default, the zipped files should be saved in *US_State_Boundaries.zip*. Extract the files into a folder of the same name within the data directory, and use the following code to split the states into separate files:
+
+```{r boundary-data}
+
+# Define the state abbreviations
+states <- c("CO", "NC", "OR", "VT")
+
+# Set the output directory
+state.output.dir <- "data/US_State_Boundaries"
+
+output.paths <- file.path(state.output.dir, 
+                         paste0(states, "_State_Boundaries.shp"))
+if (!all(file.exists(output.paths))) {
+  
+  # Create the output directory if it doesn't exist
+  if (!dir.exists(state.output.dir)) {
+    dir.create(state.output.dir)
+  }
+  
+  # Set the path for the shapefile
+  shapefile.path <- file.path(ext.data.path,
+                              "US_State_Boundaries/US_State_Boundaries.shp")
+  
+  # Load the shapefile into an sf object
+  gdf <- st_read(shapefile.path)
+  
+  # Transform the coordinate reference system to EPSG:5070
+  gdf <- st_transform(gdf, crs = 5070)
+  
+  
+  # Loop through state abbreviations and save individual shapefiles
+  for (sa in states) {
+    tryCatch({
+      state.gdf <- gdf[gdf$STATE_ABBR == sa, ]
+      output.path <- file.path(state.output.dir, paste0(sa, "_State_Boundaries.shp"))
+      if (!file.exists(output.path)) st_write(state.gdf, output.path, quiet = T)
+    }, error = function(e) {
+      message(paste0('Failed to save shapefile for state ', sa, ': ', e$message))
+    })
+  }
+}
+```
+
+
