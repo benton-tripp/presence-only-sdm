@@ -264,7 +264,7 @@ Each of the 20 different Land Cover Categories falls under a "parent" category (
 
 ### Dimensionality Reduction 
 
-```{r soil-dr}
+```{r dr}
 
 r.df <- map_df(states, function(s) {
   df <- r.list[[s]] %>% as.data.frame()
@@ -288,12 +288,9 @@ clean.levels <- function(x) {
 
 r.df[, NLCD_Land := factor(clean.levels(levels(NLCD_Land))[NLCD_Land])]
 
-
-r.df[, soil := factor(soil, levels=sort(unique(r.df$soil)))]
-
-# Convert factor columns (except soil) to dummy variables
+# Convert factor columns to dummy variables
 df.dummies <- data.table(model.matrix(~ . - 1, data = r.df[, .(NLCD_Land, state)])) %>%
-  cbind(r.df[, -which(names(r.df) %in% c("NLCD_Land", "state", "soil")), with=F])
+  cbind(r.df[, -which(names(r.df) %in% c("NLCD_Land", "state")), with=F])
 
 # Ensure that there is more than one value per column (remove otherwise)
 uniq.1 <- t( df.dummies[, lapply(.SD, uniqueN)]) %>%
@@ -307,16 +304,6 @@ if (length(uniq.1) >= 1) {
 
 # Scale numeric columns
 scaled.data <- scale(df.dummies) %>% as.data.table()
-
-in.df <- cbind(r.df[, .(soil)], scaled.data)
-
-set.seed(19)  # for reproducibility
-
-library(FactoMineR)
-
-mca.fit <- MCA(in.df, quanti.sup=which(names(in.df) != "soil"), graph=F, ncp=4)
-
-ct.fit$frame
 
 
 ```

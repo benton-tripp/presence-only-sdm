@@ -333,8 +333,7 @@ general.raster.preprocessing <- function(
   }
   
   cat("Rasters:", paste(rasters, collapse=", "), "\n")
-  browser()
-  
+
   # Loop through each raster file in the list
   for (i in 1:length(rasters)) {
     
@@ -984,48 +983,6 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
   )
 }
 
-
-# SOIL --------------------------------------------------------------------
-
-# soil.shp.path <- file.path(ext.data.path, "soil", "wss_gsmsoil_US_[2016-10-13]", 
-#                            "spatial", "gsmsoilmu_a_us.shp")
-# 
-# soil.gdf <- sf::read_sf(soil.shp.path)
-
-
-soil.txt.path <- file.path(ext.data.path, "soil", "wss_gsmsoil_US_[2016-10-13]", "tabular")
-soil.df <- list.files(soil.txt.path, full.names=T) %>%
-  purrr::discard(~.x %like% "/version.txt" | 
-                   .x %like% "/mutext.txt" | 
-                   .x %like% "/legend.txt" |
-                   .x %like% "/mapunit.txt" |
-                   .x %like% "/sacatlog.txt" |
-                   .x %like% "/sdv") %>%
-  purrr::map(function(f) {
-    cat("Reading data from", f, "\n")
-    df <- readr::read_delim(f, delim="|", col_names=F, show_col_types = F) %>%
-      select(where(~ !all(is.na(.)))) %>%
-      mutate(file = f)
-    df
-  }) %>%
-  purrr::discard(~nrow(.x) == 0)
-
-# Erosion: "D:/AvianAnalyticsData/soil/wss_gsmsoil_US_[2016-10-13]/tabular/cerosnac.txt"
-# 
-
-# Apply General Raster Pre-Processing to Soil
-if (!all(file.exists(paste0("data/soil/soil_", states, ".tif")))) {
-  general.raster.preprocessing(
-    data.path=ext.data.path,
-    raster.name="soil/FY2023_gNATSGO_mukey_grid", 
-    out.path="data/soil",
-    out.raster.name="soil",
-    resolution=5000,
-    wildcard="\\.tif$",
-    agg="near",
-    na.val=4294967296
-  )
-}
 
 
 # FINAL PRE-PROCESSING STEPS ----------------------------------------------

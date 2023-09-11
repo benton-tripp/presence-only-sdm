@@ -11,9 +11,9 @@
 
 <meta name="author" content="Benton Tripp" />
 
-<meta name="date" content="2023-09-10" />
+<meta name="date" content="2023-09-11" />
 
-<title>Getting the Data</title>
+<title>SDM Benchmark Study Part 1: Data Preparation</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -9309,9 +9309,10 @@ border-radius: 0px;
 
 
 
-<h1 class="title toc-ignore">Getting the Data</h1>
+<h1 class="title toc-ignore">SDM Benchmark Study Part 1: Data
+Preparation</h1>
 <h4 class="author">Benton Tripp</h4>
-<h4 class="date">2023-09-10</h4>
+<h4 class="date">2023-09-11</h4>
 
 </div>
 
@@ -9374,11 +9375,6 @@ a 4km resolution and 30-year monthly normals at an 800m resolution</li>
 (Water Bodies &amp; Coast) | Source Page</a>
 <ul>
 <li><a href="https://prd-tnm.s3.amazonaws.com/StagedProducts/Small-scale/data/Hydrography/hydrusm010g.gdb_nt00897.tar.gz">Download</a></li>
-</ul></li>
-<li><a href="https://www.nrcs.usda.gov/resources/data-and-reports/gridded-national-soil-survey-geographic-database-gnatsgo">Soil
-| Source Page</a>
-<ul>
-<li><a href="https://nrcs.app.box.com/v/soils/file/1122196282596">Download</a></li>
 </ul></li>
 <li>Vegetation Index
 <ul>
@@ -9610,8 +9606,8 @@ map_df(states, ~obs[[.x]][, .(.N, state=.x), by=.(common.name)]) %&gt;%
     )
   ) %&gt;%
     DT::formatStyle(1:3, `font-size`=&quot;17px&quot;)</code></pre>
-<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-8863e3c05e030917eb84" style="width:100%;height:auto;"></div>
-<script type="application/json" data-for="htmlwidget-8863e3c05e030917eb84">{"x":{"filter":"none","vertical":false,"data":[["Belted Kingfisher","Belted Kingfisher","Belted Kingfisher","Belted Kingfisher","Cedar Waxwing","Cedar Waxwing","Cedar Waxwing","Cedar Waxwing","Downy Woodpecker","Downy Woodpecker","Downy Woodpecker","Downy Woodpecker","Ruddy Duck","Ruddy Duck","Ruddy Duck","Ruddy Duck","Sanderling","Sanderling","Sanderling","Sanderling","Sandhill Crane","Sandhill Crane","Sandhill Crane","Sandhill Crane","Sharp-shinned Hawk","Sharp-shinned Hawk","Sharp-shinned Hawk","Sharp-shinned Hawk","Wild Turkey","Wild Turkey","Wild Turkey","Wild Turkey"],[4552,4854,6367,2089,3447,4443,8896,4009,7513,11280,8848,4699,1728,1345,2097,51,131,1495,665,39,1534,125,2472,77,2258,1408,2807,758,2617,2420,2460,2211],["CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT"]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th>common.name<\/th>\n      <th>N<\/th>\n      <th>state<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"paging":false,"searching":false,"orderMulti":true,"scrollY":400,"info":false,"lengthChange":false,"columnDefs":[{"className":"dt-right","targets":1}],"order":[],"autoWidth":false,"orderClasses":false,"rowCallback":"function(row, data, displayNum, displayIndex, dataIndex) {\nvar value=data[0]; $(this.api().cell(row, 0).node()).css({'font-size':'17px'});\nvar value=data[1]; $(this.api().cell(row, 1).node()).css({'font-size':'17px'});\nvar value=data[2]; $(this.api().cell(row, 2).node()).css({'font-size':'17px'});\n}"}},"evals":["options.rowCallback"],"jsHooks":[]}</script>
+<div class="datatables html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-af37edb5e61d03421dd5" style="width:100%;height:auto;"></div>
+<script type="application/json" data-for="htmlwidget-af37edb5e61d03421dd5">{"x":{"filter":"none","vertical":false,"data":[["Belted Kingfisher","Belted Kingfisher","Belted Kingfisher","Belted Kingfisher","Cedar Waxwing","Cedar Waxwing","Cedar Waxwing","Cedar Waxwing","Downy Woodpecker","Downy Woodpecker","Downy Woodpecker","Downy Woodpecker","Ruddy Duck","Ruddy Duck","Ruddy Duck","Ruddy Duck","Sanderling","Sanderling","Sanderling","Sanderling","Sandhill Crane","Sandhill Crane","Sandhill Crane","Sandhill Crane","Sharp-shinned Hawk","Sharp-shinned Hawk","Sharp-shinned Hawk","Sharp-shinned Hawk","Wild Turkey","Wild Turkey","Wild Turkey","Wild Turkey"],[4552,4854,6367,2089,3447,4443,8896,4009,7513,11280,8848,4699,1728,1345,2097,51,131,1495,665,39,1534,125,2472,77,2258,1408,2807,758,2617,2420,2460,2211],["CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT","CO","NC","OR","VT"]],"container":"<table class=\"display\">\n  <thead>\n    <tr>\n      <th>common.name<\/th>\n      <th>N<\/th>\n      <th>state<\/th>\n    <\/tr>\n  <\/thead>\n<\/table>","options":{"paging":false,"searching":false,"orderMulti":true,"scrollY":400,"info":false,"lengthChange":false,"columnDefs":[{"className":"dt-right","targets":1}],"order":[],"autoWidth":false,"orderClasses":false,"rowCallback":"function(row, data, displayNum, displayIndex, dataIndex) {\nvar value=data[0]; $(this.api().cell(row, 0).node()).css({'font-size':'17px'});\nvar value=data[1]; $(this.api().cell(row, 1).node()).css({'font-size':'17px'});\nvar value=data[2]; $(this.api().cell(row, 2).node()).css({'font-size':'17px'});\n}"}},"evals":["options.rowCallback"],"jsHooks":[]}</script>
 <p>Below is a brief snapshot of the data, filtered to
 <code>common.name == &quot;Sandhill Crane&quot;</code> in North Carolina:</p>
 <pre class="r"><code># NC Sandhill Crane Map
@@ -9623,8 +9619,8 @@ leaflet::leaflet(nc.shc) %&gt;%
   leaflet::setView(lng = mean(nc.shc$longitude),
                    lat = mean(nc.shc$latitude), zoom = 7) %&gt;%
   leaflet::addProviderTiles(leaflet::providers$Stamen.Toner)</code></pre>
-<div class="leaflet html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-29bea42394566780aaa3" style="width:672px;height:480px;"></div>
-<script type="application/json" data-for="htmlwidget-29bea42394566780aaa3">{"x":{"options":{"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addTiles","args":["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",null,null,{"minZoom":0,"maxZoom":18,"tileSize":256,"subdomains":"abc","errorTileUrl":"","tms":false,"noWrap":false,"zoomOffset":0,"zoomReverse":false,"opacity":1,"zIndex":1,"detectRetina":false,"attribution":"&copy; <a href=\"https://openstreetmap.org\">OpenStreetMap<\/a> contributors, <a href=\"https://creativecommons.org/licenses/by-sa/2.0/\">CC-BY-SA<\/a>"}]},{"method":"addMarkers","args":[[34.712734,34.713411,34.7157549,34.71826,34.734929,34.736377,34.7366,34.7369147,34.737565,34.73783,34.738141,34.738682,34.738912,34.738963,34.739,34.739326,34.7393283,34.7393657,34.7393941,34.7393987,34.73963,34.7396376,34.7396715,34.7397302,34.739753,34.739768,34.7398043,34.739862,34.740196,34.740308,34.7404,34.740549,34.740705,34.741059,34.7413746,34.741394,34.741433,34.741593,34.741694,34.741962,34.742338,34.7423442,34.742408,34.742717,34.743312,34.7445746,34.745505,34.7456387,34.747839,34.755272,34.7612351,35.0379,35.068554,35.0857557,35.218505,35.250066,35.2580992,35.3175964,35.3217702,35.3710075,35.3776918,35.3784444,35.3873001,35.3977086,35.399755,35.4758884,35.4780058,35.47895,35.478952,35.4795086,35.5229592,35.5236607,35.525011,35.5250665,35.526134,35.5278203,35.5400314,35.560436,35.633465,35.6688151,35.672127,35.6766872,35.6840715,35.688909,35.6932386,35.7066562,35.7088429,35.7096216,35.710392,35.71098,35.711745,35.7125799,35.7126743,35.7146708,35.7312852,35.7438124,35.8030083,35.818417,35.8193499,35.8512134,35.8618686,35.864075,35.99434,36.058102,36.0582716,36.060465,36.1038052,36.104907,36.105483,36.105866,36.1447541,36.1527028,36.1764054,36.176596,36.177601,36.1778396,36.1871089,36.1875315,36.1896609,36.199733,36.2004344,36.232581,36.2560444,36.2566562,36.4392466],[-76.658434,-76.657887,-76.6633084,-76.66385,-76.646486,-76.6452,-76.6406,-76.6447995,-76.644329,-76.647828,-76.648391,-76.648229,-76.651905,-76.643437,-76.6434,-76.652161,-76.6522568,-76.6512795,-76.6521847,-76.6479958,-76.65311,-76.6444659,-76.6528009,-76.652872,-76.652902,-76.642622,-76.6529051,-76.652754,-76.6495114,-76.653994,-76.6473,-76.642431,-76.642313,-76.651048,-76.6419468,-76.65177,-76.65196,-76.651696,-76.650387,-76.656706,-76.652027,-76.6506779,-76.641118,-76.640737,-76.639899,-76.6438468,-76.64502,-76.6593563,-76.649553,-76.637681,-76.629467,-84.188088,-77.0541418,-77.0454897,-82.729017,-82.705367,-82.6941479,-82.446036,-82.4483866,-82.5312603,-82.5450236,-82.545558,-82.546607,-82.5444889,-82.5797653,-76.3253049,-76.4384079,-76.43728,-76.437285,-80.8277893,-82.9657745,-82.9691952,-82.974042,-82.9687071,-82.930621,-82.9753536,-82.5507438,-75.464313,-82.55752,-76.583848,-76.594143,-81.0945317,-76.5431213,-82.5690244,-76.5421343,-76.5659523,-76.5766865,-76.5779053,-76.578946,-76.577124,-76.579364,-76.5790651,-76.5788766,-76.5880966,-81.9030398,-76.5678711,-82.9587485,-81.185905,-76.5170802,-75.8578491,-75.9045243,-75.86201,-79.93536,-79.437995,-79.4390434,-77.677219,-77.6554602,-77.651605,-77.654625,-77.656467,-77.4143887,-81.1509204,-77.7788687,-77.7787828,-77.783787,-77.7840185,-80.3492682,-80.2821636,-76.3875422,-79.7448421,-81.6423635,-79.753409,-79.7434156,-79.7085756,-78.8778565],null,null,null,{"interactive":true,"draggable":false,"keyboard":true,"title":"","alt":"","zIndexOffset":0,"opacity":1,"riseOnHover":false,"riseOffset":250},null,null,null,null,null,{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]},{"method":"addProviderTiles","args":["Stamen.Toner",null,null,{"errorTileUrl":"","noWrap":false,"detectRetina":false}]}],"limits":{"lat":[34.712734,36.4392466],"lng":[-84.188088,-75.464313]},"setView":[[35.332494508,-78.2375070264],7,[]]},"evals":[],"jsHooks":[]}</script>
+<div class="leaflet html-widget html-fill-item-overflow-hidden html-fill-item" id="htmlwidget-9e6803bfbcd516b576eb" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-9e6803bfbcd516b576eb">{"x":{"options":{"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addTiles","args":["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",null,null,{"minZoom":0,"maxZoom":18,"tileSize":256,"subdomains":"abc","errorTileUrl":"","tms":false,"noWrap":false,"zoomOffset":0,"zoomReverse":false,"opacity":1,"zIndex":1,"detectRetina":false,"attribution":"&copy; <a href=\"https://openstreetmap.org\">OpenStreetMap<\/a> contributors, <a href=\"https://creativecommons.org/licenses/by-sa/2.0/\">CC-BY-SA<\/a>"}]},{"method":"addMarkers","args":[[34.712734,34.713411,34.7157549,34.71826,34.734929,34.736377,34.7366,34.7369147,34.737565,34.73783,34.738141,34.738682,34.738912,34.738963,34.739,34.739326,34.7393283,34.7393657,34.7393941,34.7393987,34.73963,34.7396376,34.7396715,34.7397302,34.739753,34.739768,34.7398043,34.739862,34.740196,34.740308,34.7404,34.740549,34.740705,34.741059,34.7413746,34.741394,34.741433,34.741593,34.741694,34.741962,34.742338,34.7423442,34.742408,34.742717,34.743312,34.7445746,34.745505,34.7456387,34.747839,34.755272,34.7612351,35.0379,35.068554,35.0857557,35.218505,35.250066,35.2580992,35.3175964,35.3217702,35.3710075,35.3776918,35.3784444,35.3873001,35.3977086,35.399755,35.4758884,35.4780058,35.47895,35.478952,35.4795086,35.5229592,35.5236607,35.525011,35.5250665,35.526134,35.5278203,35.5400314,35.560436,35.633465,35.6688151,35.672127,35.6766872,35.6840715,35.688909,35.6932386,35.7066562,35.7088429,35.7096216,35.710392,35.71098,35.711745,35.7125799,35.7126743,35.7146708,35.7312852,35.7438124,35.8030083,35.818417,35.8193499,35.8512134,35.8618686,35.864075,35.99434,36.058102,36.0582716,36.060465,36.1038052,36.104907,36.105483,36.105866,36.1447541,36.1527028,36.1764054,36.176596,36.177601,36.1778396,36.1871089,36.1875315,36.1896609,36.199733,36.2004344,36.232581,36.2560444,36.2566562,36.4392466],[-76.658434,-76.657887,-76.6633084,-76.66385,-76.646486,-76.6452,-76.6406,-76.6447995,-76.644329,-76.647828,-76.648391,-76.648229,-76.651905,-76.643437,-76.6434,-76.652161,-76.6522568,-76.6512795,-76.6521847,-76.6479958,-76.65311,-76.6444659,-76.6528009,-76.652872,-76.652902,-76.642622,-76.6529051,-76.652754,-76.6495114,-76.653994,-76.6473,-76.642431,-76.642313,-76.651048,-76.6419468,-76.65177,-76.65196,-76.651696,-76.650387,-76.656706,-76.652027,-76.6506779,-76.641118,-76.640737,-76.639899,-76.6438468,-76.64502,-76.6593563,-76.649553,-76.637681,-76.629467,-84.188088,-77.0541418,-77.0454897,-82.729017,-82.705367,-82.6941479,-82.446036,-82.4483866,-82.5312603,-82.5450236,-82.545558,-82.546607,-82.5444889,-82.5797653,-76.3253049,-76.4384079,-76.43728,-76.437285,-80.8277893,-82.9657745,-82.9691952,-82.974042,-82.9687071,-82.930621,-82.9753536,-82.5507438,-75.464313,-82.55752,-76.583848,-76.594143,-81.0945317,-76.5431213,-82.5690244,-76.5421343,-76.5659523,-76.5766865,-76.5779053,-76.578946,-76.577124,-76.579364,-76.5790651,-76.5788766,-76.5880966,-81.9030398,-76.5678711,-82.9587485,-81.185905,-76.5170802,-75.8578491,-75.9045243,-75.86201,-79.93536,-79.437995,-79.4390434,-77.677219,-77.6554602,-77.651605,-77.654625,-77.656467,-77.4143887,-81.1509204,-77.7788687,-77.7787828,-77.783787,-77.7840185,-80.3492682,-80.2821636,-76.3875422,-79.7448421,-81.6423635,-79.753409,-79.7434156,-79.7085756,-78.8778565],null,null,null,{"interactive":true,"draggable":false,"keyboard":true,"title":"","alt":"","zIndexOffset":0,"opacity":1,"riseOnHover":false,"riseOffset":250},null,null,null,null,null,{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]},{"method":"addProviderTiles","args":["Stamen.Toner",null,null,{"errorTileUrl":"","noWrap":false,"detectRetina":false}]}],"limits":{"lat":[34.712734,36.4392466],"lng":[-84.188088,-75.464313]},"setView":[[35.332494508,-78.2375070264],7,[]]},"evals":[],"jsHooks":[]}</script>
 </div>
 <div id="rasters" class="section level2">
 <h2>Rasters</h2>
@@ -9637,8 +9633,8 @@ extensively used to represent continuous data such as elevation,
 temperature, or land cover. In this project, raster data serves as the
 basis for various explanatory variables that influence bird species
 distributions, including digital elevation, urban imperviousness, land
-cover, canopy, weather, hydrography, soil, and vegetation index. Each of
-these variables represents environmental conditions that can affect bird
+cover, canopy, weather, hydrography, and vegetation index. Each of these
+variables represents environmental conditions that can affect bird
 habitat and distribution.</p>
 </div>
 <div id="raster-pre-processing" class="section level2">
@@ -9670,39 +9666,13 @@ terra.any &lt;- function(r) {
 
 # Function to fix NA values in a raster (e.g., NULL values are equal to 999, 
 # but should be NA)
-fix.raster.na &lt;- function(data.path, 
-                          na.val, 
-                          raster.name,
-                          states=c(&quot;CO&quot;, &quot;NC&quot;, &quot;OR&quot;, &quot;VT&quot;)) {
-  
-  for (state in states) {
-    
-    # Set path of the input raster
-    input.raster.path &lt;- file.path(data.path, raster.name)
-    
-    # Create a temporary output path
-    temp.output.path &lt;- file.path(data.path, paste0(&quot;temp_&quot;, raster.name))
-    
-    # Read the input raster
-    cat(paste0(&quot;Loading raster from &quot;, input.raster.path, &quot;...\n&quot;))
-    input.raster &lt;- rast(input.raster.path)
-    
-    # Identify cells with value `na.val`
-    msk &lt;- input.raster == na.val
-    cat(&quot;Checking for improperly formatted NA values...\n&quot;)
-    if (terra.any(msk)) {
-      cat(&quot;Updating NA values...\n&quot;)
-      # Set those cells to NA
-      input.raster[msk] &lt;- NA
-      
-      # Save the output raster to the temporary file path
-      cat(&quot;Saving updated raster...\n&quot;)
-      writeRaster(input.raster, temp.output.path)
-      
-      # Remove temporary prefix and overwrite the original raster
-      file.rename(temp.output.path, input.raster.path)
-    }
+basic.na.fix &lt;- function(r, na.val) {
+  msk &lt;- r == na.val
+  cat(&quot;Checking for improperly formatted NA values...\n&quot;)
+  if (terra.any(msk)) {
+    r[msk] &lt;- NA
   }
+  r
 }
 
 
@@ -9734,9 +9704,10 @@ general.raster.preprocessing &lt;- function(
     crs = 5070,
     wildcard = &quot;*.tif&quot;,
     resolution = 5000,
-    agg=&quot;mean&quot;,
+    agg=&quot;bilinear&quot;,
     recursive.adf.path=F,
-    crop.by.state=T
+    crop.by.state=T,
+    na.val=NULL
 ) {
   # Example usage:
   # general.raster.preprocessing(
@@ -9759,7 +9730,7 @@ general.raster.preprocessing &lt;- function(
   }
   
   cat(&quot;Rasters:&quot;, paste(rasters, collapse=&quot;, &quot;), &quot;\n&quot;)
-  
+
   # Loop through each raster file in the list
   for (i in 1:length(rasters)) {
     
@@ -9800,17 +9771,30 @@ general.raster.preprocessing &lt;- function(
           rm(masked.raster)
           gc()
           
+          # Fixing NA values
+          if (!is.null(na.val)) {
+            reprojected.raster &lt;- basic.na.fix(reprojected.raster, na.val)
+          }
+          
+          template.raster &lt;- ext(reprojected.raster) %&gt;% 
+            rast(res=rep(resolution, 2), crs=crs(reprojected.raster))
+          
+          
+          
           # Resample
           current.res &lt;- terra::res(reprojected.raster)
           cat(&quot;\tCurrent Resolution:&quot;, current.res, &quot;\n&quot;)
           cat(&quot;\tTarget Factor:&quot;, resolution/terra::res(reprojected.raster)[1], &quot;\n&quot;)
           if (any(current.res != resolution)) {
             cat(&quot;\tResampling raster for&quot;, state, &quot;\n&quot;)
-            resampled.raster &lt;- terra::aggregate(
-              reprojected.raster, 
-              fact=c(resolution/current.res[1], resolution/current.res[2]), 
-              fun = agg, 
-              expand = T) %&gt;% suppressWarnings()
+            # resampled.raster &lt;- terra::aggregate(
+            #   reprojected.raster, 
+            #   fact=c(resolution/current.res[1], resolution/current.res[2]), 
+            #   fun = agg, 
+            #   expand = T) %&gt;% suppressWarnings()
+            resampled.raster &lt;- terra::resample(reprojected.raster, 
+                                                template.raster,
+                                                method=agg)
           } else {
             resampled.raster &lt;- reprojected.raster
           }
@@ -10373,7 +10357,6 @@ pre-processing steps described previously:</p>
 <li>Land Cover</li>
 <li>NDVI</li>
 <li>Tree Canopy</li>
-<li>Soil Type</li>
 </ul>
 <pre class="r"><code># Urban Imperviousness Pre-Processing
 
@@ -10402,7 +10385,7 @@ if (!all(file.exists(paste0(&quot;data/land_cover/land_cover_&quot;, states, &qu
     out.path=&quot;data/land_cover&quot;,
     resolution=5000,
     wildcard=&quot;\\.tif$&quot;,
-    agg=&quot;modal&quot;
+    agg=&quot;near&quot;
   )
 }
 
@@ -10444,21 +10427,6 @@ if (!all(file.exists(paste0(&quot;data/canopy/canopy_&quot;, states, &quot;.tif&
     out.path=&quot;data/canopy&quot;,
     resolution=5000,
     wildcard=&quot;\\.tif$&quot;
-  )
-}
-
-# Soil Pre-Processing
-
-# Apply General Raster Pre-Processing to Soil
-if (!all(file.exists(paste0(&quot;data/soil/soil_&quot;, states, &quot;.tif&quot;)))) {
-  general.raster.preprocessing(
-    data.path=ext.data.path,
-    raster.name=&quot;soil/FY2023_gNATSGO_mukey_grid&quot;, 
-    out.path=&quot;data/soil&quot;,
-    out.raster.name=&quot;soil&quot;,
-    resolution=5000,
-    wildcard=&quot;\\.tif$&quot;,
-    agg=&quot;modal&quot;
   )
 }</code></pre>
 </div>
