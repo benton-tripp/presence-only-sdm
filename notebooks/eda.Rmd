@@ -13,7 +13,7 @@ output:
 ---
 
 ```{r setup, include=F, warning=F, message=F}
-knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F)
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
 library(ggplot2)
 library(ggpubr)
@@ -69,7 +69,7 @@ states <- map_data("state") %>%
   filter(region %in% c("oregon", "north carolina", "colorado", "vermont"))
 
 # Load your data
-data.files <- list.files("../data/final", full.names = T)
+data.files <- list.files("data/final", full.names = T)
 
 df <- purrr::map_df(data.files, readRDS) 
 
@@ -207,7 +207,7 @@ do.call(ggpubr::ggarrange,
 ```{r load-rasters}
 
 states <- c("CO", "NC", "OR", "VT")
-r.files <- paste0("../data/final_rasters/", states, ".tif")
+r.files <- paste0("data/final_rasters/", states, ".tif")
 r.list <- purrr::map(r.files, rast)
 names(r.list) <- states
 
@@ -262,6 +262,21 @@ test <- df[-train.test$index,]
 
 Each of the 20 different Land Cover Categories falls under a "parent" category (see [National Land Cover Database Class Legend and Description](https://www.mrlc.gov/data/legends/national-land-cover-database-class-legend-and-description)).
 
-### Dimensionality Reduction
+### Dimensionality Reduction 
+
+```{r soil-dr}
+
+
+s.vals <- purrr::map(states, ~r.list[[.x]][[paste0("soil_", .x)]] %>% 
+                           values() %>% 
+                           unique()) %>%
+  reduce(c) %>%
+  sort() %>%
+  unique()
+
+s.vals %>% tail()
+
+
+```
 
 ### Feature Selection

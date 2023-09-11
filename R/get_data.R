@@ -269,39 +269,13 @@ terra.any <- function(r) {
 
 # Function to fix NA values in a raster (e.g., NULL values are equal to 999, 
 # but should be NA)
-fix.raster.na <- function(data.path, 
-                          na.val, 
-                          raster.name,
-                          states=c("CO", "NC", "OR", "VT")) {
-  
-  for (state in states) {
-    
-    # Set path of the input raster
-    input.raster.path <- file.path(data.path, raster.name)
-    
-    # Create a temporary output path
-    temp.output.path <- file.path(data.path, paste0("temp_", raster.name))
-    
-    # Read the input raster
-    cat(paste0("Loading raster from ", input.raster.path, "...\n"))
-    input.raster <- rast(input.raster.path)
-    
-    # Identify cells with value `na.val`
-    msk <- input.raster == na.val
-    cat("Checking for improperly formatted NA values...\n")
-    if (terra.any(msk)) {
-      cat("Updating NA values...\n")
-      # Set those cells to NA
-      input.raster[msk] <- NA
-      
-      # Save the output raster to the temporary file path
-      cat("Saving updated raster...\n")
-      writeRaster(input.raster, temp.output.path)
-      
-      # Remove temporary prefix and overwrite the original raster
-      file.rename(temp.output.path, input.raster.path)
-    }
+basic.na.fix <- function(r, na.val) {
+  msk <- r == na.val
+  cat("Checking for improperly formatted NA values...\n")
+  if (terra.any(msk)) {
+    r[msk] <- NA
   }
+  r
 }
 
 
@@ -333,9 +307,10 @@ general.raster.preprocessing <- function(
     crs = 5070,
     wildcard = "*.tif",
     resolution = 5000,
-    agg="mean",
+    agg="bilinear",
     recursive.adf.path=F,
-    crop.by.state=T
+    crop.by.state=T,
+    na.val=NULL
 ) {
   # Example usage:
   # general.raster.preprocessing(
@@ -399,17 +374,30 @@ general.raster.preprocessing <- function(
           rm(masked.raster)
           gc()
           
+          # Fixing NA values
+          if (!is.null(na.val)) {
+            reprojected.raster <- basic.na.fix(reprojected.raster, na.val)
+          }
+          
+          template.raster <- ext(reprojected.raster) %>% 
+            rast(res=rep(resolution, 2), crs=crs(reprojected.raster))
+          
+          
+          
           # Resample
           current.res <- terra::res(reprojected.raster)
           cat("\tCurrent Resolution:", current.res, "\n")
           cat("\tTarget Factor:", resolution/terra::res(reprojected.raster)[1], "\n")
           if (any(current.res != resolution)) {
             cat("\tResampling raster for", state, "\n")
-            resampled.raster <- terra::aggregate(
-              reprojected.raster, 
-              fact=c(resolution/current.res[1], resolution/current.res[2]), 
-              fun = agg, 
-              expand = T) %>% suppressWarnings()
+            # resampled.raster <- terra::aggregate(
+            #   reprojected.raster, 
+            #   fact=c(resolution/current.res[1], resolution/current.res[2]), 
+            #   fun = agg, 
+            #   expand = T) %>% suppressWarnings()
+            resampled.raster <- terra::resample(reprojected.raster, 
+                                                template.raster,
+                                                method=agg)
           } else {
             resampled.raster <- reprojected.raster
           }
@@ -561,7 +549,8 @@ if (!all(file.exists(paste0("data/dem/dem_", states, ".tif")))) {
     out.raster.name = "dem",
     out.path = "data/dem",
     resolution = 5000,
-    wildcard="\\.tif$"
+    wildcard="\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -578,7 +567,8 @@ if (!all(file.exists(paste0("data/urban_imperviousness/urban_imperviousness_",
     out.raster.name="urban_imperviousness",
     out.path="data/urban_imperviousness",
     resolution=5000,
-    wildcard="\\.tif$"
+    wildcard="\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -594,7 +584,7 @@ if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
     out.path="data/land_cover",
     resolution=5000,
     wildcard="\\.tif$",
-    agg="modal"
+    agg="near"
   )
 }
 
@@ -615,7 +605,8 @@ for (season in c("Spring", "Summer", "Fall", "Winter")) {
         out.raster.name=paste0(season, "_NDVI"),
         out.path="data/NDVI",
         wildcard="*1KM\\.VI_NDVI.*\\.tif$",
-        resolution=5000)
+        resolution=5000,
+        agg="bilinear")
       cat("-----------------\n")
     }, error = function(e) {
       cat(paste0("An error occurred while processing ", season, ": ", e$message, "\n"))
@@ -634,7 +625,8 @@ if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
     out.raster.name="canopy",
     out.path="data/canopy",
     resolution=5000,
-    wildcard="\\.tif$"
+    wildcard="\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -794,7 +786,8 @@ if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
     out.path="data/prcp",
     out.raster.name="avg_prcp",
     resolution=5000,
-    wildcard="avg_prcp\\.tif$"
+    wildcard="avg_prcp\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -808,7 +801,8 @@ if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
     out.path="data/tmin",
     out.raster.name="tmin",
     resolution=5000,
-    wildcard="min_temp\\.tif$"
+    wildcard="min_temp\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -822,7 +816,8 @@ if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
     out.path="data/tmax",
     out.raster.name="tmax",
     resolution=5000,
-    wildcard="max_temp\\.tif$"
+    wildcard="max_temp\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -921,7 +916,8 @@ if (!all(file.exists(paste0("data/waterbody/waterbody_", states, ".tif")))) {
     out.path="data/waterbody",
     out.raster.name="waterbody",
     resolution=5000,
-    wildcard="\\.tif$"
+    wildcard="\\.tif$",
+    agg="bilinear"
   )
 }
 
@@ -982,11 +978,10 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
     out.path="data/coastline",
     out.raster.name="coastline",
     resolution=5000,
-    wildcard="\\.tif$"
+    wildcard="\\.tif$",
+    agg="bilinear"
   )
 }
-
-
 
 
 # SOIL --------------------------------------------------------------------
@@ -1000,7 +995,8 @@ if (!all(file.exists(paste0("data/soil/soil_", states, ".tif")))) {
     out.raster.name="soil",
     resolution=5000,
     wildcard="\\.tif$",
-    agg="modal"
+    agg="near",
+    na.val=4294967296
   )
 }
 
