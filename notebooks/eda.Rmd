@@ -15,6 +15,8 @@ output:
 ```{r setup, include=F, warning=F, message=F}
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
+library(sf)
+library(terra)
 library(ggplot2)
 library(ggpubr)
 library(maps)
@@ -24,10 +26,9 @@ library(readr)
 library(data.table)
 library(knitr)
 library(quarto)
-library(sf)
 library(purrr)
 library(caret)
-library(terra)
+library(FactoMineR)
 
 ```
 
@@ -213,7 +214,211 @@ names(r.list) <- states
 
 ```
 
-## Train/Test Splitting (Observation Data)
+TODO:
+- `terra::freq`
+- `terra::density`
+- `terra::layerCor`
+
+### Principal Component Analysis
+
+```{r pca}
+
+r.df <- map_df(states, function(s) {
+  df <- r.list[[s]] %>% as.data.frame()
+  names(df) <- names(df) %>% gsub(paste0("_", s), "", .)
+  df %>% setDT()
+  df[, state := factor(s, levels=states)]
+  df[apply(df, 1, function(.x) !any(is.na(.x)))]
+}) 
+
+# Custom function to process factor levels
+clean.levels <- function(x) {
+  # Remove non-alphanumeric characters and replace with underscores
+  x <- gsub("[^a-zA-Z0-9]", "_", x)
+  # Convert to lowercase
+  x <- tolower(x)
+  # Remove any leading or trailing underscores
+  x <- gsub("^_|_$", "", x)
+  x <- gsub("__", "_", x)
+  x <- gsub("NLCD_Land_", "", x)
+  return(x)
+}
+
+r.df[, NLCD_Land := factor(clean.levels(levels(NLCD_Land))[NLCD_Land])]
+
+# Convert factor columns to dummy variables
+df.dummies <- data.table(model.matrix(~ . - 1, data = r.df[, .(NLCD_Land, state)])) %>%
+  cbind(r.df[, -which(names(r.df) %in% c("NLCD_Land", "state")), with=F]) 
+
+names(df.dummies) <- gsub("NLCD_Land", "", names(df.dummies))
+
+# Ensure that there is more than one value per column (remove otherwise)
+uniq.1 <- t( df.dummies[, lapply(.SD, uniqueN)]) %>%
+  as.data.frame() %>%
+  filter(V1 == 1) %>%
+  row.names()
+
+if (length(uniq.1) >= 1) {
+  df.dummies <- df.dummies[, -which(names(df.dummies) %in% uniq.1), with=F]
+}
+
+
+pca.fit <- PCA(df.dummies, graph=F)
+plot.PCA(pca.fit, choix="var")
+
+```
+
+```{r pca-varimp, fig.height=8, fig.width=8}
+
+res <- pca.fit$var$coord %>%
+  as.data.frame() %>%
+  mutate(var=as.factor(rownames(.))) %>%
+  select(var, everything()) %>%
+  as_tibble()
+rownames(res) <- NULL
+  
+p.d1 <- ggplot(res, aes(x = reorder(var, Dim.1), y = Dim.1)) +
+  geom_bar(stat = "identity", fill="darkblue") +
+  coord_flip() +  # Makes it a horizontal bar chart
+  labs(title = "Variable importance for Dim.1", y = "Importance", x = "Variable") +
+  theme_minimal()
+
+p.d2 <- ggplot(res, aes(x = reorder(var, Dim.2), y = Dim.2)) +
+  geom_bar(stat = "identity", fill="darkred") +
+  coord_flip() +  # Makes it a horizontal bar chart
+  labs(title = "Variable importance for Dim.2", y = "Importance", x = "Variable") +
+  theme_minimal()
+
+ggpubr::ggarrange(plotlist=list(p.d1, p.d2), nrow=2, ncol=1)
+
+```
+
+### Factor Analysis for Mixed Data
+
+```{r famd, fig.height=15, fig.width=5}
+
+famd.fit <- FAMD(r.df, graph=F)
+
+ggpubr::ggarrange(plotlist=purrr::map(
+  c("var", "quanti", "quali"), 
+  ~plot.FAMD(famd.fit, choix=.x)),
+  ncol=1, nrow=3)
+
+```
+
+```{r famd-varimp, fig.height=8, fig.width=8}
+
+res <- famd.fit$var$coord %>%
+  as.data.frame() %>%
+  mutate(var=as.factor(rownames(.))) %>%
+  select(var, everything()) %>%
+  as_tibble()
+rownames(res) <- NULL
+  
+p.d1 <- ggplot(res, aes(x = reorder(var, Dim.1), y = Dim.1)) +
+  geom_bar(stat = "identity", fill="darkblue") +
+  coord_flip() +  # Makes it a horizontal bar chart
+  labs(title = "Variable importance for Dim.1", y = "Importance", x = "Variable") +
+  theme_minimal()
+
+p.d2 <- ggplot(res, aes(x = reorder(var, Dim.2), y = Dim.2)) +
+  geom_bar(stat = "identity", fill="darkred") +
+  coord_flip() +  # Makes it a horizontal bar chart
+  labs(title = "Variable importance for Dim.2", y = "Importance", x = "Variable") +
+  theme_minimal()
+
+ggpubr::ggarrange(plotlist=list(p.d1, p.d2), nrow=2, ncol=1)
+
+```
+
+## Pseudo-Absence Generation
+
+First, get all of the grid-cell geometries (based on the resolution of the rasters) as spatial dataframes. Also extract each cell's centroid, and row/column index from the original raster.
+
+
+```{r grid-cells}
+
+# Function to compute bounding box from centroid
+compute.bbox <- function(x, y, half.res.x, half.res.y) {
+  c(x - half.res.x, x + half.res.x, y - half.res.y, y + half.res.y)
+}
+
+# Function to generate a single POLYGON from the bounding box coordinates
+make.polygon <- function(xmin, ymin, xmax, ymax) {
+  m <- matrix(c(xmin, ymin, 
+                xmax, ymin, 
+                xmax, ymax, 
+                xmin, ymax, 
+                xmin, ymin), 
+              ncol = 2, byrow = T)
+  st_polygon(list(m))
+}
+
+get.grid.geoms <- function(r, .crs=NULL) {
+  
+  # Calculate the centroids of each cell
+  centroids <- terra::xyFromCell(r, seq_len(ncell(r)))
+  # Get resolution / 2 for x & y
+  half.res.x <- res(r)[1] / 2
+  half.res.y <- res(r)[2] / 2
+  # Compute bounding box for each centroid
+  bboxes <- t(apply(centroids, 1, function(pt) {
+    compute.bbox(pt[1], pt[2], half.res.x, half.res.y)
+  }))
+  # Create dataframe
+  dt <- as.data.table(bboxes)
+  colnames(dt) <- c("xmin", "xmax", "ymin", "ymax")
+  
+  dt[, `:=` (
+    # Add centroid lat/lon values to dataframe
+    lon=centroids[, 1],
+    lat=centroids[, 2],
+    # Add i (row) and j (column) indices
+    i=rowFromCell(r, 1:ncell(r)),
+    j=colFromCell(r, 1:ncell(r))
+  )]
+  
+  
+  # Convert centroids to spatial points
+  dt[, centroid := purrr::map2(lon, lat, ~st_point(cbind(.x, .y)))]
+  
+  # Create bounding box polygons for all rows and assign to geometry column
+  dt[, bbox := purrr::pmap(.l=list(xmin, ymin, xmax, ymax), 
+                               .f=make.polygon)]
+  # Make spatial frame
+  df <- st_sf(dt, 
+              bbox = st_sfc(dt$bbox, crs=st_crs(r)),
+              centroid = st_sfc(dt$centroid, crs=st_crs(r)))
+
+  # Update CRS
+  if (!is.null(.crs)) {
+    df <- st_transform(df, st_crs(.crs)) %>%
+      st_set_geometry("centroid") %>%
+      st_transform(st_crs(.crs)) %>%
+      st_set_geometry("bbox")
+  }
+  
+  df %>% select(i, j, bbox, centroid)
+}
+
+.grids <- purrr::map(r.list, ~get.grid.geoms(.x, .crs=4326))
+names(.grids) <- states
+
+# See sample grid dataframe
+.grids$NC
+
+```
+
+
+```{r select-pa}
+
+# TODO: Select pseudo-absence points
+
+```
+
+## Train/Test Splitting
+
+TODO: Include pseudo-absence data
 
 ```{r}
 
@@ -248,10 +453,6 @@ test <- df[-train.test$index,]
 
 ```
 
-## Pseudo-Absence Generation
-
-## Train/Test Splitting (Pseudo-Absence Data)
-
 ## EDA With Pseudo-Absence Data
 
 ## Autocorrelation Mitigation
@@ -261,51 +462,5 @@ test <- df[-train.test$index,]
 ### Land Cover Hierarchical Updates to Categories
 
 Each of the 20 different Land Cover Categories falls under a "parent" category (see [National Land Cover Database Class Legend and Description](https://www.mrlc.gov/data/legends/national-land-cover-database-class-legend-and-description)).
-
-### Dimensionality Reduction 
-
-```{r dr}
-
-r.df <- map_df(states, function(s) {
-  df <- r.list[[s]] %>% as.data.frame()
-  names(df) <- names(df) %>% gsub(paste0("_", s), "", .)
-  df %>% setDT()
-  df[, state := factor(s, levels=states)]
-  df[apply(df, 1, function(.x) !any(is.na(.x)))]
-}) 
-
-# Custom function to process factor levels
-clean.levels <- function(x) {
-  # Remove non-alphanumeric characters and replace with underscores
-  x <- gsub("[^a-zA-Z0-9]", "_", x)
-  # Convert to lowercase
-  x <- tolower(x)
-  # Remove any leading or trailing underscores
-  x <- gsub("^_|_$", "", x)
-  x <- gsub("__", "_", x)
-  return(x)
-}
-
-r.df[, NLCD_Land := factor(clean.levels(levels(NLCD_Land))[NLCD_Land])]
-
-# Convert factor columns to dummy variables
-df.dummies <- data.table(model.matrix(~ . - 1, data = r.df[, .(NLCD_Land, state)])) %>%
-  cbind(r.df[, -which(names(r.df) %in% c("NLCD_Land", "state")), with=F])
-
-# Ensure that there is more than one value per column (remove otherwise)
-uniq.1 <- t( df.dummies[, lapply(.SD, uniqueN)]) %>%
-  as.data.frame() %>%
-  filter(V1 == 1) %>%
-  row.names()
-
-if (length(uniq.1) >= 1) {
-  df.dummies <- df.dummies[, -which(names(df.dummies) %in% uniq.1), with=F]
-}
-
-# Scale numeric columns
-scaled.data <- scale(df.dummies) %>% as.data.table()
-
-
-```
 
 ### Feature Selection
