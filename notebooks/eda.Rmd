@@ -274,8 +274,18 @@ s.vals <- purrr::map(states, ~r.list[[.x]][[paste0("soil_", .x)]] %>%
   sort() %>%
   unique()
 
-s.vals %>% tail()
+length(s.vals)
 
+r.df <- map_df(states, function(s) {
+  df <- r.list[[s]] %>% as.data.frame()
+  names(df) <- names(df) %>% gsub(paste0("_", s), "", .)
+  df %>% setDT()
+  df[apply(df, 1, function(.x) !any(is.na(.x)))]
+}) 
+
+r.df[, soil := factor(soil, levels=sort(unique(r.df$soil)))]
+
+r.df
 
 ```
 
