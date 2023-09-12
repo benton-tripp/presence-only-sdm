@@ -21,6 +21,9 @@ setwd("C:/users/bento/gis630")
 # Hard coded path for data saved in external hard drive
 ext.data.path <- "D:/AvianAnalyticsData"
 
+# Set the resolution
+.resolution <- 1e3L # 1km
+
 # GET US STATE BOUNDARY DATA ----------------------------------------------
 
 # There are four regions explored in this analysis from 2016 through 2019 (corresponding to
@@ -255,7 +258,7 @@ names(obs) <- states
 # 
 # 1.  Load the environmental raster datasets & State Boundary data
 # 2.  Reproject to CRS EPSG:5070
-# 3.  Resample each to 5000 x 5000 meters
+# 3.  Resample each to the specified resolution
 # 4.  Mask each raster using State Boundary (ensure oceans and great 
 #     lakes are set to `nodata`)
 # 5.  Output updated raster data
@@ -306,7 +309,7 @@ general.raster.preprocessing <- function(
     out.path = "../gis630/data",
     crs = 5070,
     wildcard = "*.tif",
-    resolution = 5000,
+    resolution = .resolution,
     agg="bilinear",
     recursive.adf.path=F,
     crop.by.state=T,
@@ -548,7 +551,7 @@ if (!all(file.exists(paste0("data/dem/dem_", states, ".tif")))) {
     raster.name = "dem", 
     out.raster.name = "dem",
     out.path = "data/dem",
-    resolution = 5000,
+    resolution = .resolution,
     wildcard="\\.tif$",
     agg="bilinear"
   )
@@ -566,7 +569,7 @@ if (!all(file.exists(paste0("data/urban_imperviousness/urban_imperviousness_",
     raster.name="urban_imperviousness", 
     out.raster.name="urban_imperviousness",
     out.path="data/urban_imperviousness",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="\\.tif$",
     agg="bilinear"
   )
@@ -582,7 +585,7 @@ if (!all(file.exists(paste0("data/land_cover/land_cover_", states, ".tif")))) {
     raster.name="land_cover/nlcd_2019_land_cover_l48_20210604", 
     out.raster.name="land_cover",
     out.path="data/land_cover",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="\\.tif$",
     agg="near"
   )
@@ -605,7 +608,7 @@ for (season in c("Spring", "Summer", "Fall", "Winter")) {
         out.raster.name=paste0(season, "_NDVI"),
         out.path="data/NDVI",
         wildcard="*1KM\\.VI_NDVI.*\\.tif$",
-        resolution=5000,
+        resolution=.resolution,
         agg="bilinear")
       cat("-----------------\n")
     }, error = function(e) {
@@ -624,7 +627,7 @@ if (!all(file.exists(paste0("data/canopy/canopy_", states, ".tif")))) {
     raster.name="canopy/nlcd_tcc_CONUS_2016_v2021-4", 
     out.raster.name="canopy",
     out.path="data/canopy",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="\\.tif$",
     agg="bilinear"
   )
@@ -785,7 +788,7 @@ if (!all(file.exists(paste0("data/prcp/avg_prcp_", states, ".tif")))) {
     raster.name="weather/aggregated", 
     out.path="data/prcp",
     out.raster.name="avg_prcp",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="avg_prcp\\.tif$",
     agg="bilinear"
   )
@@ -800,7 +803,7 @@ if (!all(file.exists(paste0("data/tmin/tmin_", states, ".tif")))) {
     raster.name="weather/aggregated", 
     out.path="data/tmin",
     out.raster.name="tmin",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="min_temp\\.tif$",
     agg="bilinear"
   )
@@ -815,7 +818,7 @@ if (!all(file.exists(paste0("data/tmax/tmax_", states, ".tif")))) {
     raster.name="weather/aggregated", 
     out.path="data/tmax",
     out.raster.name="tmax",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="max_temp\\.tif$",
     agg="bilinear"
   )
@@ -858,7 +861,9 @@ update.wb.array <- function(r) {
   dilated2 <- terra::focal(dilated1, w =w, fun = max)
   dilated3 <- terra::focal(dilated2, w = w, fun = max)
   dilated4 <- terra::focal(dilated3, w = w, fun = max)
+  dilated5 <- terra::focal(dilated4, w = w, fun = max)
   
+  r.updated[dilated5 == 1] <- 0.1
   r.updated[dilated4 == 1] <- 0.2
   r.updated[dilated3 == 1] <- 0.4
   r.updated[dilated2 == 1] <- 0.6
@@ -890,7 +895,7 @@ process.waterbody.shp <- function(out.path,
     cat("Converting to raster using template...\n")
     
     # Initialize raster resolution at 1km prior to dilation
-    # (will be updated to desired resolution)
+    # (will be updated to desired resolution later if different)
     template.raster <- ext(gdf) %>% 
       rast(res=rep(1e3, 2), crs=crs(gdf))
     
@@ -915,7 +920,7 @@ if (!all(file.exists(paste0("data/waterbody/waterbody_", states, ".tif")))) {
     raster.name="waterbody", 
     out.path="data/waterbody",
     out.raster.name="waterbody",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="\\.tif$",
     agg="bilinear"
   )
@@ -951,7 +956,7 @@ process.coastline.shp <- function(out.path,
     cat("Converting to raster using template...\n")
     
     # Initialize raster resolution at 1km prior to dilation
-    # (will be updated to desired resolution)
+    # (will be updated to desired resolution later if needed)
     template.raster <- ext(gdf) %>% 
       rast(res=rep(1e3, 2), crs=crs(gdf))
     
@@ -977,7 +982,7 @@ if (!all(file.exists(paste0("data/coastline/coastline_", states, ".tif")))) {
     raster.name="coastline", 
     out.path="data/coastline",
     out.raster.name="coastline",
-    resolution=5000,
+    resolution=.resolution,
     wildcard="\\.tif$",
     agg="bilinear"
   )
