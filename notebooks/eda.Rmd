@@ -378,6 +378,14 @@ get.grid.geoms <- function(r, .crs=NULL) {
     j=colFromCell(r, 1:ncell(r))
   )]
   
+  # Convert i and j to cell number
+  dt[, cell := cellFromRowCol(r, i, j)]
+
+  # Extract cell #'s of raster r where any values are NA
+  r.na <- which(apply(as.data.frame(values(is.na(r))), MARGIN = 1, FUN = any))
+  
+  # Remove those cells from the data
+  dt <- dt[-r.na]
   
   # Convert centroids to spatial points
   dt[, centroid := purrr::map2(lon, lat, ~st_point(cbind(.x, .y)))]
@@ -398,7 +406,7 @@ get.grid.geoms <- function(r, .crs=NULL) {
       st_set_geometry("bbox")
   }
   
-  df %>% select(i, j, bbox, centroid)
+  df %>% select(i, j, cell, bbox, centroid)
 }
 
 .grids <- purrr::map(r.list, ~get.grid.geoms(.x, .crs=4326))
@@ -406,6 +414,211 @@ names(.grids) <- states
 
 # See sample grid dataframe
 .grids$NC
+
+```
+
+```{r intersect-obs}
+
+# Combine grid-cell data into single data frame
+grid.df <- purrr::map_df(states, ~mutate(.grids[[.x]], state=.x)) %>%
+# Get cells surrounding each cell in the original grid
+  mutate(i.j=paste(i, j, sep="_")) %>%
+  mutate(
+    # top-left
+    tl.i = ifelse(paste(i - 1, j - 1, sep="_") %in% i.j, i - 1, NA),
+    tl.j = ifelse(paste(i - 1, j - 1, sep="_") %in% i.j, j - 1, NA),
+    # top
+    t.i = ifelse(paste(i, j - 1, sep="_") %in% i.j, i, NA),
+    t.j = ifelse(paste(i, j - 1, sep="_") %in% i.j, j - 1, NA),
+    # top-right
+    tr.i = ifelse(paste(i + 1, j - 1, sep="_") %in% i.j, i + 1, NA),
+    tr.j = ifelse(paste(i + 1, j - 1, sep="_") %in% i.j, j - 1, NA),
+    # right
+    r.i = ifelse(paste(i + 1, j, sep="_") %in% i.j, i + 1, NA),
+    r.j = ifelse(paste(i + 1, j, sep="_") %in% i.j, j, NA),
+    # bottom-right
+    br.i = ifelse(paste(i + 1, j + 1, sep="_") %in% i.j, i + 1, NA),
+    br.j = ifelse(paste(i + 1, j + 1, sep="_") %in% i.j, j + 1, NA),
+    # bottom
+    b.i = ifelse(paste(i, j + 1, sep="_") %in% i.j, i, NA),
+    b.j = ifelse(paste(i, j + 1, sep="_") %in% i.j, j + 1, NA),
+    # bottom-left
+    bl.i = ifelse(paste(i - 1, j + 1, sep="_") %in% i.j, i - 1, NA),
+    bl.j = ifelse(paste(i - 1, j + 1, sep="_") %in% i.j, j + 1, NA),
+    # left
+    l.i = ifelse(paste(i - 1, j, sep="_") %in% i.j, i - 1, NA),
+    l.j = ifelse(paste(i - 1, j, sep="_") %in% i.j, j, NA)
+  ) %>% 
+  select(-i.j)
+
+# Get observation data
+obs.df <- df %>%
+  select(state, common.name, observation.point=geometry)
+
+# Confirm matching CRS
+obs.df <- st_transform(obs.df, st_crs(grid.df))
+
+# Join the observation points to grid cells based on spatial intersection
+joined.df <- st_join(obs.df, select(grid.df, -state), left = T)
+
+# Extract all i and j values from the joined.df that intersected with obs.df
+intersected.grid <- unique(joined.df[, c("i", "j", "common.name", "state")]) %>% 
+  as.data.frame()
+
+# Define the suffixes for each direction
+directions <- c("tl", "t", "tr", "r", "br", "b", "bl", "l")
+
+# Create a function to extract intersections for each direction
+extract.intersections <- function(direction, joined.df) {
+  i.col <- paste0(direction, ".i")
+  j.col <- paste0(direction, ".j")
+  
+  joined.df %>% 
+    filter(!is.na(.[[i.col]]) & !is.na(.[[j.col]])) %>%
+    select(i = all_of(i.col), j = all_of(j.col), state, common.name) %>%
+    unique() %>%
+    as.data.frame()
+}
+
+# Use purrr::map to generate a list of dataframes
+dilation.dfs <- map(directions, ~extract.intersections(.x, joined.df))
+names(dilation.dfs) <- directions
+dilation.dfs$original <- intersected.grid
+
+intersected.grid.all <- do.call("rbind", dilation.dfs) %>%
+  `rownames<-`(NULL) %>%
+  unique()
+
+# Get state/species combinations
+state.spec <- expand.grid(unique(obs.df$common.name), states) %>%
+  rename(common.name=Var1, state=Var2)
+
+# Get all cells in grid that do NOT have an observation in them,
+# by state and species
+sampling.grid <- purrr::map_df(1:nrow(state.spec), function(.x) {
+  .ss <- state.spec[.x, ]
+  .ig <- filter(intersected.grid, 
+                state == .ss$state & common.name == .ss$common.name)
+  .g <- grid.df %>% filter(state == .ss$state)
+  no.obs.grid <- anti_join(.g, .ig, by=c("i", "j")) %>%
+    mutate(common.name = .ss$common.name)
+})
+
+# Get all cells in grid that do NOT have an observation in them,
+# nor do the surrounding cells, by state and species
+sampling.grid.with.dilation <- purrr::map_df(1:nrow(state.spec), function(.x) {
+  .ss <- state.spec[.x, ]
+  .ig <- filter(intersected.grid.all, 
+                state == .ss$state & common.name == .ss$common.name)
+  .g <- grid.df %>% filter(state == .ss$state)
+  no.obs.grid <- anti_join(.g, .ig, by=c("i", "j")) %>%
+    mutate(common.name = .ss$common.name)
+})
+
+
+# Display the non-intersected grid cells
+sampling.grid %>%
+  as.data.frame() %>%
+  group_by(state, common.name) %>%
+  summarize(`Total Cells Available`=n(), .groups="keep") %>%
+  left_join(
+    grid.df %>%
+      as.data.frame() %>%
+      group_by(state) %>%
+      summarize(`Total Cells in State`=n(), .groups="keep"),
+    by="state"
+  ) %>%
+  mutate(`% Available` = round(100 * `Total Cells Available` / `Total Cells in State`, 2)) %>%
+  as_tibble()
+
+```
+
+```{r non-int-all}
+
+# Display the non-intersected grid cells, with dilation
+sampling.grid.with.dilation %>%
+  as.data.frame() %>%
+  group_by(state, common.name) %>%
+  summarize(`Total Cells Available`=n(), .groups="keep") %>%
+  left_join(
+    grid.df %>%
+      as.data.frame() %>%
+      group_by(state) %>%
+      summarize(`Total Cells in State`=n(), .groups="keep"),
+    by="state"
+  ) %>%
+  mutate(`% Available` = round(100 * `Total Cells Available` / `Total Cells in State`, 2)) %>%
+  as_tibble()
+
+```
+
+```{r plot-avail-pa-cells, fig.height=16, fig.width=12}
+
+# Load the map data
+states.df <- map_data("state") %>% 
+  filter(region %in% c("oregon", "north carolina", "colorado", "vermont")) %>%
+  st_as_sf(., coords = c("long", "lat"), crs = st_crs(sampling.grid), agr = "constant") %>%
+  group_by(region) %>%
+  summarize(do_union = F) %>% 
+  st_cast("POLYGON") %>%
+  mutate(state=case_when(
+    region=="colorado"~"CO",
+    region=="north carolina"~"NC",
+    region=="oregon"~"OR",
+    region=="vermont"~"VT",
+    T~"")
+  ) %>%
+  select(-region)
+
+
+# Plots
+available.cells <- purrr::map(
+  states,
+  function(.state) {
+    ggpubr::ggarrange(
+      plotlist=purrr::map(
+        sort(unique(sampling.grid$common.name)),
+        function(spec) {
+          d.spec <- sampling.grid %>%
+            filter(state == .state & common.name == spec)
+          d.state <- states.df %>% 
+            filter(state == .state)
+          ggplot() + 
+            geom_sf(data=d.state, fill="white", color="black", size=0.5) +
+            geom_sf(data=d.spec, fill="darkgreen", color="black", size=0.2) +
+            theme_minimal() + 
+            labs(title=paste0("Available sampling regions in\n",
+                              .state, " for ", spec))
+        }
+      ), ncol=2,  nrow=4, align="hv", widths=c(1, 1.2))
+    })
+
+names(available.cells) <- states
+
+# Colorado
+available.cells$CO
+
+```
+
+```{r ac-nc, fig.height=16, fig.width=12}
+
+# Available grid cells, NC
+available.cells$NC
+
+```
+
+```{r ac-or, fig.height=16, fig.width=12}
+
+# Available grid cells, OR
+available.cells$OR
+
+```
+
+
+```{r ac-vt, fig.height=16, fig.width=12}
+
+# Available grid cells, VT
+available.cells$VT
 
 ```
 
