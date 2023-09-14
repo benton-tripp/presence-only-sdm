@@ -7,6 +7,7 @@ benton-tripp.github.io/
 .ssh/*
 docs/archive/*
 notebooks/archive/*
+test/*
 
 # History files
 .Rhistory
