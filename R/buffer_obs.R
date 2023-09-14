@@ -168,6 +168,7 @@ masks <- purrr::map(states, function(state) {
                            filter(obs.df, state == st & common.name == spec))
         terra::writeRaster(r.mask, fname, overwrite=T)
       }
+      gc()
       r.mask
     })
     names(spec.masks) <- specs
