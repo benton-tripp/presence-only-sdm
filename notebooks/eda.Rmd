@@ -445,7 +445,8 @@ sample.inverse.mask <- function(r.original, r.mask, n,
     
     # Create a binary raster from r.original where valid values are 
     # set to 1 and NA values remain NA
-    r.binary <- terra::lapp(r.original[[1]], fun = function(x) ifelse(!is.na(x), 1, NA))
+    r.binary <- terra::lapp(r.original[[1]], 
+                            fun = function(x) ifelse(!is.na(x), 1, NA))
     
     # Multiply the cropped raster by the binary raster to ensure 
     # outside values are set to NA
@@ -897,7 +898,114 @@ if (!dir.exists(output.dir)) dir.create(output.dir)
 
 ### Use Hierarchical Categories for Land Cover
 
+Recall the [hierarchical categories for the land cover data](https://www.mrlc.gov/data/legends/national-land-cover-database-class-legend-and-description):
+
+- Water:
+  * 11: Open Water
+  * 12: Perennial Ice/Snow
+- Developed
+  * 21: Developed, Open Space
+  * 22: Developed, Low Intensity
+  * 23: Developed, Medium Intensity
+  * 24: Developed, High Intensity
+- Barren
+  * 31: Barren Land (Rock/Sand/Clay)
+- Forest
+  * 41: Deciduous Forest
+  * 42: Evergreen Forest
+  * 43: Mixed Forest
+- Shrubland
+  * 51: Dwarf Shrub
+  * 52: Shurb/Scrub
+- Herbaceous
+  * 71: Grassland/Herbaceous
+  * 72: Sedge/Herbaceous
+  * 73: Lichens
+  * 74: Moss
+- Planted/Cultivated
+  * 81: Pasture/Hay
+  * 82: Cultivated Crops
+- Wetlands
+  * 90: Woody Wetlands
+  * 95: Emergent Herbaceous Wetlands
+  
+Using these categories, feature reduction can be accomplished using a heuristic methodology. Other redundant rasters, such as the Waterbody and Urban Imperviousness rasters, can also be combined with the respective related land cover rasters to further reduce multicollinearity between rasters.
+
 ```{r combine-lc}
+
+create.parent.category.rasters <- function(input.raster, 
+                                           state, 
+                                           output.dir,
+                                           layer.name="NLCD_Land") {
+  # Define the category mappings
+  categories <- list(
+    water = c("Open Water"),
+    ice.snow = c("Perennial Ice/Snow"),
+    developed = c("Developed, Open Space",
+                  "Developed, Low Intensity",
+                  "Developed, Medium Intensity",  
+                  "Developed, High Intensity"),
+    barren = c("Barren Land"),
+    forest = c("Mixed Forest", 
+               "Deciduous Forest", 
+               "Evergreen Forest"),
+    shrubland = c("Shrub/Scrub", "Dwarf Shrub"),
+    herbaceous = c("Herbaceous", "Grassland/Herbaceous",
+                   "Sedge/Herbaceous", "Lichens", "Moss"),
+    planted.cultivated = c("Cultivated Crops", "Hay/Pasture"),
+    wetlands = c("Woody Wetlands", "Emergent Herbaceous Wetlands")
+  )
+  
+  # Iterate through each category to create and save the binary raster
+  for (cat.name in names(categories)) {
+    # Define the output file path
+    output.file <- file.path(output.dir, paste0(state, "_", cat.name, ".tif"))
+    
+    if (!file.exists(output.file)) {
+      cat("Generating raster for", cat.name, "in", state, "\n")
+      if (cat.name != "developed") {
+        # Create a binary raster for the current category
+        out.raster <- terra::lapp(input.raster[[layer.name]], 
+                                  fun = function(x) {
+                                    case_when(
+                                      is.na(x) ~ NA,
+                                      x %in% categories[[cat.name]] ~ 1.,
+                                      T ~ 0)
+                                  })
+        if (cat.name == "water") {
+          # Combine with waterbody raster layer
+          wb.raster <- input.raster[[paste0("waterbody_", state)]]
+          out.raster <- (out.raster + wb.raster) / 2
+        }
+      } else {
+        # Set developed raster to be a value, scale ranging from 0.25-1 by 0.25
+        out.raster <- terra::lapp(input.raster[[layer.name]], 
+                                  fun = function(x) {
+                                    case_when(
+                                      is.na(x) ~ NA,
+                                      x == "Developed, Open Space" ~ 0.25,
+                                      x == "Developed, Low Intensity" ~ 0.5,
+                                      x == "Developed, Medium Intensity" ~ 0.75,
+                                      x == "Developed, High Intensity" ~ 1.,
+                                      T ~ 0)
+                                  })
+        # Combine with urban imperviousness
+        ui.raster <- input.raster[[paste0("urban_imperviousness_", state)]]
+        ui.min <- terra::minmax(ui.raster)[[1]]
+        ui.max <- terra::minmax(ui.raster)[[2]]
+        ui.raster.scaled <- (ui.raster - ui.min) / (ui.max - ui.min)
+        out.raster <- (out.raster + ui.raster.scaled) / 2
+      }
+      
+      # Save the output raster to the specified output path
+      writeRaster(out.raster, output.file, overwrite=T)
+    }
+  }
+}
+
+for (state in states) {
+  create.parent.category.rasters(r.list[[state]], state, output.dir)
+}
 
 
 ```
