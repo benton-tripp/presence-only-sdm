@@ -75,22 +75,36 @@ names(masks) <- states
 
 # Function to sample n points from the non-masked parts
 sample.inverse.mask <- function(r.original, r.mask, n, 
-                                sample.crs=4326, min.n=100) {
-  # Get inverse mask;
-  # Set NA cells to 0, keep 0 cells as 0, change other cells to 1
-  r.inverse <- terra::ifel(is.na(r.mask), 0, r.mask)
-  # Set 0 to 1 and everything else to NA
-  r.inverse <- terra::lapp(r.inverse, fun = function(x) ifelse(x == 0, 1, NA))
-  # Crop so that anything outside of the state is NA
-  r.cropped <- terra::crop(r.inverse, terra::ext(r.original))
-  
-  # Create a binary raster from r.original where valid values are 
-  # set to 1 and NA values remain NA
-  r.binary <- terra::lapp(r.original[[1]], fun = function(x) ifelse(!is.na(x), 1, NA))
-  
-  # Multiply the cropped raster by the binary raster to ensure 
-  # outside values are set to NA
-  r.final <- r.cropped * r.binary
+                                species, state,
+                                sample.crs=4326, min.n=100,
+                                output.dir="artifacts/pseudo_absence_regions") {
+  if (!dir.exists(output.dir)) dir.create(output.dir)
+  output.path <- file.path(output.dir,
+                           gsub(" |\\-", "_", 
+                                paste0(
+                                  paste(state, tolower(species), sep="_"), 
+                                  ".tif")
+                           ))
+  if (!file.exists(output.path)) {
+    # Get inverse mask;
+    # Set NA cells to 0, keep 0 cells as 0, change other cells to 1
+    r.inverse <- terra::ifel(is.na(r.mask), 0, r.mask)
+    # Set 0 to 1 and everything else to NA
+    r.inverse <- terra::lapp(r.inverse, fun = function(x) ifelse(x == 0, 1, NA))
+    # Crop so that anything outside of the state is NA
+    r.cropped <- terra::crop(r.inverse, terra::ext(r.original))
+    
+    # Create a binary raster from r.original where valid values are 
+    # set to 1 and NA values remain NA
+    r.binary <- terra::lapp(r.original[[1]], fun = function(x) ifelse(!is.na(x), 1, NA))
+    
+    # Multiply the cropped raster by the binary raster to ensure 
+    # outside values are set to NA
+    r.final <- r.cropped * r.binary
+    terra::writeRaster(r.final, output.path, overwrite=T)
+  } else {
+    r.final <- terra::rast(output.path)
+  }
   
   # Convert the raster to SpatialPoints
   gdf <- terra::as.points(r.final) %>%
@@ -132,7 +146,7 @@ for (st in states) {
     n <- totals %>% filter(state == st & common.name == spec) %>% pull(N)
     cat("Generating", n, "pseudo-absence points for the", spec, "in", st, "\n")
     pseudo.absence.pts[[st]][[spec]] <- sample.inverse.mask(
-      r.original, r.mask, n=n, sample.crs=4326)
+      r.original, r.mask, spec, st, n=n, sample.crs=4326)
     cat("\tGenerated", nrow(pseudo.absence.pts[[st]][[spec]]), "/", n, "points.\n")
   }
 }
