@@ -76,7 +76,7 @@ names(masks) <- states
 # Function to sample n points from the non-masked parts
 sample.inverse.mask <- function(r.original, r.mask, n, 
                                 species, state,
-                                sample.crs=4326, min.n=100,
+                                sample.crs=4326, min.n=500,
                                 output.dir="artifacts/pseudo_absence_regions") {
   if (!dir.exists(output.dir)) dir.create(output.dir)
   output.path <- file.path(output.dir,
@@ -125,17 +125,32 @@ sample.inverse.mask <- function(r.original, r.mask, n,
   
   # Randomly sample n points from the available (non-masked) space
   sample.idx <- sample(1:nrow(gdf), n)
-  samples <- gdf %>% slice(sample.idx)
+  samples <- gdf %>% 
+    slice(sample.idx) %>%
+    mutate(common.name = species, 
+           state = state, 
+           lon = NA, 
+           lat = NA,
+           observations=0)
+  
+  # Populate lon and lat values:
+  coords <- st_coordinates(samples)
+  samples$lon <- coords[, "X"]
+  samples$lat <- coords[, "Y"]
   
   return(samples)
 }
 
+# Get totals by species and state
 totals <- obs.df %>%
   as_tibble() %>%
   select(state, common.name) %>%
   group_by(state, common.name) %>%
   summarize(N=n(), .groups="keep")
 
+# Create a list of pseudo absence points, by species and state,
+# where the sample number `n` >= 500 | `n` == the total observed
+# for each respective state and species
 pseudo.absence.pts <- list()
 for (st in states) {
   r.original <- r.list[[st]]
@@ -151,6 +166,60 @@ for (st in states) {
   }
 }
 
+# Extract raster values for each point
+if (!dir.exists(file.path("data", "final_pseudo_absence"))) {
+  dir.create(file.path("data", "final_pseudo_absence"))
+}
+for (state in states) {
+  out.file.all <- file.path("data", "final_pseudo_absence", paste0("pa_", state, ".rds"))
+  if (!file.exists(out.file.all)) {
+    r <- r.list[[state]]
+    
+    cat(sprintf("Extracting points to values for %s...\n", state))
+    # Load observations shapefile
+    geo.df <- pseudo.absence.pts[[state]] %>% do.call("rbind", .)
+    rownames(geo.df) <- NULL
+    
+    geo.df.crs <- st_crs(geo.df)
+    
+    # Define target CRS and update
+    target.crs <- st_crs(r)
+    cat(sprintf("Updating CRS for %s...\n", state))
+    geo.df <- st_transform(geo.df, target.crs)
+    
+    # Extract raster values
+    for (r.name in names(r)) {
+      cat("\tExtracting", r.name, "values for", state, "\n")
+      x <- terra::extract(r[[r.name]], geo.df)[[r.name]]
+      geo.df[[gsub(paste0("_", state), "", r.name)]] <- x
+    }
+    
+    # Update crs back
+    geo.df <- st_transform(geo.df, geo.df.crs)
+    
+    # Fix names; Filter NA values
+    geo.df <- geo.df %>%
+      filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
+      suppressWarnings() 
+    
+    saveRDS(geo.df, out.file.all)
+    cat("--------------\n")
+  }
+}
+
+# Get all pseudo-absence data
+abs.df <- list.files(file.path("data", "final_pseudo_absence"), full.names = T) %>%
+  purrr::map_df(readRDS) %>%
+  select(state, common.name, observation.point=geometry)
+
+# There might be some slight differences since there are occasionally NA values
+abs.df %>%
+  as_tibble() %>%
+  select(state, common.name) %>%
+  group_by(state, common.name) %>%
+  summarize(psuedo.absence.N=n(), .groups="keep") %>%
+  left_join(totals, by=c("state", "common.name")) %>%
+  rename(observed.N = N)
 
 
 # BUFFERING VECTOR DATA ---------------------------------------------------------------
