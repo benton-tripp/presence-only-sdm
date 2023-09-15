@@ -30,6 +30,7 @@ library(purrr)
 library(caret)
 library(FactoMineR)
 library(spdep)
+library(car)
 
 ```
 
@@ -578,7 +579,7 @@ abs.df %>%
 ```
 
 
-## Autocorrelation Mitigation
+## Spatial Autocorrelation 
 
 ### Moran's I
 
@@ -596,7 +597,7 @@ Expectation: This is the expected Moran's I value under the null hypothesis of n
 
 Variance: This is the variance of the Moran's I statistic under the null hypothesis.
 
-#### Autocorrelation of Observations
+### Spatial Autocorrelation of Observations
 
 ```{r morans-i, results='hide'}
 
@@ -706,7 +707,7 @@ ggplot(vt.ssh, aes(x=observations, y=spatial.lag)) +
 
 ```
 
-#### Autocorrelation of Environmental Factors
+### Spatial Autocorrelation of Environmental Factors
 
 ```{r combine-rasters-to-sdf, results='hide'}
 
@@ -806,16 +807,137 @@ env.mi.results.df %>%
 
 The weather layers in particular have Moran's I values close to 1, which is the maximum possible value. This indicates a very strong spatial clustering of these variables.
 
-#### Moran Scatter Plots
-
-
 
 #### Mitigating Potential Problems Due to Spatial Autocorrelation 
 
-1. 
+1. Collinearity
+2. Spatial Autocorrelation in Residuals
+3. Overfitting 
+4. Non-Stationarity
+
+##### Checking for Collinearity in Environmental Factors
+
+```{r col-check}
+
+all.columns <- unique(unlist(lapply(env.df.list, names)))
+env.df <- lapply(env.df.list, function(df) {
+  missing.cols <- setdiff(all.columns, names(df))
+  for (col in missing.cols) {
+    df[[col]] <- NA
+  }
+  return(df)
+}) %>%
+  do.call("rbind", .) %>%
+  as.data.frame() %>%
+  select(-geometry, -unclassified)
+
+corr.matrix <- cor(env.df, use="na.or.complete")
+eigenvalues <- eigen(corr.matrix)$values
+ci.df <- tibble(
+  variable=names(env.df),
+  condition.index=sqrt(max(eigenvalues) / eigenvalues)
+)
+
+ci.df
+```
+
+```{r examine-eigenvectors}
+
+# Extract the eigenvectors
+eigenvectors <- eigen(corr.matrix)$vectors
+
+threshold <- 30
+large.ci.indices <- which(sqrt(max(eigenvalues) / eigenvalues) > threshold)
+
+# Examine the eigenvectors
+for (index in large.ci.indices) {
+  cat(paste("Eigenvalue:", eigenvalues[index]), "\n")
+  cat(paste("Condition Index:", 
+                  sqrt(max(eigenvalues) / eigenvalues[index])), "\n")
+  
+  # Sorting eigenvector components by absolute magnitude for clarity
+  ev <- eigenvectors[, index]
+  sorted.ev <- sort(abs(ev), decreasing = T)
+  ev.top <- sorted.ev[1:5] %>%
+    as_tibble() %>%
+    mutate(variable=rownames(corr.matrix)[order(-abs(ev))][1:5]) %>%
+    select(variable, value)
+  
+  cat("\nTop 5 contributors to multicollinearity at the condition idx:\n")
+  
+  for (row in 1:5) {
+    cat("\t", ev.top[row,]$variable, ":", signif(ev.top[row,]$value, 3), "\n")
+  }
+  
+  cat("\n------------------------\n")
+}
+
+
+```
+
+```{r cor-mat, fig.width=16, fig.height=16}
+
+corrplot::corrplot(corr.matrix)
+
+```
 
 
 ## Feature Engineering
+
+### Setup
+
+First, create a space to output any "engineered" rasters:
+
+```{r fe-setup}
+
+output.dir <- "artifacts/feature_engineering"
+if (!dir.exists(output.dir)) dir.create(output.dir)
+
+```
+
+### Use Hierarchical Categories for Land Cover
+
+```{r combine-lc}
+
+
+```
+
+### Combine NDVI (Median)
+
+```{r combine-ndvi}
+
+
+```
+
+### Detrend DEM
+
+```{r detrend-dem}
+
+model <- lm(dem ~ st_coordinates(your_data)[,1] + st_coordinates(your_data)[,2], data = your_data)
+your_data$detrended_dem <- residuals(model)
+
+```
+
+### Spatial Filters
+
+These are components derived from the spatial coordinates, which can capture and account for spatial structures in the data. E.g., a polynomial term based on latitude and longitude could account for some of the spatial trend.
+
+```{r spatial-filters}
+
+your_data$lon_sq <- st_coordinates(your_data)[,1]^2
+your_data$lat_sq <- st_coordinates(your_data)[,2]^2
+your_data$lon_lat_interaction <- st_coordinates(your_data)[,1] * st_coordinates(your_data)[,2]
+
+```
+
+### Combine Temperature (Difference)
+
+```{r combine-temp}
+
+
+
+```
+
 
 ### Feature Selection
 
