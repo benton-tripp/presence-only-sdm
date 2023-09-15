@@ -6,9 +6,10 @@ library(terra)
 library(dplyr)
 library(data.table)
 
+output.dir <- "artifacts/masks_5k"
 # Set up output directory
 if (!dir.exists("artifacts")) dir.create("artifacts")
-if (!dir.exists("artifacts/masks_5k")) dir.create("artifacts/masks_5k")
+if (!dir.exists(output.dir)) dir.create(output.dir)
 
 # LOAD DATA ---------------------------------------------------------------
 
@@ -52,7 +53,7 @@ get.buffered.zones <- function(r, obs.df, obs.field="observation.point",
 masks <- purrr::map(states, function(state) {
     specs <- sort(unique(obs.df$common.name))
     spec.masks <- purrr::map(specs, function(spec, st=state) {
-      fname <- file.path("artifacts", "masks", paste0(st, "_", spec, ".tif"))
+      fname <- file.path(output.dir, paste0(st, "_", spec, ".tif"))
       if (file.exists(fname)) {
         cat("Reading", spec, st, "mask from", fname, "\n")
         r.mask <- rast(fname)
@@ -73,7 +74,8 @@ names(masks) <- states
 
 
 # Function to sample n points from the non-masked parts
-sample.inverse.mask <- function(r.original, r.mask, n, sample.crs=4326) {
+sample.inverse.mask <- function(r.original, r.mask, n, 
+                                sample.crs=4326, min.n=100) {
   # Get inverse mask;
   # Set NA cells to 0, keep 0 cells as 0, change other cells to 1
   r.inverse <- terra::ifel(is.na(r.mask), 0, r.mask)
@@ -102,6 +104,9 @@ sample.inverse.mask <- function(r.original, r.mask, n, sample.crs=4326) {
     return(gdf)
   }
     
+  # Set to min.n size if n < min.n
+  if (n < min.n) n <- min.n
+  # Make sure there is sufficient available sample points
   if (n > nrow(gdf)) n <- nrow(gdf)
   
   # Randomly sample n points from the available (non-masked) space
