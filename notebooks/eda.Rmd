@@ -1,5 +1,5 @@
 ---
-title: "Exploratory Analysis"
+title: "SDM Benchmark Study Part 2: Exploratory Analysis"
 author: "Benton Tripp"
 date: "`r Sys.Date()`"
 output:
@@ -29,9 +29,23 @@ library(quarto)
 library(purrr)
 library(caret)
 library(FactoMineR)
+library(spdep)
 
 ```
 
+
+```{r render-github-doc, eval=F, echo=F}
+
+rmarkdown::render(
+  input = paste0("C:/Users/bento/gis630/notebooks/eda.Rmd"), 
+  output_format = "github_document", 
+  output_file = "2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.md",
+  output_dir = "benton-tripp.github.io/_posts", 
+  knit_root_dir = "C:/users/bento/gis630",
+  output_options = list(html_preview = F)
+)
+
+```
 
 ## Visualize all Observations by State & Species
 
@@ -563,21 +577,269 @@ abs.df %>%
 
 ```
 
+
+## Autocorrelation Mitigation
+
+### Moran's I
+
+This is a common measure of global spatial autocorrelation. A positive Moran's I suggests clustering, a negative value suggests dispersion, and a value near zero suggests randomness. In other words, this is randomization approach to test for spatial autocorrelation. It is essentially checking if the data has a spatial pattern that is significantly different from what would be expected if the values were randomly distributed in space.
+
+#### Understanding the Results
+
+Moran I statistic: This is the calculated Moran's I value for the data, which quantifies the degree of spatial autocorrelation. A positive value indicates positive autocorrelation (similar values are closer together), while a negative value indicates negative autocorrelation (dissimilar values are closer together). A value close to zero indicates a random spatial pattern.
+
+Moran I statistic standard deviate: This value represents the standardized Moran's I value. The larger the absolute value of this statistic, the stronger the evidence against the null hypothesis (of no spatial autocorrelation). A positive value indicates positive spatial autocorrelation, suggesting clustering of similar values.
+
+P-value: This is the probability of observing a Moran's I value as extreme as, or more extreme than, the one computed from the data, assuming the null hypothesis of no spatial autocorrelation is true. A very small p-value provides strong evidence to reject the null hypothesis, indicating significant spatial autocorrelation in your data.
+
+Expectation: This is the expected Moran's I value under the null hypothesis of no spatial autocorrelation. For a large dataset, it's typically close to zero.
+
+Variance: This is the variance of the Moran's I statistic under the null hypothesis.
+
+#### Autocorrelation of Observations
+
+```{r morans-i, results='hide'}
+
+# Get observation data
+df <- list.files(file.path("data", "final"), full.names = T) %>%
+  purrr::map_df(readRDS) %>%
+  select(state, common.name, observations, geometry) # We only interested in these data here
+
+states <- sort(unique(df$state))
+species <- sort(unique(df$common.name))
+
+
+
+# Function to extract the desired results from output
+extract.data <- function(st, spec, results) {
+  data_frame(
+    state = st,
+    species = spec,
+    statistic = results$statistic,
+    p.value = results$p.value,
+    moran.i.statistic = results$estimate['Moran I statistic'],
+    expectation = results$estimate['Expectation'],
+    variance = results$estimate['Variance']
+  )
+}
+
+# Define the k for knn computation
+k <- 5
+
+# Perform test by state, by species
+mi.results <- list()
+
+for (st in states) {
+  mi.results[[st]] <- list()
+  for (spec in species) {
+    cat("Doing Moran's test for", spec, "in", st, "\n")
+    # Filter data
+    d <- df %>% filter(common.name == spec & state == st)
+    mi.results[[st]][[spec]]$data <- d
+    # Fit knn model
+    knn <- d %>%
+      knearneigh(k = k)
+    mi.results[[st]][[spec]]$knn <- knn
+    # Create a neighbor's list
+    nb <- knn %>%
+      knn2nb()
+    mi.results[[st]][[spec]]$nb <- nb
+    # Create a spatial weights matrix
+    listw <- nb2listw(nb)
+    mi.results[[st]][[spec]]$listw <- listw
+    # Compute Moran's I
+    results <- moran.test(d$observations, listw)
+    mi.results[[st]][[spec]]$moran.test.results <- extract.data(st, spec, results)
+  }
+}
+
+spec.stat <- expand.grid(species=species, state=states, stringsAsFactors=F)
+
+mi.results.df <- purrr::map(1:nrow(spec.stat), function(i) {
+    spec <- spec.stat[i, ]$species
+    st <- spec.stat[i, ]$state
+    mi.results[[st]][[spec]]$moran.test.results
+  }) %>% 
+  do.call("rbind", .) %>%
+  as_tibble() %>%
+  # Compute adjusted p-value, accounting for multiple comparisons
+  mutate(adj.p.value = p.adjust(p.value, method="holm"))
+
+```
+
+```{r morans-i-observations}
+
+# Filter to where the adjusted p-value <= 0.05; sort by moran i stat
+mi.results.df %>% 
+  filter(adj.p.value <= 0.05) %>%
+  arrange(-moran.i.statistic)
+
+```
+
+The Moran's I statistic for the Belted Kingfisher and Cedar Waxwing are positive in Oregon, as well as the Sharp-shinned Hawk in both Vermont and Oregon. This suggests that locations with high observations of these species are close to other locations with high observations, and the same for low observations. In simple terms, the observation patterns of these species are clustered.
+
+Below is an example of the actual observations of the Sharp-shinned Hawk in Vermont against the spatial lag (i.e., the weighted sum of the neighboring values at each point). Consider the following when interpreting the plot:
+
+- First Quadrant (top-right): High values surrounded by high values (indicating clustering of high values).
+- Second Quadrant (top-left): Low values surrounded by high values.
+- Third Quadrant (bottom-left): Low values surrounded by low values (indicating clustering of low values).
+- Fourth Quadrant (bottom-right): High values surrounded by low values.
+
+```{r}
+
+# Get spatial weights list
+vt.ssh <- mi.results[["VT"]][["Sharp-shinned Hawk"]]$data
+
+# Calculate the spatial lag of the observations
+vt.ssh$spatial.lag <- lag.listw(
+  mi.results[["VT"]][["Sharp-shinned Hawk"]]$listw,
+  vt.ssh$observations)
+
+# Scatter plot for the Sharp-Shinned Hawk in Vermont
+ggplot(vt.ssh, aes(x=observations, y=spatial.lag)) +
+  geom_point() +
+  geom_smooth(method="lm", col="red") + # Adds a linear regression line
+  ggtitle("Moran Scatter Plot for Sharp-shinned Hawk in VT") +
+  xlab("Observations (log10 Scale)") +
+  ylab("Spatial Lag of Observations (log10 Scale)") +
+  scale_y_log10() + scale_x_log10()
+
+```
+
+#### Autocorrelation of Environmental Factors
+
+```{r combine-rasters-to-sdf, results='hide'}
+
+env.df.list <- list()
+for (state in states) {
+  r <- r.list[[state]]
+  
+  gdf <- terra::as.points(r) %>% 
+    st_as_sf() %>%
+    st_transform(crs=4326)
+  # Fix names
+  names(gdf) <- gsub(paste0("_", state, "$"), "", names(gdf))
+  
+  # Convert land cover to binary variables
+  binary.lc <- caret::dummyVars(~NLCD_Land, data=gdf, sep=".") %>% 
+    predict(., gdf) %>%
+    as.data.frame()
+  names(binary.lc) <- gsub("NLCD_Land", "", names(binary.lc)) %>% 
+    gsub("\\/| |,", "_", .) %>% 
+    gsub("__", "_", .) %>% 
+    tolower()
+  
+  gdf <- gdf %>% select(-NLCD_Land) %>% cbind(binary.lc)
+  
+  env.df.list[[state]] <- gdf
+}
+
+# Perform test by state, by environmental variable
+env.mi.results <- list()
+
+output.dir <- file.path("artifacts", "env_autocor_morans")
+if (!dir.exists(output.dir)) dir.create(output.dir)
+
+for (st in states) {
+  env.mi.results[[st]] <- list()
+  gdf <- env.df.list[[st]]
+  env.vars <- names(gdf)[names(gdf) != "geometry"]
+  for (e in env.vars) {
+    output.path <- file.path(output.dir, paste0(st, "_", e, ".rds"))
+    if (!file.exists(output.path)) {
+      cat("Doing Moran's test for", e, "in", st, "\n")
+      # Filter data
+      d <- gdf %>% select(!!sym(e))
+      # env.mi.results[[st]][[e]]$data <- d
+      n.distinct <- d %>% pull(!!sym(e)) %>% unique() %>% length()
+      if (n.distinct > 1) {
+        # Fit knn model
+        knn <- d %>%
+          knearneigh(k = k)
+        # env.mi.results[[st]][[e]]$knn <- knn
+        # Create a neighbor's list
+        nb <- knn %>%
+          knn2nb()
+        # env.mi.results[[st]][[e]]$nb <- nb
+        # Create a spatial weights matrix
+        listw <- nb2listw(nb)
+        # env.mi.results[[st]][[e]]$listw <- listw
+        # Compute Moran's I
+        results <- moran.test(d[[e]], listw)
+        env.mi.results[[st]][[e]]$moran.test.results <- extract.data(st, e, results)
+      }
+      cat("\tSaving results...\n")
+      saveRDS(env.mi.results[[st]][[e]]$moran.test.results, output.path)
+    } else {
+      cat("Getting Moran's test results for", e, "in", st, "\n")
+      env.mi.results[[st]][[e]]$moran.test.results <- readRDS(output.path)
+    }
+  }
+}
+
+
+env.stat <- expand.grid(env=names(env.df.list$CO )[names(env.df.list$CO) != "geometry"], 
+                        state=states, stringsAsFactors=F)
+
+env.mi.results.df <- purrr::map(1:nrow(env.stat), function(i) {
+    e <- env.stat[i, ]$env
+    st <- env.stat[i, ]$state
+    env.mi.results[[st]][[e]]$moran.test.results
+  }) %>% 
+  do.call("rbind", .) %>%
+  as_tibble() %>%
+  # Compute adjusted p-value, accounting for multiple comparisons
+  mutate(adj.p.value = p.adjust(p.value, method="holm"))
+
+
+```
+
+
+```{r morans-i-env}
+
+# Filter to where the adjusted p-value <= 0.05; sort by moran i stat
+env.mi.results.df %>% 
+  filter(adj.p.value <= 0.05) %>%
+  arrange(-moran.i.statistic)
+
+```
+
+The weather layers in particular have Moran's I values close to 1, which is the maximum possible value. This indicates a very strong spatial clustering of these variables.
+
+#### Moran Scatter Plots
+
+
+
+#### Mitigating Potential Problems Due to Spatial Autocorrelation 
+
+1. 
+
+
+## Feature Engineering
+
+### Feature Selection
+
 ## Train/Test Splitting
 
-TODO: Include pseudo-absence data
-
 ```{r strat-split}
+
+# Combine observation/pseudo-absence data
+df <- c(list.files(file.path("data", "final_pseudo_absence"), full.names = T),
+        list.files(file.path("data", "final"), full.names = T)) %>%
+  purrr::map_df(readRDS)
+  
 
 stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
   # Cut along lat/lon values to create grids (lat.bin & lon.bin)
   # lat.lon.bins is the number of divisions you want
   df$lat.bin <- cut(df$lat, breaks=lat.lon.bins, labels = F)
   df$lon.bin <- cut(df$lon, breaks=lat.lon.bins, labels = F)
+  df$absence <- df$observations == 0
   
   # Create a new variable combining the stratification variables
   df %>%
-    mutate(strata = paste(lat.bin, lon.bin, common.name, state)) %>%
+    # stratify on lat/lon bins, species, state, and absence
+    mutate(strata = paste(lat.bin, lon.bin, common.name, state, absence)) %>%
     pull(strata) %>%
     # Create the data partitions
     createDataPartition(., p = p, list = F) %>%
@@ -599,14 +861,3 @@ train <- df[train.test$index,]
 test <- df[-train.test$index,]
 
 ```
-
-## Autocorrelation Mitigation
-
-## Feature Engineering
-
-### Land Cover Hierarchical Updates to Categories
-
-
-  
-
-### Feature Selection
