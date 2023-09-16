@@ -1064,14 +1064,21 @@ for (state in states) {
 
 ```
 
-### Latitude and Longitude as Rasters
+### Spatial Filters
+
+These are components derived from the spatial coordinates, which can capture and account for spatial structures in the data. E.g., a polynomial term based on latitude and longitude could account for some of the spatial trend.
 
 ```{r lat-lon-rast}
 
 for (state in states) {
   output.file.lon <- file.path(output.dir, paste0(state, "_lon.tif"))
   output.file.lat <- file.path(output.dir, paste0(state, "_lat.tif"))
-  if (!file.exists(output.file.lon) | !file.exists(output.file.lat)) {
+  output.file.lon2 <- file.path(output.dir, paste0(state, "_lon_poly.tif"))
+  output.file.lat2 <- file.path(output.dir, paste0(state, "_lat_poly.tif"))
+  output.file.lli <- file.path(output.dir, paste0(state, "_lon_lat_interaction.tif"))
+  if (!all(file.exists(c(output.file.lon, output.file.lat, 
+                         output.file.lon2, output.file.lat2,
+                         output.file.lli)))) {
     # Get raster as df
     r.df <- terra::as.data.frame(r.list[[state]], xy=T, cells=T) %>% 
       rename(lon=x, lat=y) %>%
@@ -1091,25 +1098,22 @@ for (state in states) {
     names(r.lat) <- "lat"
     r.lon[r.df$cell] <- r.df$lon
     names(r.lon) <- "lon"
+    # Get polynomial and interaction terms
+    r.lat2 <- r.lat^2 
+    names(r.lat2) <- "lat.sqrd"
+    r.lon2 <- r.lon^2 
+    names(r.lon2) <- "lon.sqrd"
+    r.lon.lat <- r.lon * r.lat
+    names(r.lon.lat) <- "lon.lat.interaction"
     
     # Write outputs
     writeRaster(r.lat, output.file.lat, overwrite=T)
     writeRaster(r.lon, output.file.lon, overwrite=T)
+    writeRaster(r.lat2, output.file.lat2, overwrite=T)
+    writeRaster(r.lon2, output.file.lon2, overwrite=T)
+    writeRaster(r.lon.lat, output.file.lli, overwrite=T)
   }
 }
-
-```
-
-
-### Spatial Filters
-
-These are components derived from the spatial coordinates, which can capture and account for spatial structures in the data. E.g., a polynomial term based on latitude and longitude could account for some of the spatial trend.
-
-```{r spatial-filters}
-
-your_data$lon_sq <- st_coordinates(your_data)[,1]^2
-your_data$lat_sq <- st_coordinates(your_data)[,2]^2
-your_data$lon_lat_interaction <- st_coordinates(your_data)[,1] * st_coordinates(your_data)[,2]
 
 ```
 
@@ -1117,9 +1121,40 @@ your_data$lon_lat_interaction <- st_coordinates(your_data)[,1] * st_coordinates(
 
 ```{r detrend-dem}
 
-model <- lm(dem ~ st_coordinates(your_data)[,1] + 
-              st_coordinates(your_data)[,2], data = your_data)
-your_data$detrended_dem <- residuals(model)
+
+for (state in states) {
+  output.file <- file.path(output.dir, paste0(state, "_detrend_dem.tif"))
+  if (!file.exists(output.file)) {
+    # Get raster as df
+    r.df <- terra::as.data.frame(r.list[[state]], xy=T, cells=T) %>% 
+      rename(lon=x, lat=y) %>%
+      select(lon, lat, cell, !!sym(paste0("dem_", state))) %>%
+      st_as_sf(coords = c("lon", "lat"), crs = st_crs(r.list[[state]])) %>%
+      st_transform(crs=4326) %>%
+      cbind(st_coordinates(.)) %>%
+      rename(lon="X", lat="Y", dem=paste0("dem_", state)) %>%
+      # Convert to data.table
+      setDT()
+    
+    # Fit model based on location, with dem as response
+    fit <- lm(dem ~ lat * lon + I(lat^2) + I(lon^2), 
+              data=r.df[!is.na(dem)])
+    # Get residuals from the model as "de-trended" dem values
+    r.df[!is.na(dem), dem.detrended := residuals(fit)]
+    # Scale de-trended values
+    r.df[, dem.detrended := (dem.detrended - min(dem.detrended, na.rm=T)) / 
+           (max(dem.detrended, na.rm=T) - min(dem.detrended, na.rm=T))]
+    # Initialize empty raster template
+    r.dem <- ext(r.list[[state]]) %>% 
+            rast(res=res(r.list[[state]]), crs=crs(r.list[[state]]))
+    # Fill with de-trended dem values
+    r.dem[r.df$cell] <- r.df$dem.detrended
+    names(r.dem) <- "dem.detrended"
+    
+    # Write outputs
+    writeRaster(r.dem, output.file, overwrite=T)
+  }
+}
 
 ```
 
