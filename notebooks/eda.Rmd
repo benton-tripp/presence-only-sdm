@@ -1166,7 +1166,8 @@ for (state in states) {
 
 ```
 
-### Interactions Effects from SHAP
+
+## Feature Selection
 
 #### Load all Original Features and Feature Engineering Outputs
 
@@ -1263,38 +1264,39 @@ if (!file.exists(final.fpath)) {
   df <- readRDS(final.fpath)
 }
 
+# Convert to data.table
+df %>% setDT()
+
+# View output
 df %>% as_tibble()
 ```
 
-#### Get SHAP Values for all Features & Interactions
+#### Correlation 
 
-Steps:
+```{r cor-obs}
 
-1. Pre-processing: Remove non-predictive variables (`common.name`, `state`, `geometry`). Split the data into training and test sets.
-2. Modeling: Fit an XGBoost model.
-3. SHAP Analysis: Calculate SHAP values; Explore interaction effects.
+obs.cor <- purrr::map(sort(unique(df$common.name)), function(spec) {
+  corr.matrix <- cor(select(df[common.name == spec], 
+                            -c("state", "common.name", "geometry")))
+  obs.cor <- corr.matrix[which(rownames(corr.matrix) == "observations"),] %>%
+    as.data.frame()
+  obs.cor$variable <- rownames(obs.cor)
+  obs.cor %>%
+    filter(variable != "observations") %>%
+    rename(!!spec := `.`) %>%
+    arrange(-abs(!!sym(spec))) %>%
+    mutate(!!spec := paste0(variable, ": ", signif(!!sym(spec), 2))) %>%
+    select(!!sym(spec)) 
+}) %>% 
+  do.call("cbind", .)
 
-##### Pre-Processing
+obs.cor %>% as_tibble()
+
+```
+
+#### Train/Test Split
 
 ```{r strat-split-1}
-
-df %>% setDT()
-
-# Although we could test every single variable, some are slightly redundant.
-# Although during variable selection every variable will be tested, that is
-# too computationally intesive for SHAP values. Thus, remove some of the 
-# unnecessary variables
-
-df[, `:=` (
-  dem=NULL, Spring_NDVI=NULL, Summer_NDVI=NULL, Fall_NDVI=NULL,
-  Winter_NDVI=NULL, urban_imperviousness=NULL, waterbody=NULL,
-  lon.lat.interaction=NULL, lat.sqrd=NULL, lon.sqrd=NULL, 
-  hay_pasture=NULL, cultivated_crops=NULL, geometry=NULL,
-  developed_open_space=NULL, developed_low_intensity=NULL,
-  developed_medium_intensity=NULL, developed_high_intensity=NULL,
-  open_water=NULL, emergent_herbaceous_wetlands=NULL, 
-  woody_wetlands=NULL
-)]
 
 # Set seed for splitting and modeling
 set.seed(19)
@@ -1329,25 +1331,11 @@ prepare.data <- function(df, p=.7, lat.lon.bins=25) {
 # Get train/test indices
 train.test <- prepare.data(df, .7)
 
-# Convert species to binary variables for the purpose of shapley values
-# (Can't do that until after the stratified sampling is finished)
-binary.spec <- caret::dummyVars(~common.name, data=df, sep="") %>% 
-    predict(., df) %>%
-    as.data.frame()
-
-names(binary.spec) <- gsub("^common\\.name", "", names(binary.spec)) %>% 
-    gsub("\\/| |,", "_", .) %>% 
-    gsub("__", "_", .) %>% 
-    tolower()
-
-df <- cbind(binary.spec, select(df, -common.name))
-df %>% setDT()
-
 # Split; Remove non-predictive variables
 train <- df[train.test$index,] 
-train[, `:=` (state=NULL)]
+train[, `:=` (state=NULL, geometry=NULL)]
 test <- df[-train.test$index,]
-test[, `:=` (state=NULL)]
+test[, `:=` (state=NULL, geometry=NULL)]
 
 train.x <- train %>% select(-observations)
 train.y <- train$observations
@@ -1357,53 +1345,8 @@ test.y <- test$observations
 
 ```
 
-##### Modeling
-
-```{r inter-shap, results='hide'}
-
-# Training an XGBoost model
-xgb.model <- xgboost(
-  data = as.matrix(train.x),
-  label = train.y,
-  nrounds = 100, # Number of boosting rounds 
-  objective = "reg:squarederror"
-)
-
-```
-
-##### SHAP Analysis
-
-```{r shap-analysis}
-
-# Calculating SHAP values
-explainer <- shapr::shapr(x = train.x, model=xgb.model, n_combinations = 100)
-
-# Specifying the phi_0, i.e. the expected prediction without any features
-p <- mean(train.y)
-
-explanation <- explain(
-  test.x,
-  approach = "ctree",
-  explainer = explainer,
-  prediction_zero = p
-)
-
-# Plot the resulting explanations for observations 1 and 6, excluding 
-# the no-covariate effect
-plot(explanation, plot_phi0 = F, index_x_test = c(1, 6))
-
-```
-
-
-#### Non-Zero Interactions
-
-SHAP allows the exploration of interaction effects between features. If two features often have non-zero SHAP values together but not individually, they might be interacting in the model.
-
-## Feature Selection
 
 ```{r finalize-rasters}
-
-# Correlation
 
 # Mutual Dependency
 
