@@ -262,7 +262,8 @@ clean.levels <- function(x) {
 r.df[, NLCD_Land := factor(clean.levels(levels(NLCD_Land))[NLCD_Land])]
 
 # Convert factor columns to dummy variables
-df.dummies <- data.table(model.matrix(~ . - 1, data = r.df[, .(NLCD_Land, state)])) %>%
+df.dummies <- data.table(model.matrix(~ . - 1, 
+                                      data = r.df[, .(NLCD_Land, state)])) %>%
   cbind(r.df[, -which(names(r.df) %in% c("NLCD_Land", "state")), with=F]) 
 
 names(df.dummies) <- gsub("NLCD_Land", "", names(df.dummies))
@@ -975,10 +976,12 @@ create.parent.category.rasters <- function(input.raster,
                                       x %in% categories[[cat.name]] ~ 1.,
                                       T ~ 0)
                                   })
+        names(out.raster) <- cat.name
         if (cat.name == "water") {
           # Combine with waterbody raster layer
           wb.raster <- input.raster[[paste0("waterbody_", state)]]
           out.raster <- (out.raster + wb.raster) / 2
+          names(out.raster) <- "water"
         }
       } else {
         # Set developed raster to be a value, scale ranging from 0.25-1 by 0.25
@@ -998,6 +1001,7 @@ create.parent.category.rasters <- function(input.raster,
         ui.max <- terra::minmax(ui.raster)[[2]]
         ui.raster.scaled <- (ui.raster - ui.min) / (ui.max - ui.min)
         out.raster <- (out.raster + ui.raster.scaled) / 2
+        names(out.raster) <- "developed"
       }
       
       # Save the output raster to the specified output path
@@ -1033,7 +1037,9 @@ for (state in states) {
     }
     # Get min/max scaled NDVI values
     r.max <- max(r.ndvi)
+    names(r.max) <- "max.ndvi"
     r.min <- min(r.ndvi)
+    names(r.min) <- "min.ndvi"
     writeRaster(r.max, output.file.max, overwrite=T)
     writeRaster(r.min, output.file.min, overwrite=T)
   }
@@ -1057,6 +1063,7 @@ for (state in states) {
     .max <- terra::minmax(r.tdiff)[[2]]
     # Scale to be from 0 to 1
     r.tdiff <- (r.tdiff - .min) / (.max - .min)
+    names(r.tdiff) <- "temp.diff"
     # Write raster
     writeRaster(r.tdiff, output.file, overwrite=T)
   }
@@ -1158,9 +1165,127 @@ for (state in states) {
 
 ```
 
-### Feature Selection
+### Interactions Effects from SHAP
+
+#### Load all Original Features and Feature Engineering Outputs
+
+```{r load-all-features}
+
+# Combine observation/pseudo-absence data
+df <- c(list.files(file.path("data", "final_pseudo_absence"), full.names = T),
+        list.files(file.path("data", "final"), full.names = T)) %>%
+  purrr::map_df(readRDS)
+
+# Get feature engineered raster data
+output.dir <- "artifacts/feature_engineered_final"
+if (!dir.exists(output.dir)) dir.create(output.dir)
+get.fe <- all(case_when(is_empty(list.files(output.dir)) ~ T,
+                        list.files(output.dir) < length(states) ~ T,
+                        T ~ F))
+fe.r.list <- list()
+if (get.fe) {
+  for (state in states) {
+    fe.r.list[[state]] <- list.files(
+      "artifacts/feature_engineering", full.names = T)[
+        grepl(
+          paste0("^", state, "_"), 
+          list.files("artifacts/feature_engineering", full.names = F)
+        )
+      ] %>% rast()
+    # Save as multi-layer rasters by state
+    writeRaster(fe.r.list[[state]], 
+                file.path(output.dir, paste0(state, ".tif")),
+                overwrite=T)
+  }
+} else {
+  for (state in states) {
+    fe.r.list[[state]] <- rast(file.path(output.dir, paste0(state, ".tif")))
+  }
+}
+
+# Add empty fields in dataframe for each new raster 
+purrr::map(fe.r.list, names) %>% 
+  reduce(c) %>% 
+  unique() %>% 
+  sort() %>%
+  purrr::walk(function(n) {
+    if (!(n %in% names(df))) df[[n]] <<- 0
+  })
+
+# Update point crs to match fe rasters
+df <- st_transform(df, st_crs(fe.r.list[[1]])) 
+df.list <- list()
+# From state multi-layer rasters, extract values from each point in df
+for (st in states) {
+  cat(sprintf("Extracting points to values for %s...\n", st))
+  r <- fe.r.list[[st]]
+  df.list[[st]] <- df %>% filter(state == st)
+  # Extract raster values
+  for (r.name in names(r)) {
+    cat("\tExtracting", r.name, "values for", st, "\n")
+    x <- terra::extract(r[[r.name]], df.list[[st]])[[r.name]]
+    df.list[[st]] <- mutate(df.list[[st]], !!r.name := x)
+  }
+}
+# Combine list
+df <- do.call("rbind", df.list)
+rm(df.list)
+gc()
+# Update crs back
+df <- st_transform(df, 4326)
+# Remove rownames
+rownames(df) <- NULL
+
+# Convert land cover to binary variables
+binary.lc <- caret::dummyVars(~NLCD_Land, data=df, sep="") %>% 
+  predict(., df) %>%
+  as.data.frame()
+  
+names(binary.lc) <- gsub("NLCD_Land", "", names(binary.lc)) %>% 
+    gsub("\\/| |,", "_", .) %>% 
+    gsub("__", "_", .) %>% 
+    tolower()
+
+# Remove duplicates from feature engineering
+binary.lc <- binary.lc %>%
+  select(-c("unclassified", "perennial_snow_ice", "barren_land",
+            "shrub_scrub", "herbaceous"))
+# Combine with dataframe, remove land cover categorical var
+df <- df %>% select(-NLCD_Land) %>% cbind(binary.lc)
+
+df %>% as_tibble()
+```
+
+#### Get SHAP Values for all Features & Interactions
+
+```{r inter-shap}
+
+
+```
+
+#### Non-Zero Interactions
+
+SHAP allows the exploration of interaction effects between features. If two features often have non-zero SHAP values together but not individually, they might be interacting in the model.
+
+## Feature Selection
 
 ```{r finalize-rasters}
+
+# Correlation
+
+# Mutual Dependency
+
+# LASSO
+
+# Decision Tree
+
+# Ridge Regression & Elastic Net
+
+# Boruta
+
+# Random Permutations
+
+# Recursive Feature Elimination
 
 
 ```
