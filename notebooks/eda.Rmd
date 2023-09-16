@@ -30,7 +30,8 @@ library(purrr)
 library(caret)
 library(FactoMineR)
 library(spdep)
-library(car)
+library(shapr)
+library(xgboost)
 
 ```
 
@@ -1171,134 +1172,132 @@ for (state in states) {
 
 ```{r load-all-features}
 
-# Combine observation/pseudo-absence data
-df <- c(list.files(file.path("data", "final_pseudo_absence"), full.names = T),
-        list.files(file.path("data", "final"), full.names = T)) %>%
-  purrr::map_df(readRDS)
+final.output.dir <- "artifacts/final_data"
+if (!dir.exists(final.output.dir)) dir.create(final.output.dir)
+final.fpath <- file.path(final.output.dir, "final_data.rds")
 
-# Get feature engineered raster data
-output.dir <- "artifacts/feature_engineered_final"
-if (!dir.exists(output.dir)) dir.create(output.dir)
-get.fe <- all(case_when(is_empty(list.files(output.dir)) ~ T,
-                        list.files(output.dir) < length(states) ~ T,
-                        T ~ F))
-fe.r.list <- list()
-if (get.fe) {
-  for (state in states) {
-    fe.r.list[[state]] <- list.files(
-      "artifacts/feature_engineering", full.names = T)[
-        grepl(
-          paste0("^", state, "_"), 
-          list.files("artifacts/feature_engineering", full.names = F)
-        )
-      ] %>% rast()
-    # Save as multi-layer rasters by state
-    writeRaster(fe.r.list[[state]], 
-                file.path(output.dir, paste0(state, ".tif")),
-                overwrite=T)
-  }
-} else {
-  for (state in states) {
-    fe.r.list[[state]] <- rast(file.path(output.dir, paste0(state, ".tif")))
-  }
-}
-
-# Add empty fields in dataframe for each new raster 
-purrr::map(fe.r.list, names) %>% 
-  reduce(c) %>% 
-  unique() %>% 
-  sort() %>%
-  purrr::walk(function(n) {
-    if (!(n %in% names(df))) df[[n]] <<- 0
-  })
-
-# Update point crs to match fe rasters
-df <- st_transform(df, st_crs(fe.r.list[[1]])) 
-df.list <- list()
-# From state multi-layer rasters, extract values from each point in df
-for (st in states) {
-  cat(sprintf("Extracting points to values for %s...\n", st))
-  r <- fe.r.list[[st]]
-  df.list[[st]] <- df %>% filter(state == st)
-  # Extract raster values
-  for (r.name in names(r)) {
-    cat("\tExtracting", r.name, "values for", st, "\n")
-    x <- terra::extract(r[[r.name]], df.list[[st]])[[r.name]]
-    df.list[[st]] <- mutate(df.list[[st]], !!r.name := x)
-  }
-}
-# Combine list
-df <- do.call("rbind", df.list)
-rm(df.list)
-gc()
-# Update crs back
-df <- st_transform(df, 4326)
-# Remove rownames
-rownames(df) <- NULL
-
-# Convert land cover to binary variables
-binary.lc <- caret::dummyVars(~NLCD_Land, data=df, sep="") %>% 
-  predict(., df) %>%
-  as.data.frame()
+if (!file.exists(final.fpath)) {
+  # Combine observation/pseudo-absence data
+  df <- c(list.files(file.path("data", "final_pseudo_absence"), full.names = T),
+          list.files(file.path("data", "final"), full.names = T)) %>%
+    purrr::map_df(readRDS)
   
-names(binary.lc) <- gsub("NLCD_Land", "", names(binary.lc)) %>% 
+  # Get feature engineered raster data
+  output.dir <- "artifacts/feature_engineered_final"
+  if (!dir.exists(output.dir)) dir.create(output.dir)
+  get.fe <- all(case_when(is_empty(list.files(output.dir)) ~ T,
+                          list.files(output.dir) < length(states) ~ T,
+                          T ~ F))
+  fe.r.list <- list()
+  if (get.fe) {
+    for (state in states) {
+      fe.r.list[[state]] <- list.files(
+        "artifacts/feature_engineering", full.names = T)[
+          grepl(
+            paste0("^", state, "_"), 
+            list.files("artifacts/feature_engineering", full.names = F)
+          )
+        ] %>% rast()
+      # Save as multi-layer rasters by state
+      writeRaster(fe.r.list[[state]], 
+                  file.path(output.dir, paste0(state, ".tif")),
+                  overwrite=T)
+    }
+  } else {
+    for (state in states) {
+      fe.r.list[[state]] <- rast(file.path(output.dir, paste0(state, ".tif")))
+    }
+  }
+  
+  # Add empty fields in dataframe for each new raster 
+  purrr::map(fe.r.list, names) %>% 
+    reduce(c) %>% 
+    unique() %>% 
+    sort() %>%
+    purrr::walk(function(n) {
+      if (!(n %in% names(df))) df[[n]] <<- 0
+    })
+  
+  # Update point crs to match fe rasters
+  df <- st_transform(df, st_crs(fe.r.list[[1]])) 
+  df.list <- list()
+  # From state multi-layer rasters, extract values from each point in df
+  for (st in states) {
+    cat(sprintf("Extracting points to values for %s...\n", st))
+    r <- fe.r.list[[st]]
+    df.list[[st]] <- df %>% filter(state == st)
+    # Extract raster values
+    for (r.name in names(r)) {
+      cat("\tExtracting", r.name, "values for", st, "\n")
+      x <- terra::extract(r[[r.name]], df.list[[st]])[[r.name]]
+      df.list[[st]] <- mutate(df.list[[st]], !!r.name := x)
+    }
+  }
+  # Combine list
+  df <- do.call("rbind", df.list)
+  rm(df.list)
+  gc()
+  # Update crs back
+  df <- st_transform(df, 4326)
+  # Remove rownames
+  rownames(df) <- NULL
+  
+  # Convert land cover to binary variables
+  binary.lc <- caret::dummyVars(~NLCD_Land, data=df, sep="") %>% 
+    predict(., df) %>%
+    as.data.frame()
+  
+  names(binary.lc) <- gsub("NLCD_Land", "", names(binary.lc)) %>% 
     gsub("\\/| |,", "_", .) %>% 
     gsub("__", "_", .) %>% 
     tolower()
-
-# Remove duplicates from feature engineering
-binary.lc <- binary.lc %>%
-  select(-c("unclassified", "perennial_snow_ice", "barren_land",
-            "shrub_scrub", "herbaceous"))
-# Combine with dataframe, remove land cover categorical var
-df <- df %>% select(-NLCD_Land) %>% cbind(binary.lc)
+  
+  # Remove duplicates from feature engineering
+  binary.lc <- binary.lc %>%
+    select(-c("unclassified", "perennial_snow_ice", "barren_land",
+              "shrub_scrub", "herbaceous"))
+  # Combine with dataframe, remove land cover categorical var
+  df <- df %>% select(-NLCD_Land) %>% cbind(binary.lc)
+  saveRDS(df, final.fpath)
+} else {
+  df <- readRDS(final.fpath)
+}
 
 df %>% as_tibble()
 ```
 
 #### Get SHAP Values for all Features & Interactions
 
-```{r inter-shap}
+Steps:
 
+1. Pre-processing: Remove non-predictive variables (`common.name`, `state`, `geometry`). Split the data into training and test sets.
+2. Modeling: Fit an XGBoost model.
+3. SHAP Analysis: Calculate SHAP values; Explore interaction effects.
 
-```
+##### Pre-Processing
 
-#### Non-Zero Interactions
+```{r strat-split-1}
 
-SHAP allows the exploration of interaction effects between features. If two features often have non-zero SHAP values together but not individually, they might be interacting in the model.
+df %>% setDT()
 
-## Feature Selection
+# Although we could test every single variable, some are slightly redundant.
+# Although during variable selection every variable will be tested, that is
+# too computationally intesive for SHAP values. Thus, remove some of the 
+# unnecessary variables
 
-```{r finalize-rasters}
+df[, `:=` (
+  dem=NULL, Spring_NDVI=NULL, Summer_NDVI=NULL, Fall_NDVI=NULL,
+  Winter_NDVI=NULL, urban_imperviousness=NULL, waterbody=NULL,
+  lon.lat.interaction=NULL, lat.sqrd=NULL, lon.sqrd=NULL, 
+  hay_pasture=NULL, cultivated_crops=NULL, geometry=NULL,
+  developed_open_space=NULL, developed_low_intensity=NULL,
+  developed_medium_intensity=NULL, developed_high_intensity=NULL,
+  open_water=NULL, emergent_herbaceous_wetlands=NULL, 
+  woody_wetlands=NULL
+)]
 
-# Correlation
-
-# Mutual Dependency
-
-# LASSO
-
-# Decision Tree
-
-# Ridge Regression & Elastic Net
-
-# Boruta
-
-# Random Permutations
-
-# Recursive Feature Elimination
-
-
-```
-
-## Train/Test Splitting
-
-```{r strat-split}
-
-# Combine observation/pseudo-absence data
-df <- c(list.files(file.path("data", "final_pseudo_absence"), full.names = T),
-        list.files(file.path("data", "final"), full.names = T)) %>%
-  purrr::map_df(readRDS)
-  
+# Set seed for splitting and modeling
+set.seed(19)
 
 stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
   # Cut along lat/lon values to create grids (lat.bin & lon.bin)
@@ -1327,8 +1326,99 @@ prepare.data <- function(df, p=.7, lat.lon.bins=25) {
        index = train.index)
 }
 
+# Get train/test indices
 train.test <- prepare.data(df, .7)
-train <- df[train.test$index,]
+
+# Convert species to binary variables for the purpose of shapley values
+# (Can't do that until after the stratified sampling is finished)
+binary.spec <- caret::dummyVars(~common.name, data=df, sep="") %>% 
+    predict(., df) %>%
+    as.data.frame()
+
+names(binary.spec) <- gsub("^common\\.name", "", names(binary.spec)) %>% 
+    gsub("\\/| |,", "_", .) %>% 
+    gsub("__", "_", .) %>% 
+    tolower()
+
+df <- cbind(binary.spec, select(df, -common.name))
+df %>% setDT()
+
+# Split; Remove non-predictive variables
+train <- df[train.test$index,] 
+train[, `:=` (state=NULL)]
 test <- df[-train.test$index,]
+test[, `:=` (state=NULL)]
+
+train.x <- train %>% select(-observations)
+train.y <- train$observations
+
+test.x <- test %>% select(-observations)
+test.y <- test$observations
 
 ```
+
+##### Modeling
+
+```{r inter-shap, results='hide'}
+
+# Training an XGBoost model
+xgb.model <- xgboost(
+  data = as.matrix(train.x),
+  label = train.y,
+  nrounds = 100, # Number of boosting rounds 
+  objective = "reg:squarederror"
+)
+
+```
+
+##### SHAP Analysis
+
+```{r shap-analysis}
+
+# Calculating SHAP values
+explainer <- shapr::shapr(x = train.x, model=xgb.model, n_combinations = 100)
+
+# Specifying the phi_0, i.e. the expected prediction without any features
+p <- mean(train.y)
+
+explanation <- explain(
+  test.x,
+  approach = "ctree",
+  explainer = explainer,
+  prediction_zero = p
+)
+
+# Plot the resulting explanations for observations 1 and 6, excluding 
+# the no-covariate effect
+plot(explanation, plot_phi0 = F, index_x_test = c(1, 6))
+
+```
+
+
+#### Non-Zero Interactions
+
+SHAP allows the exploration of interaction effects between features. If two features often have non-zero SHAP values together but not individually, they might be interacting in the model.
+
+## Feature Selection
+
+```{r finalize-rasters}
+
+# Correlation
+
+# Mutual Dependency
+
+# LASSO
+
+# Decision Tree
+
+# Ridge Regression & Elastic Net
+
+# Boruta
+
+# Random Permutations
+
+# Recursive Feature Elimination
+
+
+```
+
