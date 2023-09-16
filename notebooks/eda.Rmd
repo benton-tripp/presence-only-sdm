@@ -387,7 +387,9 @@ get.buffered.zones <- function(r, obs.df, obs.field="observation.point",
   mask.raster <- terra::rast(r)
   # Recursively update mask.raster with additional buffered regions
   for(i in 1:nrow(obs.df)) {
-    mask.raster <- mask.update(i, mask.raster, obs.df, obs.field=obs.field, dist=dist, u=u)
+    mask.raster <- mask.update(i, mask.raster, obs.df, 
+                               obs.field=obs.field, 
+                               dist=dist, u=u)
     gc()
   }
   return(mask.raster)
@@ -404,7 +406,8 @@ masks <- purrr::map(states, function(state) {
       } else {
         cat("Computing", spec, st, "mask, and saving to", fname, "\n")
         r.mask <- get.buffered.zones(r=r.list[[st]], 
-                                     obs.df=filter(obs.df, state == st & common.name == spec),
+                                     obs.df=filter(obs.df, state == st & 
+                                                     common.name == spec),
                                      dist=dist)
         terra::writeRaster(r.mask, fname, overwrite=T)
       }
@@ -1010,7 +1013,7 @@ for (state in states) {
 
 ```
 
-### Combine NDVI (Median)
+### Aggregate Seasonal NDVI Rasters (Min/Max)
 
 ```{r combine-ndvi}
 
@@ -1038,7 +1041,7 @@ for (state in states) {
 
 ```
 
-### Combine Temperature (Difference)
+### Combine Temperature Rasters (Difference)
 
 ```{r combine-temp}
 
@@ -1061,15 +1064,42 @@ for (state in states) {
 
 ```
 
-### Detrend DEM
+### Latitude and Longitude as Rasters
 
-```{r detrend-dem}
+```{r lat-lon-rast}
 
-model <- lm(dem ~ st_coordinates(your_data)[,1] + 
-              st_coordinates(your_data)[,2], data = your_data)
-your_data$detrended_dem <- residuals(model)
+for (state in states) {
+  output.file.lon <- file.path(output.dir, paste0(state, "_lon.tif"))
+  output.file.lat <- file.path(output.dir, paste0(state, "_lat.tif"))
+  if (!file.exists(output.file.lon) | !file.exists(output.file.lat)) {
+    # Get raster as df
+    r.df <- terra::as.data.frame(r.list[[state]], xy=T, cells=T) %>% 
+      rename(lon=x, lat=y) %>%
+      select(lon, lat, cell) %>%
+      st_as_sf(coords = c("lon", "lat"), crs = st_crs(r.list[[state]])) %>%
+      st_transform(crs=4326) %>%
+      cbind(st_coordinates(.)) %>%
+      rename(lon="X", lat="Y")
+    
+    # Initialize empty raster templates
+    r.lat <- ext(r.list[[state]]) %>% 
+            rast(res=res(r.list[[state]]), crs=crs(r.list[[state]]))
+    r.lon <- ext(r.list[[state]]) %>% 
+            rast(res=res(r.list[[state]]), crs=crs(r.list[[state]]))
+    # Fill with lat/lon values
+    r.lat[r.df$cell] <- r.df$lat
+    names(r.lat) <- "lat"
+    r.lon[r.df$cell] <- r.df$lon
+    names(r.lon) <- "lon"
+    
+    # Write outputs
+    writeRaster(r.lat, output.file.lat, overwrite=T)
+    writeRaster(r.lon, output.file.lon, overwrite=T)
+  }
+}
 
 ```
+
 
 ### Spatial Filters
 
@@ -1080,6 +1110,16 @@ These are components derived from the spatial coordinates, which can capture and
 your_data$lon_sq <- st_coordinates(your_data)[,1]^2
 your_data$lat_sq <- st_coordinates(your_data)[,2]^2
 your_data$lon_lat_interaction <- st_coordinates(your_data)[,1] * st_coordinates(your_data)[,2]
+
+```
+
+### Detrend DEM
+
+```{r detrend-dem}
+
+model <- lm(dem ~ st_coordinates(your_data)[,1] + 
+              st_coordinates(your_data)[,2], data = your_data)
+your_data$detrended_dem <- residuals(model)
 
 ```
 
