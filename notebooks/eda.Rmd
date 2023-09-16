@@ -1014,6 +1014,27 @@ for (state in states) {
 
 ```{r combine-ndvi}
 
+# Convert 4 separate NDVI rasters to a single raster
+for (state in states) {
+  output.file.min <- file.path(output.dir, paste0(state, "_min_NDVI.tif"))
+  output.file.max <- file.path(output.dir, paste0(state, "_max_NDVI.tif"))
+  if (!file.exists(output.file.min) | !file.exists(output.file.max)) {
+    r.ndvi <- r.list[[state]][[names(r.list[[state]]) %like% "NDVI"]]
+    # Parse seasons
+    for (s in names(r.ndvi)) {
+      r <- r.ndvi[[s]]
+      .min <- terra::minmax(r)[[1]]
+      .max <- terra::minmax(r)[[2]]
+      # Scale to be from 0 to 1
+      r.ndvi[[s]] <- (r - .min) / (.max - .min)
+    }
+    # Get min/max scaled NDVI values
+    r.max <- max(r.ndvi)
+    r.min <- min(r.ndvi)
+    writeRaster(r.max, output.file.max, overwrite=T)
+    writeRaster(r.min, output.file.min, overwrite=T)
+  }
+}
 
 ```
 
@@ -1021,7 +1042,8 @@ for (state in states) {
 
 ```{r detrend-dem}
 
-model <- lm(dem ~ st_coordinates(your_data)[,1] + st_coordinates(your_data)[,2], data = your_data)
+model <- lm(dem ~ st_coordinates(your_data)[,1] + 
+              st_coordinates(your_data)[,2], data = your_data)
 your_data$detrended_dem <- residuals(model)
 
 ```
