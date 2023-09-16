@@ -1038,6 +1038,29 @@ for (state in states) {
 
 ```
 
+### Combine Temperature (Difference)
+
+```{r combine-temp}
+
+# Get the difference between the min and max temperatures as a raster
+for (state in states) {
+  output.file <- file.path(output.dir, paste0(state, "_tdiff.tif"))
+  if (!file.exists(output.file)) {
+    # Get difference
+    r.tdiff <- r.list[[state]][[paste0("tmax_", state)]] - 
+      r.list[[state]][[paste0("tmin_", state)]]
+    # Get min/max differences
+    .min <- terra::minmax(r.tdiff)[[1]]
+    .max <- terra::minmax(r.tdiff)[[2]]
+    # Scale to be from 0 to 1
+    r.tdiff <- (r.tdiff - .min) / (.max - .min)
+    # Write raster
+    writeRaster(r.tdiff, output.file, overwrite=T)
+  }
+}
+
+```
+
 ### Detrend DEM
 
 ```{r detrend-dem}
@@ -1060,16 +1083,12 @@ your_data$lon_lat_interaction <- st_coordinates(your_data)[,1] * st_coordinates(
 
 ```
 
-### Combine Temperature (Difference)
+### Feature Selection
 
-```{r combine-temp}
-
+```{r finalize-rasters}
 
 
 ```
-
-
-### Feature Selection
 
 ## Train/Test Splitting
 
