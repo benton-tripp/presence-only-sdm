@@ -1332,25 +1332,103 @@ prepare.data <- function(df, p=.7, lat.lon.bins=25) {
 train.test <- prepare.data(df, .7)
 
 # Split; Remove non-predictive variables
-train <- df[train.test$index,] 
-train[, `:=` (state=NULL, geometry=NULL)]
-test <- df[-train.test$index,]
-test[, `:=` (state=NULL, geometry=NULL)]
+df.train <- df[train.test$index,] 
+df.train[, `:=` (state=NULL, geometry=NULL)]
+df.test <- df[-train.test$index,]
+df.test[, `:=` (state=NULL, geometry=NULL)]
 
-train.x <- train %>% select(-observations)
-train.y <- train$observations
+train.x <- df.train %>% select(-observations)
+train.y <- df.train$observations
 
-test.x <- test %>% select(-observations)
-test.y <- test$observations
+test.x <- df.test %>% select(-observations)
+test.y <- df.test$observations
+
+```
+
+```{r get-model-func}
+
+# Get model from cache if it has been saved before
+get.model <- function(model, file.name, model.path) {
+  f.path <- file.path(model.path, file.name)
+  if (!dir.exists(model.path)) {
+    dir.create(model.path)
+  }
+  # Model cache check
+  if (ifelse(file.exists(f.path), T, F)) {
+    model <- readRDS(f.path)
+  } else {
+    saveRDS(model, f.path)
+  }
+  model
+}
+
+```
+
+```{r lasso}
+
+species <- sort(unique(df.train$common.name))
+
+# Define the control for the train function
+ctrl <- trainControl(method = "cv", number = 5)
+
+lasso.list <- purrr::map(species, function(spec) {
+  cat("Fitting LASSO model for", spec, "\n")
+  spec.df <- train[common.name == spec][, common.name := NULL]
+  
+  # Scale data
+  # Identify fields to center/scale
+  to.scale <- sapply(spec.df, function(x) is.numeric(x) && 
+                       length(unique(x)) > 2)
+  to.scale$observations <- F
+  to.scale <- names(spec.df) %in% names(which(unlist(to.scale)))
+  
+  # Define the pre-processing steps (use the training data to avoid data leakage)
+  # Apply centering and scaling to the non-binary fields and non-target
+  preproc <- preProcess(spec.df[, ..to.scale], 
+                        method = c("center", "scale"))
+  
+  # Center/Scale the training data
+  df.train.scaled <- bind_cols(spec.df[, !(..to.scale)],
+                               predict(preproc, spec.df[, ..to.scale]))
+  
+  # LASSO (L1); Elastic Net, where alpha = 1
+  fit.l1 <- get.model(
+    train(observations ~ (.)^2, 
+          data = df.train.scaled, 
+          method = "glmnet",
+          trControl = ctrl,
+          tuneGrid = expand.grid(alpha = 1, 
+                                 lambda = seq(0, 1, by = 0.1)),
+          metric = "RMSE"),
+    file.name=paste0(spec, ".regr.l1.rds"),
+    model.path="models")
+  
+  gc()
+  fit.l1
+}, .progress=T)
+names(lasso.list) <- species
+
+lasso.imp <- purrr::map(lasso.list, function(fit) {
+  coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
+    as.matrix() %>%
+    as.data.frame()
+  # Remove the intercept
+  coef.df <- coef.df[-1, , drop = F]
+  
+  # Create a data frame of variable importance
+  var.importance <- data.frame(
+    variable = rownames(coef.df),
+    importance = abs(coef.df[,1])
+  ) %>%
+    # Rank variables by importance
+    arrange(-importance, variable)
+
+})
 
 ```
 
 
-```{r finalize-rasters}
-
-# Mutual Dependency
-
-# LASSO
+```{r dt}
 
 # Decision Tree
 
