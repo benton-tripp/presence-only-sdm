@@ -30,8 +30,6 @@ library(purrr)
 library(caret)
 library(FactoMineR)
 library(spdep)
-library(shapr)
-library(xgboost)
 
 ```
 
@@ -40,16 +38,22 @@ library(xgboost)
 
 rmarkdown::render(
   input = paste0("C:/Users/bento/gis630/notebooks/eda.Rmd"), 
-  output_format = "github_document", 
-  output_file = "2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.md",
-  output_dir = "benton-tripp.github.io/_posts", 
+  output_format = "html_document", 
+  output_file = "2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html",
+  output_dir = "benton-tripp.github.io/posts", 
   knit_root_dir = "C:/users/bento/gis630",
   output_options = list(html_preview = F)
 )
 
 ```
 
+## Introduction
+
+The Species Distribution Model (SDM) Benchmark Study Part 2 presents data from eight bird species across Colorado, Oregon, North Carolina, and Vermont, using environmental rasters from Part 1. The analysis segments data distribution by state and species and evaluates explanatory rasters using methods like Principal Component Analysis and Factor Analysis for Mixed Data. Additionally, the study addresses pseudo-absence generation and conducts feature engineering/selection to prepare for subsequent modeling.
+
 ## Visualize all Observations by State & Species
+
+The initial phase of the exploratory data analysis visualizes bird species observations across four U.S. states: Oregon, Vermont, Colorado, and North Carolina, covering the period from 2016 to 2019. These visual representations display the distribution of eight distinct bird species within each state while also highlighting major cities for geographical context. Such visualizations offer insights into spatial distribution patterns, potentially revealing habitat preferences, migration routes, or the influence of urban areas on these distributions. As the analysis progresses, understanding these distributions becomes pivotal, especially when addressing spatial autocorrelations and other features that influence the accuracy and validity of the Species Distribution Model (SDM) benchmarks.
 
 ```{r generate-plots}
 
@@ -237,6 +241,8 @@ TODO:
 
 ### Principal Component Analysis
 
+In this section, the study employs Principal Component Analysis (PCA) to transform the high-dimensional data into a lower-dimensional form while retaining as much of the original variance as possible. The initial step involves merging data from different states into a single dataframe, followed by cleaning factor levels of the `NLCD_Land` column. Subsequently, the code converts factor columns into dummy variables and removes columns with only a single unique value. The `PCA()` function is used to perform the PCA, and the results are visualized using bar charts, displaying the importance of each variable for the first two dimensions. This visualization is important in understanding the significance of different environmental rasters and how they contribute to the variations captured by the principal components.
+
 ```{r pca}
 
 r.df <- map_df(states, function(s) {
@@ -312,6 +318,8 @@ ggpubr::ggarrange(plotlist=list(p.d1, p.d2), nrow=2, ncol=1)
 
 ### Factor Analysis for Mixed Data
 
+Diving deeper into the structure of the data, Factor Analysis for Mixed Data (FAMD) is implemented next. FAMD is a unique technique that extends traditional Factor Analysis by handling both continuous and categorical data, which fits the nature of the dataset used in this study. The code initiates this process by applying the `FAMD()` function to the dataframe. The results are then visualized in three distinct plots that highlight the variance explained by different variables for both continuous and categorical data. These plots provide insights into the underlying structure of the data and the significance of each variable. By observing the variable importance for the first two dimensions, displayed through bar charts, it can be discern which variables are related. Later, multi-collinearity and autocorrelation will be addressed in greater depth.
+
 ```{r famd, fig.height=15, fig.width=5}
 
 famd.fit <- FAMD(r.df, graph=F)
@@ -349,6 +357,12 @@ ggpubr::ggarrange(plotlist=list(p.d1, p.d2), nrow=2, ncol=1)
 ```
 
 ## Pseudo-Absence Generation
+
+In species distribution modeling, the presence of a species in certain locations is often well-recorded, but the absence is typically under-reported or not reported at all. This creates a challenge when trying to understand the complete distribution of a species. To address this, the concept of pseudo-absence data is introduced. Pseudo-absence data are artificially generated points that represent locations where the species is assumed not to be present. In this section, pseudo-absence data points are generated for the eight bird species across the four states ensuring that these points do not overlap with observed presence data. The generated pseudo-absence data helps in providing a more comprehensive view of the species distribution and serves as an essential component for the upcoming modeling process.
+
+### Buffering Raster Data
+
+For the method used for generating pseudo-absence data in this analysis, initially a buffer is created around each observation point, each with a 5000 meter radius. This buffer essentially "blocks" the regions of the sample-area from where pseudo-absence points can be sampled. I.e., only the non-buffered zones can be sampled from.
 
 ```{r mask-rasters, results="hide"}
 
@@ -423,7 +437,9 @@ names(masks) <- states
 
 ```
 
+### Sampling Pseudo-Absences and Comparing Totals
 
+This section identifies areas outside the buffers as potential zones for pseudo-absences. To ensure an accurate representation, a random sampling mechanism is implemented. For each bird species in a state, an equivalent number of pseudo-absence points (or a pre-defined minimum threshold), based on observed data are generated. The result is a set of coordinates representing regions where the bird species have not been observed. 
 
 ```{r select-pa, results="hide"}
 
@@ -575,6 +591,7 @@ if (!all(
 
 ```
 
+The table below compares the generated pseudo-absence data with the observed dataset. This comparison ensures that the number of pseudo-absence points matches the observed ones, balancing the dataset and making it ready for the next analysis steps.
 
 ```{r compare-pa-obs-totals}
 
@@ -596,7 +613,7 @@ abs.df %>%
 ```
 
 
-## Spatial Autocorrelation 
+## Identifying Spatial Autocorrelation 
 
 ### Moran's I
 
@@ -832,7 +849,7 @@ env.mi.results.df %>%
 The weather layers in particular have Moran's I values close to 1, which is the maximum possible value. This indicates a very strong spatial clustering of these variables.
 
 
-#### Mitigating Potential Problems Due to Spatial Autocorrelation 
+### Mitigating Potential Problems Due to Spatial Autocorrelation 
 
 1. Collinearity
 2. Spatial Autocorrelation in Residuals
@@ -1143,7 +1160,7 @@ for (state in states) {
 
 ```
 
-### Detrend DEM
+### De-trend DEM
 
 ```{r detrend-dem}
 
@@ -1187,7 +1204,7 @@ for (state in states) {
 
 ## Feature Selection
 
-#### Load all Original Features and Feature Engineering Outputs
+### Load all Original Features and Feature Engineering Outputs
 
 ```{r load-all-features}
 
@@ -1289,7 +1306,7 @@ df %>% setDT()
 df %>% as_tibble()
 ```
 
-#### Correlation 
+### Correlation 
 
 ```{r cor-obs}
 
@@ -1312,7 +1329,7 @@ obs.cor %>% as_tibble()
 
 ```
 
-#### Train/Test Split
+### Train/Test Split
 
 ```{r strat-split-1}
 
@@ -1382,6 +1399,7 @@ get.model <- function(model, file.name, model.path) {
 
 ```
 
+### LASSO Models - Importance from Coefficients
 
 
 ```{r lasso}
@@ -1399,10 +1417,10 @@ lasso.list <- purrr::map(species, function(spec) {
       , `:=` (state=NULL, common.name = NULL)]
     
     # Remove any columns where all values are the same
-    .remove <- names(which(sapply(spec.df, function(x) length(unique(x)) < 1)))
+    .remove <- names(which(sapply(spec.df, function(x) length(unique(x)) <= 1)))
     .remove <- .remove[.remove != "observations"]
     if (!is_empty(.remove)) {
-      spec.df <- spec.df[, ...remove]
+      spec.df <- spec.df %>% select(-.remove)
     }
     
     # Scale data
@@ -1471,31 +1489,62 @@ lasso.imp
 ```
 
 
+### Decision Tree Models - Variable Importance
+
 ```{r dt}
 
-# Decision Tree
+# Decision Tree Variable Importance
+
+tree.list <- purrr::map(species, function(spec) {
+  spec.state.fit <- purrr::map(states, function(st) {
+    cat("Fitting Decision Tree model for", spec, "in", st, "\n")
+    spec.df <- df.train[common.name == spec & state == st][
+      , `:=` (state=NULL, common.name = NULL)]
+    
+    # Remove any columns where all values are the same
+    .remove <- names(which(sapply(spec.df, function(x) length(unique(x)) <= 1)))
+    .remove <- .remove[.remove != "observations"]
+    if (!is_empty(.remove)) {
+      spec.df <- spec.df %>% select(-.remove)
+    }
+
+    # Fit the Decision Tree model
+    fit.tree <- get.model(
+      rpart::rpart(observations ~ ., data=spec.df, method="anova",
+                   control=rpart::rpart.control(cp=0.001)),
+      file.name=paste0(tolower(gsub(" ", "_", spec)), "_", st, "_tree.rds"),
+      model.path="artifacts/models/trees_fs")
+    
+    gc()
+    fit.tree
+  })
+  names(spec.state.fit) <- states
+  spec.state.fit
+})
+names(tree.list) <- species
+
+tree.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$common.name
+  st <- spec.state[i,]$state
+  fit <- tree.list[[spec]][[st]]
+  vi <- fit$variable.importance
+  # Create a data frame of variable importance
+  var.importance <- tibble(
+    common.name = spec,
+    state = st,
+    variable = names(vi),
+    importance = (vi - min(vi)) / (max(vi) - min(vi))
+  ) %>%
+    # Rank variables by importance
+    arrange(state, common.name, -importance, variable)
+})
+
+tree.imp
 
 ```
 
 
-# Boruta
 
-```{r boruta}
-
-
-```
-
-# Random Permutations
-
-```{r ran-perm}
-
-```
-
-# Recursive Feature Elimination
-
-```{r rfe}
-
-```
 
 
 
