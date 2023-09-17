@@ -225,8 +225,11 @@ do.call(ggpubr::ggarrange,
 
 ## Explore Explanatory Rasters
 
+The environmental rasters from Colorado, North Carolina, Oregon, and Vermont used in this study are meant to provide insights into which factors might potentially influence bird species distributions. The rasters were prepared in Part 1 of this study, and saved into 4 state-wide multi-layer rasters, each with 1000x1000 meter resoultions.
+
 ```{r load-rasters}
 
+# Load prepared explanatory rasters by state
 states <- c("CO", "NC", "OR", "VT")
 r.files <- paste0("data/final_rasters/", states, ".tif")
 r.list <- purrr::map(r.files, rast)
@@ -234,10 +237,42 @@ names(r.list) <- states
 
 ```
 
-TODO:
-- `terra::freq`
-- `terra::density`
-- `terra::layerCor`
+### Land Cover Type Frequency
+
+The table below shows the frequency distribution of various land cover types across the selected states. By evaluating this, the most common and rare habitats in each region can be ascertained. Moreover, understanding the prevalence of each land cover type can provide insights into potential hot-spots or habitats of interest for the bird species in question. 
+
+```{r lc-type-freq}
+
+purrr::map_df(states, function(st) {
+  freq.df <- terra::freq(r.list[[st]]$NLCD_Land) %>%
+    mutate(state = st) %>%
+    select(state, value, count)
+}) 
+
+```
+
+### Continuous Variable Distribution
+
+Continuous rasters capture a gradient of values, often related to environmental gradients such as temperature, precipitation, or elevation. In this study, the distribution of such continuous variables for each state is illustrated using density plots. These plots provide a visual representation of the distribution patterns of each environmental variable, allowing for an assessment of the variations and patterns within each state. For instance, understanding the elevation range of Oregon compared to Colorado can offer insights into the altitudinal preferences of species. Additionally, spotting any anomalies or peaks in these distributions might suggest specific ecological or environmental significance, further aiding in the understanding and interpretation of model outputs.
+
+```{r r-dense, fig.height=26, fig.width=8}
+
+# Plot densities of numeric rasters, by state
+purrr::map(states, function(st) {
+  r <- r.list[[st]]
+  plots <- purrr::map(names(r)[names(r) != "NLCD_Land"], function(l) {
+    ggplot(data=r[l] %>% as.data.frame()) + 
+      geom_density(aes(x=!!sym(l))) + 
+      theme_bw() +
+      ggtitle(paste0(st, " Distribution for ", gsub(paste0("_", st), "", l)))
+  })
+  
+  ggpubr::ggarrange(plotlist=plots, ncol=3, nrow=4) 
+}) %>%
+  ggpubr::ggarrange(plotlist=., ncol=1, nrow=4) + 
+  ggtitle(paste0("Density Plots of Numeric Variables"))
+
+```
 
 ### Principal Component Analysis
 
@@ -371,7 +406,7 @@ output.dir <- "artifacts/masks_5k"
 if (!dir.exists("artifacts")) dir.create("artifacts")
 if (!dir.exists(output.dir)) dir.create(output.dir)
 
-# LOAD DATA 
+# Load Data
 
 # Get raster data
 states <- c("CO", "NC", "OR", "VT")
@@ -383,7 +418,7 @@ obs.df <- list.files("data/final", full.names = T) %>%
   purrr::map_df(readRDS) %>%
   select(state, common.name, observation.point=geometry)
 
-# BUFFERING RASTER DATA 
+# Buffering Raster Data
 
 dist <- 5e3
 
@@ -845,17 +880,26 @@ env.mi.results.df %>%
 
 ```
 
-The weather layers in particular have Moran's I values close to 1, which is the maximum possible value. This indicates a very strong spatial clustering of these variables.
-
+It is apparent that many of the environmental variables exhibit strong spatial clustering patterns. Notably, the weather layers have Moran's I values nearing 1, signifying near-perfect spatial autocorrelation. Such patterns, while anticipated for certain types of variables, can introduce challenges in statistical analyses. Specifically, strong spatial autocorrelation often violates the assumption of observation independence fundamental to many traditional statistical models, potentially leading to biased parameter estimates and misleading significance levels. However, this spatial dependence can be accounted for using specialized spatial statistical methods or integrated as inherent structure in certain modeling techniques. It's crucial to select an appropriate modeling method that accommodates or leverages this spatial structure, ensuring reliable and valid results.
 
 ### Mitigating Potential Problems Due to Spatial Autocorrelation 
 
-1. Collinearity
+1. Multi-Collinearity
+  -  Problem: When predictors are spatially autocorrelated, they may also be correlated with each other. This multi-collinearity can make it hard to determine the influence of individual predictors on the response variable.
+  - Solution: One method of detecting multi-collinearity is to use the condition index derived from the eigenvalues of a correlation matrix. Variables with high condition indices can be further examined through their contributing eigenvectors to identify key contributors. Furthermore, visualizing correlation matrices can help provide a clearer understanding. Based on these insights, dropping variables, combining variables, or applying dimension reduction techniques can help mitigate mutli-collinearity between features.
 2. Spatial Autocorrelation in Residuals
+  - Problem: Spatially autocorrelated residuals indicate that the model hasn't captured all spatial structures, leading to biased parameter estimates.
+  - Solution: Employ spatial regression models that can incorporate spatial structure, such as spatial lag or spatial error models. Alternatively, add spatially structured random effects to more standard models.
 3. Overfitting 
+  -  Problem: Models that capture too much of the spatial structure in the predictors might perform exceptionally well on training data but poorly on validation or future data.
+  - Solution: Use spatial cross-validation to ensure models generalize well. Regularization techniques, such as Ridge or LASSO regression, can also help prevent overfitting.
 4. Non-Stationarity
+  - Problem: The relationship between predictors and the response variable might change across space, which traditional models don't account for.
+  - Solution: Geographically Weighted Regression (GWR) allows relationships to vary across space, accounting for non-stationarity. Another approach involves segmenting the study area into regions where relationships are stable and modeling each separately (this approach is used during this study, where study areas are separate states).
 
-##### Checking for Collinearity in Environmental Factors
+Multi-collinearity is addressed in the following section, while the other mitigation solutions will be implemented either during the modeling stage of the study (e.g., cross-validation), or else addressed during the feature engineering/selection portion.
+
+#### Checking for Multi-Collinearity in Environmental Factors
 
 ```{r col-check}
 
@@ -921,8 +965,9 @@ corrplot::corrplot(corr.matrix)
 
 ```
 
-
 ## Feature Engineering
+
+As described previously, feature engineering is an essential step in predictive modeling, as it can help to reduce possible problems due to multi-collinearity or spatial autocorrelation. In addition, it can help reduce overfitting, as well as provide new insights unavailable through basic pre-processing of the data.
 
 ### Setup
 
@@ -1054,6 +1099,8 @@ for (state in states) {
 
 ### Aggregate Seasonal NDVI Rasters (Min/Max)
 
+NDVI, or Normalized Difference Vegetation Index, is a common measure of vegetation health. For each state, there are four separate NDVI rasters representing different seasons. Aggregating these rasters provides two essential insights: the minimum and maximum NDVI values. The minimum NDVI may correspond to the period when vegetation is least vigorous (e.g., winter or drought), while the maximum may indicate the period of peak vegetation growth (e.g., spring or summer). By scaling these values between 0 and 1, and then storing them separately as minimum and maximum NDVI rasters, a standardized measure of vegetation dynamics throughout the year for each state is achieved.
+
 ```{r combine-ndvi}
 
 # Convert 4 separate NDVI rasters to a single raster
@@ -1083,6 +1130,8 @@ for (state in states) {
 ```
 
 ### Combine Temperature Rasters (Difference)
+
+In this section, the difference between the maximum and minimum temperatures for each state is calculated. This temperature difference, often referred to as diurnal temperature range, can provide insights into the variability of daily temperatures. A high difference may suggest drastic temperature changes from day to night, which can impact ecosystems and human health. By creating a scaled raster of these differences (ranging from 0 to 1), the temperature variability can be compared across different states.
 
 ```{r combine-temp}
 
@@ -1161,6 +1210,8 @@ for (state in states) {
 
 ### De-trend DEM
 
+Digital Elevation Models (DEM) give us a detailed overview of the terrain elevation. However, sometimes, larger spatial trends (e.g., the general increase in elevation from the coast to the mountains) can overshadow more localized features or variations. By de-trending the DEM, the underlying larger spatial trend is removed, highlighting only the local elevation differences. In the given section, a linear model is fitted to the DEM using latitude and longitude (and their polynomial terms) to capture the broader spatial trends. The residuals from this model represent the local variations in elevation, devoid of the overarching trend. These de-trended values are then scaled between 0 and 1 to create a standardized representation of the localized elevation changes for each state.
+
 ```{r detrend-dem}
 
 
@@ -1200,9 +1251,19 @@ for (state in states) {
 
 ```
 
-
 ## Feature Selection
+
+Feature selection is the process of determining the most relevant input variables to use in modeling or analysis. By selecting the most informative features, one can improve the model's accuracy, reduce overfitting, reduce issues due to multi-collinearity and spatial autocorrelation, and decrease the computational cost of training.
+
 ### Load all Original Features and Feature Engineering Outputs
+
+In this section, the final dataset that will be used for feature selection is prepared. This involves:
+
+- Loading the pseudo-absence and observation datasets.
+- Fetching the feature-engineered raster data (geospatial data layers) and associating these rasters with the observational data.
+- Loading the original raster layers, as these should still be included during the feature selection process.
+- Converting the original land cover feature into binary variables.
+- Saving the final aggregated dataset.
 
 ```{r load-all-features}
 
@@ -1306,6 +1367,8 @@ df %>% as_tibble()
 
 ### Correlation 
 
+In this section, correlation between the predictors and the dependent variable (observations) for each species are examined. The correlation measure assists in identifying which predictors have a linear relationship with the response variable and can, therefore, impact model predictions. 
+
 ```{r cor-obs}
 
 obs.cor <- purrr::map(sort(unique(df$common.name)), function(spec) {
@@ -1328,6 +1391,10 @@ obs.cor %>% as_tibble()
 ```
 
 ### Train/Test Split
+
+Ensuring the quality and robustness of a model requires that it is evaluated on unseen data. Similarly, it is important to avoid "data leakage", which occurs when information from the test set inadvertently influences the training process. Reasons for data leakage can range from pre-processing steps being applied to the entire dataset instead of separately to train and test sets, to more subtle causes like target leakage where future information inadvertently gets used in the past due to data preparation mistakes. 
+
+In this section, the data is split into a training set and a test set. The training set is used for training the model, while the test set is reserved to evaluate the model's performance. The data is stratified based on latitude, longitude, species, state, and absence to ensure that the distribution of these variables is consistent between the train and test sets. This stratification helps maintain representative samples and mitigates potential biases.
 
 ```{r strat-split-1}
 
@@ -1378,6 +1445,8 @@ test.y <- df.test$observations
 
 ```
 
+For computational efficiency, models are cached. This section provides a function to retrieve the model from cache if it exists or save it to the cache if it doesn't. This approach speeds up the modeling process, especially when iterating and fine-tuning various models, by avoiding retraining on the same dataset.
+
 ```{r get-model-func}
 
 # Get model from cache if it has been saved before
@@ -1399,8 +1468,11 @@ get.model <- function(model, file.name, model.path) {
 
 ### LASSO Models - Importance from Coefficients
 
+LASSO (Least Absolute Shrinkage and Selection Operator) regression is a type of linear regression that uses shrinkage. Here, data values are shrunk towards a central point, like the mean. The lasso procedure encourages simple, sparse models (i.e., models with fewer parameters).
 
-```{r lasso}
+In this section, a LASSO regression model is fitted for each species in each state. The regularization strength is controlled by the lambda parameter, where a value of zero results in regular linear regression and increasing values result in more regularization. By fitting LASSO models and examining the coefficients, we can determine the importance of each variable and variable interaction. Variables/interactions with non-zero coefficients are considered important, while those with coefficients shrunk to zero are considered non-informative.
+
+```{r lasso, results='hide'}
 
 species <- sort(unique(df.train$common.name))
 if (!dir.exists("artifacts/models")) dir.create("artifacts/models")
@@ -1457,8 +1529,12 @@ lasso.list <- purrr::map(species, function(spec) {
 })
 names(lasso.list) <- species
 
-spec.state <- expand.grid(common.name=species, state=states, stringsAsFactors=F)
+```
 
+```{r lasso-var-imp}
+
+# Get variable importance for LASSO models, based on coefficients
+spec.state <- expand.grid(common.name=species, state=states, stringsAsFactors=F)
 lasso.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$common.name
   st <- spec.state[i,]$state
@@ -1489,10 +1565,15 @@ lasso.imp
 
 ### Decision Tree Models - Variable Importance
 
-```{r dt}
+Decision trees are a class of machine learning models that recursively split the dataset into subsets based on the value of input variables. The goal is to make the data within each subset as homogeneous as possible regarding the target variable. The importance of a variable in a decision tree model can be assessed by the frequency and depth at which it is used to split the data. Variables used frequently and closer to the root of the tree are typically considered more important. 
+
+The primary advantage of using a tree-based model as opposed to a model like LASSO is that the relationships do not need to be linear, and interactions are naturally accounted for due to the hierarchical nature of the model itself.
+
+In the code below, Decision Tree models are trained for each species in each state. The variable importance is extracted from the tree structure itself, which offers an intuitive understanding of the relationships and hierarchies within the data.
+
+```{r dt, results='hide'}
 
 # Decision Tree Variable Importance
-
 tree.list <- purrr::map(species, function(spec) {
   spec.state.fit <- purrr::map(states, function(st) {
     cat("Fitting Decision Tree model for", spec, "in", st, "\n")
@@ -1520,7 +1601,12 @@ tree.list <- purrr::map(species, function(spec) {
   spec.state.fit
 })
 names(tree.list) <- species
+```
 
+
+```{r dt-var-imp}
+
+# Get variable importance for decision tree models
 tree.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$common.name
   st <- spec.state[i,]$state
@@ -1541,8 +1627,9 @@ tree.imp
 
 ```
 
+## Conclusion
 
-
+Predictive modeling is iterative by nature, and thus conclusively selecting features to be included in the modeling process is impractical. The purpose of this exploratory analysis is just that - exploratory. The insights and results of this part of the study will be utilized in the iterative modeling process, and adjusted as needed.
 
 
 
