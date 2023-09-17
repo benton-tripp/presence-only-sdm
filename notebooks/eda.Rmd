@@ -13,7 +13,7 @@ output:
 ---
 
 ```{r setup, include=F, warning=F, message=F}
-knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=T, root.dir="..")
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
 library(sf)
 library(terra)
@@ -1382,6 +1382,8 @@ get.model <- function(model, file.name, model.path) {
 
 ```
 
+
+
 ```{r lasso}
 
 species <- sort(unique(df.train$common.name))
@@ -1454,11 +1456,12 @@ lasso.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
   # Create a data frame of variable importance
   var.importance <- tibble(
     common.name = spec,
+    state = st,
     variable = rownames(coef.df),
     importance = abs(coef.df[,1])
   ) %>%
     # Rank variables by importance
-    arrange(common.name, -importance, variable) %>%
+    arrange(state, common.name, -importance, variable) %>%
     # Only look at variables where imp. > 0
     filter(importance > 0)
 })
