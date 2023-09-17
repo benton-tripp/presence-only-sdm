@@ -7,7 +7,7 @@ output:
     toc: true
     toc_float: true
     code_folding: show
-    theme: readable
+    theme: flatly
     df_print: paged
   
 ---
@@ -51,7 +51,7 @@ rmarkdown::render(
 
 The Species Distribution Model (SDM) Benchmark Study Part 2 presents data from eight bird species across Colorado, Oregon, North Carolina, and Vermont, using environmental rasters from Part 1. The analysis segments data distribution by state and species and evaluates explanatory rasters using methods like Principal Component Analysis and Factor Analysis for Mixed Data. Additionally, the study addresses pseudo-absence generation and conducts feature engineering/selection to prepare for subsequent modeling.
 
-## Visualize all Observations by State & Species
+## Visualize Observations
 
 The initial phase of the exploratory data analysis visualizes bird species observations across four U.S. states: Oregon, Vermont, Colorado, and North Carolina, covering the period from 2016 to 2019. These visual representations display the distribution of eight distinct bird species within each state while also highlighting major cities for geographical context. Such visualizations offer insights into spatial distribution patterns, potentially revealing habitat preferences, migration routes, or the influence of urban areas on these distributions. As the analysis progresses, understanding these distributions becomes pivotal, especially when addressing spatial autocorrelations and other features that influence the accuracy and validity of the Species Distribution Model (SDM) benchmarks.
 
@@ -611,7 +611,6 @@ abs.df %>%
   knitr::kable()
 
 ```
-
 
 ## Identifying Spatial Autocorrelation 
 
@@ -1203,7 +1202,6 @@ for (state in states) {
 
 
 ## Feature Selection
-
 ### Load all Original Features and Feature Engineering Outputs
 
 ```{r load-all-features}
