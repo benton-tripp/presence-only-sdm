@@ -13,7 +13,7 @@ output:
 ---
 
 ```{r setup, include=F, warning=F, message=F}
-knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=T, root.dir="..")
 
 library(sf)
 library(terra)
@@ -427,6 +427,9 @@ names(masks) <- states
 
 ```{r select-pa, results="hide"}
 
+# Set seed
+set.seed(19)
+
 # Function to sample n points from the non-masked parts
 sample.inverse.mask <- function(r.original, r.mask, n, 
                                 species, state,
@@ -472,7 +475,7 @@ sample.inverse.mask <- function(r.original, r.mask, n,
   } else {
     return(gdf)
   }
-    
+  
   # Set to min.n size if n < min.n
   if (n < min.n) n <- min.n
   # Make sure there is sufficient available sample points
@@ -480,8 +483,7 @@ sample.inverse.mask <- function(r.original, r.mask, n,
   
   # Randomly sample n points from the available (non-masked) space
   sample.idx <- sample(1:nrow(gdf), n)
-  samples <- gdf %>% 
-    slice(sample.idx) %>%
+  samples <- gdf[sample.idx,] %>%
     mutate(common.name = species, 
            state = state, 
            lon = NA, 
@@ -503,62 +505,71 @@ totals <- obs.df %>%
   group_by(state, common.name) %>%
   summarize(N=n(), .groups="keep")
 
-# Create a list of pseudo absence points, by species and state,
-# where the sample number `n` >= 500 | `n` == the total observed
-# for each respective state and species
-pseudo.absence.pts <- list()
-for (st in states) {
-  r.original <- r.list[[st]]
-  r.masks <- masks[[st]]
-  pseudo.absence.pts[[st]] <- list()
-  for (spec in names(r.masks)) {
-    r.mask <- r.masks[[spec]]
-    n <- totals %>% filter(state == st & common.name == spec) %>% pull(N)
-    cat("Generating", n, "pseudo-absence points for the", spec, "in", st, "\n")
-    pseudo.absence.pts[[st]][[spec]] <- sample.inverse.mask(
-      r.original, r.mask, spec, st, n=n, sample.crs=4326)
-    cat("\tGenerated", nrow(pseudo.absence.pts[[st]][[spec]]), "/", n, "points.\n")
-  }
-}
 
-# Extract raster values for each point
 if (!dir.exists(file.path("data", "final_pseudo_absence"))) {
   dir.create(file.path("data", "final_pseudo_absence"))
 }
-for (state in states) {
-  out.file.all <- file.path("data", "final_pseudo_absence", paste0("pa_", state, ".rds"))
-  if (!file.exists(out.file.all)) {
-    r <- r.list[[state]]
-    
-    cat(sprintf("Extracting points to values for %s...\n", state))
-    # Load observations shapefile
-    geo.df <- pseudo.absence.pts[[state]] %>% do.call("rbind", .)
-    rownames(geo.df) <- NULL
-    
-    geo.df.crs <- st_crs(geo.df)
-    
-    # Define target CRS and update
-    target.crs <- st_crs(r)
-    cat(sprintf("Updating CRS for %s...\n", state))
-    geo.df <- st_transform(geo.df, target.crs)
-    
-    # Extract raster values
-    for (r.name in names(r)) {
-      cat("\tExtracting", r.name, "values for", state, "\n")
-      x <- terra::extract(r[[r.name]], geo.df)[[r.name]]
-      geo.df[[gsub(paste0("_", state), "", r.name)]] <- x
+
+if (!all(
+  file.exists(
+    paste0(file.path("data", "final_pseudo_absence", 
+                     paste0("pa_", states, ".rds")))
+  )
+)) {
+  # Create a list of pseudo absence points, by species and state,
+  # where the sample number `n` >= 500 | `n` == the total observed
+  # for each respective state and species
+  pseudo.absence.pts <- list()
+  for (st in states) {
+    r.original <- r.list[[st]]
+    r.masks <- masks[[st]]
+    pseudo.absence.pts[[st]] <- list()
+    for (spec in names(r.masks)) {
+      r.mask <- r.masks[[spec]]
+      n <- totals %>% filter(state == st & common.name == spec) %>% pull(N)
+      cat("Generating", n, "pseudo-absence points for the", spec, "in", st, "\n")
+      pseudo.absence.pts[[st]][[spec]] <- sample.inverse.mask(
+        r.original, r.mask, spec, st, n=n, sample.crs=4326)
+      cat("\tGenerated", nrow(pseudo.absence.pts[[st]][[spec]]), "/", n, "points.\n")
     }
-    
-    # Update crs back
-    geo.df <- st_transform(geo.df, geo.df.crs)
-    
-    # Fix names; Filter NA values
-    geo.df <- geo.df %>%
-      filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
-      suppressWarnings() 
-    
-    saveRDS(geo.df, out.file.all)
-    cat("--------------\n")
+  }
+  
+  # Extract raster values for each point
+  for (state in states) {
+    out.file.all <- file.path("data", "final_pseudo_absence", paste0("pa_", state, ".rds"))
+    if (!file.exists(out.file.all)) {
+      r <- r.list[[state]]
+      
+      cat(sprintf("Extracting points to values for %s...\n", state))
+      # Load observations shapefile
+      geo.df <- pseudo.absence.pts[[state]] %>% do.call("rbind", .)
+      rownames(geo.df) <- NULL
+      
+      geo.df.crs <- st_crs(geo.df)
+      
+      # Define target CRS and update
+      target.crs <- st_crs(r)
+      cat(sprintf("Updating CRS for %s...\n", state))
+      geo.df <- st_transform(geo.df, target.crs)
+      
+      # Extract raster values
+      for (r.name in names(r)) {
+        cat("\tExtracting", r.name, "values for", state, "\n")
+        x <- terra::extract(r[[r.name]], geo.df)[[r.name]]
+        geo.df[[gsub(paste0("_", state), "", r.name)]] <- x
+      }
+      
+      # Update crs back
+      geo.df <- st_transform(geo.df, geo.df.crs)
+      
+      # Fix names; Filter NA values
+      geo.df <- geo.df %>%
+        filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
+        suppressWarnings() 
+      
+      saveRDS(geo.df, out.file.all)
+      cat("--------------\n")
+    }
   }
 }
 
@@ -607,6 +618,10 @@ Variance: This is the variance of the Moran's I statistic under the null hypothe
 
 ```{r morans-i, results='hide'}
 
+if (!dir.exists("artifacts/obs_autocor_morans")) {
+  dir.create("artifacts/obs_autocor_morans")
+}
+
 # Get observation data
 df <- list.files(file.path("data", "final"), full.names = T) %>%
   purrr::map_df(readRDS) %>%
@@ -614,8 +629,6 @@ df <- list.files(file.path("data", "final"), full.names = T) %>%
 
 states <- sort(unique(df$state))
 species <- sort(unique(df$common.name))
-
-
 
 # Function to extract the desired results from output
 extract.data <- function(st, spec, results) {
@@ -633,31 +646,36 @@ extract.data <- function(st, spec, results) {
 # Define the k for knn computation
 k <- 5
 
-# Perform test by state, by species
-mi.results <- list()
-
-for (st in states) {
-  mi.results[[st]] <- list()
-  for (spec in species) {
-    cat("Doing Moran's test for", spec, "in", st, "\n")
-    # Filter data
-    d <- df %>% filter(common.name == spec & state == st)
-    mi.results[[st]][[spec]]$data <- d
-    # Fit knn model
-    knn <- d %>%
-      knearneigh(k = k)
-    mi.results[[st]][[spec]]$knn <- knn
-    # Create a neighbor's list
-    nb <- knn %>%
-      knn2nb()
-    mi.results[[st]][[spec]]$nb <- nb
-    # Create a spatial weights matrix
-    listw <- nb2listw(nb)
-    mi.results[[st]][[spec]]$listw <- listw
-    # Compute Moran's I
-    results <- moran.test(d$observations, listw)
-    mi.results[[st]][[spec]]$moran.test.results <- extract.data(st, spec, results)
+if (!file.exists("artifacts/obs_autocor_morans/mi.results.rds")) {
+  # Perform test by state, by species
+  mi.results <- list()
+  
+  for (st in states) {
+    mi.results[[st]] <- list()
+    for (spec in species) {
+      cat("Doing Moran's test for", spec, "in", st, "\n")
+      # Filter data
+      d <- df %>% filter(common.name == spec & state == st)
+      mi.results[[st]][[spec]]$data <- d
+      # Fit knn model
+      knn <- d %>%
+        knearneigh(k = k)
+      mi.results[[st]][[spec]]$knn <- knn
+      # Create a neighbor's list
+      nb <- knn %>%
+        knn2nb()
+      mi.results[[st]][[spec]]$nb <- nb
+      # Create a spatial weights matrix
+      listw <- nb2listw(nb)
+      mi.results[[st]][[spec]]$listw <- listw
+      # Compute Moran's I
+      results <- moran.test(d$observations, listw)
+      mi.results[[st]][[spec]]$moran.test.results <- extract.data(st, spec, results)
+    }
   }
+  saveRDS(mi.results, "artifacts/obs_autocor_morans/mi.results.rds")
+} else {
+  mi.results <- readRDS("artifacts/obs_autocor_morans/mi.results.rds")
 }
 
 spec.stat <- expand.grid(species=species, state=states, stringsAsFactors=F)
@@ -1333,9 +1351,9 @@ train.test <- prepare.data(df, .7)
 
 # Split; Remove non-predictive variables
 df.train <- df[train.test$index,] 
-df.train[, `:=` (state=NULL, geometry=NULL)]
+df.train[, `:=` (geometry=NULL)]
 df.test <- df[-train.test$index,]
-df.test[, `:=` (state=NULL, geometry=NULL)]
+df.test[, `:=` (geometry=NULL)]
 
 train.x <- df.train %>% select(-observations)
 train.y <- df.train$observations
@@ -1367,48 +1385,66 @@ get.model <- function(model, file.name, model.path) {
 ```{r lasso}
 
 species <- sort(unique(df.train$common.name))
+if (!dir.exists("artifacts/models")) dir.create("artifacts/models")
 
 # Define the control for the train function
 ctrl <- trainControl(method = "cv", number = 5)
 
 lasso.list <- purrr::map(species, function(spec) {
-  cat("Fitting LASSO model for", spec, "\n")
-  spec.df <- train[common.name == spec][, common.name := NULL]
-  
-  # Scale data
-  # Identify fields to center/scale
-  to.scale <- sapply(spec.df, function(x) is.numeric(x) && 
-                       length(unique(x)) > 2)
-  to.scale$observations <- F
-  to.scale <- names(spec.df) %in% names(which(unlist(to.scale)))
-  
-  # Define the pre-processing steps (use the training data to avoid data leakage)
-  # Apply centering and scaling to the non-binary fields and non-target
-  preproc <- preProcess(spec.df[, ..to.scale], 
-                        method = c("center", "scale"))
-  
-  # Center/Scale the training data
-  df.train.scaled <- bind_cols(spec.df[, !(..to.scale)],
-                               predict(preproc, spec.df[, ..to.scale]))
-  
-  # LASSO (L1); Elastic Net, where alpha = 1
-  fit.l1 <- get.model(
-    train(observations ~ (.)^2, 
-          data = df.train.scaled, 
-          method = "glmnet",
-          trControl = ctrl,
-          tuneGrid = expand.grid(alpha = 1, 
-                                 lambda = seq(0, 1, by = 0.1)),
-          metric = "RMSE"),
-    file.name=paste0(spec, ".regr.l1.rds"),
-    model.path="models")
-  
-  gc()
-  fit.l1
-}, .progress=T)
+  spec.state.fit <- purrr::map(states, function(st) {
+    cat("Fitting LASSO model for", spec, "in", st, "\n")
+    spec.df <- df.train[common.name == spec & state == st][
+      , `:=` (state=NULL, common.name = NULL)]
+    
+    # Remove any columns where all values are the same
+    .remove <- names(which(sapply(spec.df, function(x) length(unique(x)) < 1)))
+    .remove <- .remove[.remove != "observations"]
+    if (!is_empty(.remove)) {
+      spec.df <- spec.df[, ...remove]
+    }
+    
+    # Scale data
+    # Identify fields to center/scale
+    to.scale <- sapply(spec.df, function(x) is.numeric(x) && 
+                         length(unique(x)) > 2)
+    to.scale$observations <- F
+    to.scale <- names(spec.df) %in% names(which(unlist(to.scale)))
+    
+    # Define the pre-processing steps (use the training data to avoid data leakage)
+    # Apply centering and scaling to the non-binary fields and non-target
+    preproc <- preProcess(spec.df[, ..to.scale], 
+                          method = c("center", "scale"))
+    
+    # Center/Scale the training data
+    df.train.scaled <- bind_cols(spec.df[, !(..to.scale)],
+                                 predict(preproc, spec.df[, ..to.scale]))
+    
+    # LASSO (L1); Elastic Net, where alpha = 1
+    fit.l1 <- get.model(
+      train(observations ~ (.)^2, 
+            data = df.train.scaled, 
+            method = "glmnet",
+            trControl = ctrl,
+            tuneGrid = expand.grid(alpha = 1, 
+                                   lambda = seq(0, 1, by = 0.1)),
+            metric = "RMSE"),
+      file.name=paste0(tolower(gsub(" ", "_", spec)), "_", st, "_regr_l1.rds"),
+      model.path="artifacts/models/lasso_fs")
+    
+    gc()
+    fit.l1
+  })
+  names(spec.state.fit) <- states
+  spec.state.fit
+})
 names(lasso.list) <- species
 
-lasso.imp <- purrr::map(lasso.list, function(fit) {
+spec.state <- expand.grid(common.name=species, state=states, stringsAsFactors=F)
+
+lasso.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$common.name
+  st <- spec.state[i,]$state
+  fit <- lasso.list[[spec]][[st]]
   coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
     as.matrix() %>%
     as.data.frame()
@@ -1416,14 +1452,18 @@ lasso.imp <- purrr::map(lasso.list, function(fit) {
   coef.df <- coef.df[-1, , drop = F]
   
   # Create a data frame of variable importance
-  var.importance <- data.frame(
+  var.importance <- tibble(
+    common.name = spec,
     variable = rownames(coef.df),
     importance = abs(coef.df[,1])
   ) %>%
     # Rank variables by importance
-    arrange(-importance, variable)
-
+    arrange(common.name, -importance, variable) %>%
+    # Only look at variables where imp. > 0
+    filter(importance > 0)
 })
+
+lasso.imp
 
 ```
 
@@ -1432,14 +1472,28 @@ lasso.imp <- purrr::map(lasso.list, function(fit) {
 
 # Decision Tree
 
-# Ridge Regression & Elastic Net
+```
+
 
 # Boruta
 
-# Random Permutations
-
-# Recursive Feature Elimination
+```{r boruta}
 
 
 ```
+
+# Random Permutations
+
+```{r ran-perm}
+
+```
+
+# Recursive Feature Elimination
+
+```{r rfe}
+
+```
+
+
+
 
