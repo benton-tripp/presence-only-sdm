@@ -37,7 +37,7 @@ library(spdep)
 ```{r render-github-doc, eval=F, echo=F}
 
 rmarkdown::render(
-  input = paste0("C:/Users/bento/gis630/notebooks/eda.Rmd"), 
+  input = "C:/Users/bento/gis630/notebooks/eda.Rmd", 
   output_format = "html_document", 
   output_file = "2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html",
   output_dir = "benton-tripp.github.io/posts", 
@@ -151,7 +151,7 @@ plots <- purrr::map2_df(spec.state$spec,
 
 ```
 
-```{r ruddy-duck-plot, fig.height=8, fig.width=16}
+```{r ruddy-duck-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Ruddy Duck plots
 do.call(ggpubr::ggarrange, 
@@ -160,7 +160,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r bk-plot, fig.height=8, fig.width=16}
+```{r bk-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Belted Kingfisher plots
 do.call(ggpubr::ggarrange, 
@@ -169,7 +169,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r wt-plot, fig.height=8, fig.width=16}
+```{r wt-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Wild Turkey plots
 do.call(ggpubr::ggarrange, 
@@ -178,7 +178,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r ssh-plot, fig.height=8, fig.width=16}
+```{r ssh-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Sharp-Shinned Hawk plots
 do.call(ggpubr::ggarrange, 
@@ -187,7 +187,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r dw-plot, fig.height=8, fig.width=16}
+```{r dw-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Downy Woodpecker Plots
 do.call(ggpubr::ggarrange, 
@@ -196,7 +196,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r sww-plot, fig.height=8, fig.width=16}
+```{r sww-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Cedar Waxwing Plots
 do.call(ggpubr::ggarrange, 
@@ -205,7 +205,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r shc-plot, fig.height=8, fig.width=16}
+```{r shc-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Sandhill Crane Plots
 do.call(ggpubr::ggarrange, 
@@ -214,7 +214,7 @@ do.call(ggpubr::ggarrange,
 
 ```
 
-```{r sanderling-plot, fig.height=8, fig.width=16}
+```{r sanderling-plot, fig.height=8, fig.width=16, cache=T}
 
 # Plot Sanderling Plots
 do.call(ggpubr::ggarrange, 
@@ -246,7 +246,7 @@ The table below shows the frequency distribution of various land cover types acr
 purrr::map_df(states, function(st) {
   freq.df <- terra::freq(r.list[[st]]$NLCD_Land) %>%
     mutate(state = st) %>%
-    select(state, value, count)
+    dplyr::select(state, value, count)
 }) 
 
 ```
@@ -278,7 +278,7 @@ purrr::map(states, function(st) {
 
 In this section, the study employs Principal Component Analysis (PCA) to transform the high-dimensional data into a lower-dimensional form while retaining as much of the original variance as possible. The initial step involves merging data from different states into a single dataframe, followed by cleaning factor levels of the `NLCD_Land` column. Subsequently, the code converts factor columns into dummy variables and removes columns with only a single unique value. The `PCA()` function is used to perform the PCA, and the results are visualized using bar charts, displaying the importance of each variable for the first two dimensions. This visualization is important in understanding the significance of different environmental rasters and how they contribute to the variations captured by the principal components.
 
-```{r pca}
+```{r pca, cache=F}
 
 r.df <- map_df(states, function(s) {
   df <- r.list[[s]] %>% as.data.frame()
@@ -331,7 +331,7 @@ plot.PCA(pca.fit, choix="var")
 res <- pca.fit$var$coord %>%
   as.data.frame() %>%
   mutate(var=as.factor(rownames(.))) %>%
-  select(var, everything()) %>%
+  dplyr::select(var, everything()) %>%
   as_tibble()
 rownames(res) <- NULL
   
@@ -371,7 +371,7 @@ ggpubr::ggarrange(plotlist=purrr::map(
 res <- famd.fit$var$coord %>%
   as.data.frame() %>%
   mutate(var=as.factor(rownames(.))) %>%
-  select(var, everything()) %>%
+  dplyr::select(var, everything()) %>%
   as_tibble()
 rownames(res) <- NULL
   
@@ -416,7 +416,7 @@ names(r.list) <- states
 # Get observation data
 obs.df <- list.files("data/final", full.names = T) %>%
   purrr::map_df(readRDS) %>%
-  select(state, common.name, observation.point=geometry)
+  dplyr::select(state, common.name, observation.point=geometry)
 
 # Buffering Raster Data
 
@@ -761,7 +761,7 @@ Below is an example of the actual observations of the Sharp-shinned Hawk in Verm
 - Third Quadrant (bottom-left): Low values surrounded by low values (indicating clustering of low values).
 - Fourth Quadrant (bottom-right): High values surrounded by low values.
 
-```{r}
+```{r plot-ssh}
 
 # Get spatial weights list
 vt.ssh <- mi.results[["VT"]][["Sharp-shinned Hawk"]]$data
@@ -959,7 +959,7 @@ for (index in large.ci.indices) {
 
 ```
 
-```{r cor-mat, fig.width=16, fig.height=16}
+```{r cor-mat, fig.width=16, fig.height=16, cache=T}
 
 corrplot::corrplot(corr.matrix)
 
@@ -1372,7 +1372,7 @@ In this section, correlation between the predictors and the dependent variable (
 ```{r cor-obs}
 
 obs.cor <- purrr::map(sort(unique(df$common.name)), function(spec) {
-  corr.matrix <- cor(select(df[common.name == spec], 
+  corr.matrix <- cor(dplyr::select(df[common.name == spec], 
                             -c("state", "common.name", "geometry")))
   obs.cor <- corr.matrix[which(rownames(corr.matrix) == "observations"),] %>%
     as.data.frame()
@@ -1382,7 +1382,7 @@ obs.cor <- purrr::map(sort(unique(df$common.name)), function(spec) {
     rename(!!spec := `.`) %>%
     arrange(-abs(!!sym(spec))) %>%
     mutate(!!spec := paste0(variable, ": ", signif(!!sym(spec), 2))) %>%
-    select(!!sym(spec)) 
+    dplyr::select(!!sym(spec)) 
 }) %>% 
   do.call("cbind", .)
 
@@ -1437,10 +1437,10 @@ df.train[, `:=` (geometry=NULL)]
 df.test <- df[-train.test$index,]
 df.test[, `:=` (geometry=NULL)]
 
-train.x <- df.train %>% select(-observations)
+train.x <- df.train %>% dplyr::select(-observations)
 train.y <- df.train$observations
 
-test.x <- df.test %>% select(-observations)
+test.x <- df.test %>% dplyr::select(-observations)
 test.y <- df.test$observations
 
 ```
@@ -1490,7 +1490,7 @@ lasso.list <- purrr::map(species, function(spec) {
     .remove <- names(which(sapply(spec.df, function(x) length(unique(x)) <= 1)))
     .remove <- .remove[.remove != "observations"]
     if (!is_empty(.remove)) {
-      spec.df <- spec.df %>% select(-.remove)
+      spec.df <- spec.df %>% dplyr::select(-.remove)
     }
     
     # Scale data
@@ -1584,7 +1584,7 @@ tree.list <- purrr::map(species, function(spec) {
     .remove <- names(which(sapply(spec.df, function(x) length(unique(x)) <= 1)))
     .remove <- .remove[.remove != "observations"]
     if (!is_empty(.remove)) {
-      spec.df <- spec.df %>% select(-.remove)
+      spec.df <- spec.df %>% dplyr::select(-.remove)
     }
 
     # Fit the Decision Tree model
