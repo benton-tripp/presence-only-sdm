@@ -291,10 +291,18 @@ ipp.train.data <- expand.grid(species=species, state=states, stringsAsFactors=F)
 ipp.models <- purrr::map(1:nrow(spec.stat), function(i) {
   spec <- spec.stat[i,]$species
   state <- spec.stat[i,]$state
+  cat("Fitting IPP model for", spec, "in", state, "\n")
   locations <- prep.ipp.data(df.train, state, spec, r.list)
-  # Get rasters as images
+  
   r <- raster.list[[state]]
-  raster.imgs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
+  # Filter out rasters with only one non-na value
+  r.filt <- map_lgl(names(r), ~{
+    vals<- unique(values(r[[.x]]))[,1]
+    length(vals[!is.na(vals)]) > 1
+  })
+  r <- r[[r.filt]]
+  # Get rasters as images
+  r.imgs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
     set_names() %>%
     purrr::map(~{
       r[[.x]] %>% 
@@ -302,18 +310,11 @@ ipp.models <- purrr::map(1:nrow(spec.stat), function(i) {
         rename(z=all_of(.x)) %>%
       as.im()
       })
-  
   # Create formula
-  .f <- formula(paste0("locations ~ ", paste(raster.names, collapse = " + ")))
-  
+  .f <- formula(paste0("locations ~ ", paste(names(r.imgs), collapse = " + ")))
   # Fit the IPP model
-  fit <- ppm(.f, covariates=raster.imgs)
-
-})
-
-
-
-
+  fit <- ppm(.f, covariates=r.imgs)
+}, .progress=T)
 
 
 ```
