@@ -26,6 +26,8 @@ library(knitr)
 library(quarto)
 library(purrr)
 library(caret)
+library(spatstat)
+library(rJava)
 
 ```
 
@@ -82,15 +84,20 @@ Maximum Entropy (MaxEnt) is a method that selects the most spread-out probabilit
 
 ```{r load-all-features}
 
-# Load the dataset saved in part 2 of the study
-df <- readRDS("artifacts/final_data/final_data.rds")
+# Load the dataset saved in part 2 of the study 
+df <- readRDS("artifacts/final_data/final_data.rds") %>% setDT()
 
 # Define some global variables that will be referenced throughout the modeling 
 states <- sort(unique(df$state))
 species <- sort(unique(df$common.name))
 
-# Convert to data.table
-df %>% setDT()
+# Get a binary target for presence/absence instead of obs. counts for MaxEnt
+set(df, j="presence", value=factor(ifelse(df$observations == 0, 0, 1), levels=c(0,1)))
+
+# Save geometry for reference, and remove from dataset
+geometry <- df$geometry
+
+df[, `:=` (geometry=NULL)]
 
 # View output
 df %>% as_tibble()
@@ -130,5 +137,187 @@ print(nc.rast.plts)
 
 ```
 
+```{r convert-land-cover}
+
+if (!dir.exists("artifacts/land_cover_binary")) dir.create("artifacts/land_cover_binary")
+purrr::walk(states, function(state) {
+  r <- r.list[[state]]$NLCD_Land
+  lc.types <- levels(r)[[1]] %>% 
+    as.data.frame() %>%
+    mutate(name = gsub("\\/| |,", "_", NLCD_Land)) %>% 
+    mutate(name=tolower(gsub("__", "_", name))) %>%
+    # Remove duplicates/irrelevant
+    filter(!(name %in% c("unclassified", "perennial_snow_ice", "barren_land",
+              "shrub_scrub", "herbaceous")))
+    out.file <- file.path("artifacts/land_cover_binary", paste0(state, ".tif"))
+    if (!file.exists(out.file)) {
+      out.raster <- purrr::map(1:nrow(lc.types), function(i) {
+        lc <- lc.types[i, ]
+        # Create a binary raster for the current category
+        out <- terra::lapp(r, 
+                           fun = function(x) {
+                             case_when(
+                               is.na(x) ~ NA,
+                               x == lc$NLCD_Land ~ 1.,
+                               T ~ 0)
+                           })
+        names(out) <- lc$name
+        out
+      }) %>% 
+        rast()
+      
+      # Save the output raster to the specified output path
+      writeRaster(out.raster, out.file, overwrite=T)
+    }
+})
+
+# Reload rasters, this time excluding the Land Cover categorical layer and including the binary equivalents
+# single multi-layer raster by state
+r.list <- set_names(states) %>%
+  purrr::map(~{
+    r.files <- c(paste0("data/final_rasters/", .x, ".tif"),
+                 file.path("artifacts/feature_engineered_final", 
+                           paste0(.x, ".tif")),
+                 file.path("artifacts/land_cover_binary", 
+                           paste0(.x, ".tif")))
+    r <- rast(r.files)
+    r[[which(names(r) != "NLCD_Land")]]
+  })
+
+
+```
+
+### Split into Training/Test Sets
+
+```{r train-test-split}
+
+# Set seed for splitting and modeling
+set.seed(19)
+
+stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
+  # Cut along lat/lon values to create grids (lat.bin & lon.bin)
+  # lat.lon.bins is the number of divisions you want
+  df$lat.bin <- cut(df$lat, breaks=lat.lon.bins, labels = F)
+  df$lon.bin <- cut(df$lon, breaks=lat.lon.bins, labels = F)
+  
+  # Create a new variable combining the stratification variables
+  df %>%
+    # stratify on lat/lon bins, species, state, and presence/absence
+    mutate(strata = paste(lat.bin, lon.bin, common.name, state, presence)) %>%
+    pull(strata) %>%
+    # Create the data partitions
+    createDataPartition(., p = p, list = F) %>%
+    suppressWarnings()
+}
+
+prepare.data <- function(df, p=.7, lat.lon.bins=25) {
+  train.index <- stratified.split.idx(df, p=p, lat.lon.bins = lat.lon.bins)
+  df.train <- df[train.index, ]
+  df.test <- df[-train.index, ]
+  
+  list(train = df.train, 
+       test = df.test,
+       index = train.index)
+}
+
+# Get train/test indices
+train.test <- prepare.data(df, .7)
+
+# Split datatset
+df.train <- df[train.test$index,] 
+df.test <- df[-train.test$index,]
+
+```
+
+
+## Modeling
+
+For computational efficiency, models are cached. This section uses the function defined below to retrieve the model from cache if it exists or save it to the cache if it doesn't. This approach speeds up the modeling process, especially when iterating and fine-tuning various models, by avoiding retraining on the same dataset unless necessary.
+
+```{r get-model-func}
+
+# Get model from cache if it has been saved before
+get.model <- function(model, file.name, model.path) {
+  f.path <- file.path(model.path, file.name)
+  if (!dir.exists(model.path)) {
+    dir.create(model.path)
+  }
+  # Model cache check
+  if (ifelse(file.exists(f.path), T, F)) {
+    model <- readRDS(f.path)
+  } else {
+    saveRDS(model, f.path)
+  }
+  model
+}
+
+```
+
+### IPP Models
+
+```{r ipp-data-prep}
+
+# Get raster ranges
+get.range <- function(raster.list, state, .crs=4326) {
+  e <- raster.list[[state]] %>% 
+    terra::ext() %>%
+    terra::project(x=., 
+                   from=crs(raster.list[[state]], proj=T), 
+                   to=st_crs(.crs, parameters=T)$Wkt)
+  list(
+    lon=c(e$xmin[[1]], e$xmax[[1]]),
+    lat=c(e$ymin[[1]], e$ymax[[1]])
+  )
+}
+
+
+prep.ipp.data <- function(df, st, spec, raster.list) {
+  # IPP does not use absence points; filter by state & species
+  ipp.df <- df %>% 
+    filter(presence == 1 & state == st & common.name == spec) %>%
+    select(lon, lat) %>% 
+    unique()
+  
+  # Get raster bounds
+  r.range <- get.range(raster.list, st)
+  
+  # Convert the data to a ppp object
+  locations <- ppp(ipp.df$lon, ipp.df$lat, 
+                   window=owin(r.range$lon, 
+                               r.range$lat))
+}
+
+ipp.train.data <- expand.grid(species=species, state=states, stringsAsFactors=F)
+ipp.models <- purrr::map(1:nrow(spec.stat), function(i) {
+  spec <- spec.stat[i,]$species
+  state <- spec.stat[i,]$state
+  locations <- prep.ipp.data(df.train, state, spec, r.list)
+  # Get rasters as images
+  r <- raster.list[[state]]
+  raster.imgs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
+    set_names() %>%
+    purrr::map(~{
+      r[[.x]] %>% 
+        terra::as.data.frame(xy=T) %>%
+        rename(z=all_of(.x)) %>%
+      as.im()
+      })
+  
+  # Create formula
+  .f <- formula(paste0("locations ~ ", paste(raster.names, collapse = " + ")))
+  
+  # Fit the IPP model
+  fit <- ppm(.f, covariates=raster.imgs)
+
+})
+
+
+
+
+
+
+```
+
+### MaxEnt Models
 
 
