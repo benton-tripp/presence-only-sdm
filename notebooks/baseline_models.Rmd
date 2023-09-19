@@ -181,7 +181,13 @@ r.list <- set_names(states) %>%
                  file.path("artifacts/land_cover_binary", 
                            paste0(.x, ".tif")))
     r <- rast(r.files)
-    r[[which(names(r) != "NLCD_Land")]]
+    r <- r[[which(names(r) != "NLCD_Land")]]
+    # Filter out rasters with only one non-na value
+    r.filt <- map_lgl(names(r), ~{
+      vals<- unique(values(r[[.x]]))[,1]
+      length(vals[!is.na(vals)]) > 1
+    })
+    r <- r[[r.filt]]
   })
 
 
@@ -287,33 +293,56 @@ prep.ipp.data <- function(df, st, spec, raster.list) {
                                r.range$lat))
 }
 
-ipp.train.data <- expand.grid(species=species, state=states, stringsAsFactors=F)
-ipp.models <- purrr::map(1:nrow(spec.stat), function(i) {
-  spec <- spec.stat[i,]$species
-  state <- spec.stat[i,]$state
+min.max.scale <- function(r, na.rm=T) {
+  min.r <- min(values(r), na.rm=na.rm)
+  max.r <- max(values(r), na.rm=na.rm)
+  (r - min.r) / (max.r- min.r)
+}
+
+get.rast.val <- function(x, y, r) {
+  terra::extract(r, c(x, y))
+}
+
+
+spec.state <- expand.grid(species=species, 
+                          state=states, 
+                          stringsAsFactors=F)
+
+ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  state <- spec.state[i,]$state
   cat("Fitting IPP model for", spec, "in", state, "\n")
   locations <- prep.ipp.data(df.train, state, spec, r.list)
   
-  r <- raster.list[[state]]
-  # Filter out rasters with only one non-na value
-  r.filt <- map_lgl(names(r), ~{
-    vals<- unique(values(r[[.x]]))[,1]
-    length(vals[!is.na(vals)]) > 1
-  })
-  r <- r[[r.filt]]
+  r <- r.list[[state]]
+  
   # Get rasters as images
   r.imgs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
     set_names() %>%
-    purrr::map(~{
-      r[[.x]] %>% 
-        terra::as.data.frame(xy=T) %>%
-        rename(z=all_of(.x)) %>%
-      as.im()
-      })
+    purrr::map(~r[[.x]] %>% 
+                 # Scale the data
+                 min.max.scale() %>%
+                 # Reproject to same CRS as point data
+                 terra::project(x=., 
+                                y=st_crs(4326, parameters=T)$Wkt) %>% 
+                 # Covert to data.frame
+                 terra::as.data.frame(xy=T) %>%
+                 # Fix names
+                 rename(z=all_of(.x)) %>%
+                 # Remove any NA values
+                 filter(!is.na(z)) %>%
+                 # Convert to image
+                 as.im()
+    ) 
+  
   # Create formula
   .f <- formula(paste0("locations ~ ", paste(names(r.imgs), collapse = " + ")))
   # Fit the IPP model
-  fit <- ppm(.f, covariates=r.imgs)
+  fit <- get.model(
+    model=ppm(Q=.f, covariates=r.imgs), 
+    file.name=paste0(spec, "_", state, "_ipp.rds"), 
+    model.path="artifacts/models/ipp"
+    ) 
 }, .progress=T)
 
 
