@@ -317,27 +317,45 @@ ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
   r <- r.list[[state]]
   
   # Get rasters as images
-  r.imgs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
+  r.dfs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
     set_names() %>%
-    purrr::map(~r[[.x]] %>% 
-                 # Scale the data
-                 min.max.scale() %>%
-                 # Reproject to same CRS as point data
-                 terra::project(x=., 
-                                y=st_crs(4326, parameters=T)$Wkt) %>% 
-                 # Covert to data.frame
-                 terra::as.data.frame(xy=T) %>%
-                 # Fix names
-                 rename(z=all_of(.x)) %>%
-                 # Remove any NA values
-                 filter(!is.na(z)) %>%
-                 # Convert to image
-                 as.im()
-    ) 
+    purrr::map(function(.x) {
+      cat("Generating dataframe for", .x, "\n")
+      r[[.x]] %>% 
+        # Scale the data
+        min.max.scale() %>%
+        # Reproject to same CRS as point data
+        terra::project(x=., 
+                       y=st_crs(4326, parameters=T)$Wkt) %>% 
+        # Covert to data.frame
+        terra::as.data.frame(xy=T) %>%
+        # Fix names
+        rename(z=all_of(.x), lon="x", lat="y") %>%
+        # Remove any NA values
+        filter(!is.na(z))
+    }) 
+  # Generate named function list
+  r.funcs <- names(r.dfs) %>%
+    set_names() %>%
+    purrr::map(function(.x) {
+      # Create the list of arguments dynamically
+      arg_list <- setNames(list(quote(NULL), quote(NULL), quote(NULL)), c("x", "y", .x))
+      
+      # Create the body of the function
+      body_expr <- substitute({
+        filter(DATA_ARG, lon == x, lat == y)$z
+      }, list(DATA_ARG = as.name(.x)))
+
+      # Make the function
+      f <- pryr::make_function(arg_list, body_expr)
+      f
+    })
+  
   
   # Create formula
-  .f <- formula(paste0("locations ~ ", paste(names(r.imgs), collapse = " + ")))
+  .f <- formula(paste0("locations ~ ", paste(names(r), collapse = " + ")))
   # Fit the IPP model
+  model <- ppm(Q=.f, covariates=r.funcs, covfunargs=r.dfs)
   fit <- get.model(
     model=ppm(Q=.f, covariates=r.imgs), 
     file.name=paste0(spec, "_", state, "_ipp.rds"), 
