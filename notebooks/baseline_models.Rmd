@@ -90,6 +90,9 @@ df <- readRDS("artifacts/final_data/final_data.rds") %>% setDT()
 # Define some global variables that will be referenced throughout the modeling 
 states <- sort(unique(df$state))
 species <- sort(unique(df$common.name))
+spec.state <- expand.grid(species=species, 
+                          state=states, 
+                          stringsAsFactors=F)
 
 # Get a binary target for presence/absence instead of obs. counts for MaxEnt
 set(df, j="presence", value=factor(ifelse(df$observations == 0, 0, 1), levels=c(0,1)))
@@ -240,24 +243,72 @@ df.test <- df[-train.test$index,]
 
 For computational efficiency, models are cached. This section uses the function defined below to retrieve the model from cache if it exists or save it to the cache if it doesn't. This approach speeds up the modeling process, especially when iterating and fine-tuning various models, by avoiding retraining on the same dataset unless necessary.
 
-```{r get-model-func}
+```{r get-object-func}
 
-# Get model from cache if it has been saved before
-get.model <- function(model, file.name, model.path) {
-  f.path <- file.path(model.path, file.name)
-  if (!dir.exists(model.path)) {
-    dir.create(model.path)
+# Get model or other object from cache if it has been saved before
+get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=saveRDS, ...) {
+  f.path <- file.path(obj.path, file.name)
+  if (!dir.exists(obj.path)) {
+    dir.create(obj.path)
   }
-  # Model cache check
-  if (ifelse(file.exists(f.path), T, F)) {
-    model <- readRDS(f.path)
+  # Object cache check
+  if (file.exists(f.path)) {
+    obj <- read.func(f.path)
   } else {
-    saveRDS(model, f.path)
+    save.func(obj, f.path)
   }
-  model
+  obj
 }
 
 ```
+
+## Feature Selection
+
+Feature selection was addressed in Part 2 of this study. ... ADDITIONAL DETAILS HERE ...
+
+```{r remove-redundant-rasters}
+
+
+```
+
+
+```{r glm-feature-selection}
+
+# Load variable importance from fitted LASSO models
+lasso.model.path="artifacts/models/lasso_fs"
+var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  state <- spec.state[i,]$state
+  fname <- file.path(lasso.model.path,
+                     paste0(tolower(gsub(" ", "_", spec)), 
+                            "_", state, "_regr_l1.rds"))
+  fit <- readRDS(fname)
+  coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
+    as.matrix() %>%
+    as.data.frame()
+  
+  # Remove the intercept
+  coef.df <- coef.df[-1, , drop = F]
+  
+  # Create a data frame of variable importance
+  var.importance <- tibble(
+    common.name = spec,
+    state = state,
+    variable = rownames(coef.df),
+    importance = abs(coef.df[,1])
+  ) %>%
+    # Rank variables by importance
+    arrange(state, common.name, -importance, variable) %>%
+    # Only look at variables where imp. > 0
+    filter(importance > 0)
+})
+
+```
+
+```{r remove-redundant}
+
+```
+
 
 ### IPP Models
 
@@ -304,62 +355,79 @@ get.rast.val <- function(x, y, r) {
 }
 
 
-spec.state <- expand.grid(species=species, 
-                          state=states, 
-                          stringsAsFactors=F)
-
 ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
-  state <- spec.state[i,]$state
-  cat("Fitting IPP model for", spec, "in", state, "\n")
-  locations <- prep.ipp.data(df.train, state, spec, r.list)
+  st <- spec.state[i,]$state
+  cat("Fitting IPP model for", spec, "in", st, "\n")
+  locations <- prep.ipp.data(df.train, st, spec, r.list)
   
-  r <- r.list[[state]]
+  r <- r.list[[st]]
   
-  # Get rasters as images
-  r.dfs <- names(r)[!(names(r) %in% c("lat", "lon"))] %>%
+  # Select rasters based on feature importance
+  fs.df <- var.imp %>% 
+    filter(state == st & common.name == spec) %>%
+    mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
+           var2 = purrr::map_chr(variable, ~ {
+               split_result <- stringr::str_split(.x, "\\:")[[1]]
+               if(length(split_result) > 1) split_result[2] else NA_character_
+           })) %>%
+    filter(!(var1 %in% c("lat", "lon")) & !(var2 %in% c("lat", "lon"))) %>%
+    mutate(var1 = purrr::map_chr(
+      var1, ~tryCatch({r[[.x]]; .x}, error=function(e) {
+        ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
+      })),
+      var2 = purrr::map_chr(
+        var2, ~tryCatch({r[[.x]]; .x}, error=function(e) {
+          ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
+        }))) %>%
+    mutate(variable = ifelse(is.na(var2), var1, paste(var1, var2, sep = ":")))
+
+  r.fs <- c(fs.df$var1, fs.df$var2) %>% 
+    unique() %>% 
+    sort()
+    
+  r.ipp <- r.fs %>%
     set_names() %>%
     purrr::map(function(.x) {
-      cat("Generating dataframe for", .x, "\n")
+      cat("Generating pre-processed raster for", .x, "\n")
       r[[.x]] %>% 
         # Scale the data
         min.max.scale() %>%
         # Reproject to same CRS as point data
         terra::project(x=., 
-                       y=st_crs(4326, parameters=T)$Wkt) %>% 
-        # Covert to data.frame
-        terra::as.data.frame(xy=T) %>%
-        # Fix names
-        rename(z=all_of(.x), lon="x", lat="y") %>%
-        # Remove any NA values
-        filter(!is.na(z))
-    }) 
+                       y=st_crs(4326, parameters=T)$Wkt)
+    })
+  
   # Generate named function list
-  r.funcs <- names(r.dfs) %>%
+  r.funcs <- names(r.ipp) %>%
     set_names() %>%
-    purrr::map(function(.x) {
+    purrr::map(~{
       # Create the list of arguments dynamically
-      arg_list <- setNames(list(quote(NULL), quote(NULL), quote(NULL)), c("x", "y", .x))
+      arg.list <- setNames(list(quote(NULL), quote(NULL), quote(NULL), quote(NULL)), 
+                           c("x", "y", "raster.list", .x))
       
       # Create the body of the function
-      body_expr <- substitute({
-        filter(DATA_ARG, lon == x, lat == y)$z
-      }, list(DATA_ARG = as.name(.x)))
+      body.expr <- substitute({
+        coords <- cbind(x, y)
+        terra::extract(raster.list[[RASTER.NAME]], coords)[[RASTER.NAME]]
+      }, list(RASTER.NAME = as.name(.x)))
 
       # Make the function
-      f <- pryr::make_function(arg_list, body_expr)
+      f <- pryr::make_function(arg.list, body.expr)
       f
     })
   
-  
+  .covfunargs <- set_names(names(r.ipp)) %>% as.list()
+  .covfunargs$raster.list <- r.ipp
   # Create formula
-  .f <- formula(paste0("locations ~ ", paste(names(r), collapse = " + ")))
+  .f <- paste(fs.df$variable, collapse=" + ") %>% 
+    paste("locations ~", .) %>% 
+    as.formula()
   # Fit the IPP model
-  model <- ppm(Q=.f, covariates=r.funcs, covfunargs=r.dfs)
-  fit <- get.model(
-    model=ppm(Q=.f, covariates=r.imgs), 
-    file.name=paste0(spec, "_", state, "_ipp.rds"), 
-    model.path="artifacts/models/ipp"
+  fit <- get.object(
+    obj=ppm(Q=.f, covariates=r.funcs, covfunargs=.covfunargs, method="logi"), 
+    file.name=paste0(spec, "_", st, "_ipp.rds"), 
+    obj.path="artifacts/models/ipp"
     ) 
 }, .progress=T)
 

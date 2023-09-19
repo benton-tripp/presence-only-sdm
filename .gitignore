@@ -8,6 +8,8 @@ benton-tripp.github.io/
 docs/archive/*
 notebooks/archive/*
 test/*
+spatstat.model/*
+spatstat.model
 
 # History files
 .Rhistory
