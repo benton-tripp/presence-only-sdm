@@ -191,6 +191,9 @@ r.list <- set_names(states) %>%
       length(vals[!is.na(vals)]) > 1
     })
     r <- r[[r.filt]]
+    # Clean up names
+    names(r) <- gsub(paste0("_", .x), "", names(r))
+    r
   })
 
 
@@ -255,7 +258,7 @@ get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=sa
   if (file.exists(f.path)) {
     obj <- read.func(f.path)
   } else {
-    save.func(obj, f.path)
+    save.func(obj, f.path, ...)
   }
   obj
 }
@@ -266,8 +269,13 @@ get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=sa
 
 Feature selection was addressed in Part 2 of this study. ... ADDITIONAL DETAILS HERE ...
 
-```{r remove-redundant-rasters}
+```{r remove-redundant-features}
 
+# Define "redundant" rasters/features
+redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity", "developed_medium_intensity",
+                 "developed_high_intensity", "hay_pasture", "cultivated_crops", "wetlands", "forest",
+                 "lon.lat.interaction", "waterbody", "urban_imperviousness", "tmax", "tmin", "dem", "Fall_NDVI",
+                 "Spring_NDVI", "Summer_NDVI", "Winter_NDVI")
 
 ```
 
@@ -275,37 +283,81 @@ Feature selection was addressed in Part 2 of this study. ... ADDITIONAL DETAILS 
 ```{r glm-feature-selection}
 
 # Load variable importance from fitted LASSO models
-lasso.model.path="artifacts/models/lasso_fs"
-var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
-  spec <- spec.state[i,]$species
-  state <- spec.state[i,]$state
-  fname <- file.path(lasso.model.path,
-                     paste0(tolower(gsub(" ", "_", spec)), 
-                            "_", state, "_regr_l1.rds"))
-  fit <- readRDS(fname)
-  coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
-    as.matrix() %>%
-    as.data.frame()
-  
-  # Remove the intercept
-  coef.df <- coef.df[-1, , drop = F]
-  
-  # Create a data frame of variable importance
-  var.importance <- tibble(
-    common.name = spec,
-    state = state,
-    variable = rownames(coef.df),
-    importance = abs(coef.df[,1])
-  ) %>%
-    # Rank variables by importance
-    arrange(state, common.name, -importance, variable) %>%
-    # Only look at variables where imp. > 0
-    filter(importance > 0)
-})
+lasso.model.path="artifacts/models/lasso_2_fs"
 
-```
-
-```{r remove-redundant}
+var.imp <- species %>% purrr::map_df(function(spec) {
+    spec.state.fit <- states %>% purrr::map_df(function(st) {
+      fname <- paste0(tolower(gsub(" ", "_", spec)), "_", st, "_regr_l1.rds")
+      if (!file.exists(file.path(lasso.model.path, fname))) {
+        
+        # Define the control for the train function
+        ctrl <- trainControl(method = "cv", number = 5)
+        
+        cat("Fitting LASSO model for", spec, "in", st, "\n")
+        spec.df <- df.train[common.name == spec & state == st][
+          , `:=` (state=NULL, common.name = NULL)]
+        
+        # Remove any columns where all values are the same
+        .remove <- c(names(which(sapply(spec.df, function(x) length(unique(x)) <= 1))),
+                     redund.feat, "lat", "lon", "observations") %>% unique()
+        
+        .remove <- .remove[.remove != "presence"]
+        if (!is_empty(.remove)) {
+          spec.df <- spec.df %>% dplyr::select(-.remove)
+        }
+        
+        # Scale data
+        # Identify fields to center/scale
+        to.scale <- sapply(spec.df, function(x) is.numeric(x) && 
+                             length(unique(x)) > 2)
+        to.scale$observations <- F
+        to.scale <- names(spec.df) %in% names(which(unlist(to.scale)))
+        
+        # Define the pre-processing steps (use the training data to avoid data leakage)
+        # Apply centering and scaling to the non-binary fields and non-target
+        preproc <- preProcess(spec.df[, ..to.scale], 
+                              method = c("center", "scale"))
+        
+        # Center/Scale the training data
+        df.train.scaled <- bind_cols(spec.df[, !(..to.scale)],
+                                     predict(preproc, spec.df[, ..to.scale]))
+        
+        # LASSO (L1); Elastic Net, where alpha = 1
+        fit <- get.object(
+          train(presence ~ (.)^2, 
+                data = df.train.scaled, 
+                method = "glmnet",
+                family = "binomial",
+                trControl = ctrl,
+                tuneGrid = expand.grid(alpha = 1, 
+                                       lambda = seq(0, 1, by = 0.1)),
+                metric = "Accuracy"),
+          file.name=fname,
+          obj.path=lasso.model.path)
+        gc()
+        fit
+      } else {
+        fit <- readRDS(file.path(lasso.model.path, fname))
+      }
+      coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
+        as.matrix() %>%
+        as.data.frame()
+      # Remove the intercept
+      coef.df <- coef.df[-1, , drop = F]
+      
+      # Create a data frame of variable importance
+      var.importance <- tibble(
+        common.name = spec,
+        state = st,
+        variable = rownames(coef.df),
+        importance = abs(coef.df[,1])
+      ) %>%
+        # Rank variables by importance
+        arrange(state, common.name, -importance, variable) %>%
+        # Only look at variables where imp. > 0
+        filter(importance > 0)
+    })
+  })
 
 ```
 
@@ -313,6 +365,12 @@ var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
 ### IPP Models
 
 ```{r ipp-data-prep}
+
+# Reproject raster
+r.reproject <- function(r, .crs=4326) {
+  terra::project(x=r, 
+                 y=st_crs(.crs, parameters=T)$Wkt)
+}
 
 # Get raster ranges
 get.range <- function(raster.list, state, .crs=4326) {
@@ -327,22 +385,125 @@ get.range <- function(raster.list, state, .crs=4326) {
   )
 }
 
+# Function to split raster into n evenly distributed rectangles
+split.raster <- function(r, n) {
+  
+  # Get raster dimensions
+  ncols <- ncol(r)
+  nrows <- nrow(r)
+  
+  # Determine the number of split rows and columns based on n
+  # Using the sqrt as a starting point
+  sqrt.n <- sqrt(n)
+  
+  if (sqrt.n == as.integer(sqrt.n)) {
+    nsplit.rows <- nsplit.cols <- sqrt.n
+  } else {
+    aspect.ratio <- nrows / ncols
+    nsplit.rows <- round(sqrt.n * aspect.ratio)
+    nsplit.cols <- n / nsplit.rows
+  }
+  
+  # Calculate the size of each split rectangle
+  block.rows <- nrows / nsplit.rows
+  block.cols <- ncols / nsplit.cols
+  
+  # Extract extents of each rectangle
+  extents.list <- list()
+  for (i in 1:nsplit.rows) {
+    for (j in 1:nsplit.cols) {
+      xmin <- (j - 1) * block.cols * xres(r) + xmin(r)
+      xmax <- j * block.cols * xres(r) + xmin(r)
+      ymin <- (i - 1) * block.rows * yres(r) + ymin(r)
+      ymax <- i * block.rows * yres(r) + ymin(r)
+      
+      ext <- list(
+        lon=c(xmin, xmax),
+        lat=c(ymin, ymax)
+      )
+      extents.list[[length(extents.list) + 1]] <- ext
+    }
+  }
+  
+  return(extents.list)
+}
 
-prep.ipp.data <- function(df, st, spec, raster.list) {
+
+prep.ipp.data <- function(df, st, spec, 
+                          raster.list,
+                          bootstrap=F,
+                          ntiles=12) {
   # IPP does not use absence points; filter by state & species
   ipp.df <- df %>% 
     filter(presence == 1 & state == st & common.name == spec) %>%
     select(lon, lat) %>% 
     unique()
+
+  if (!bootstrap) {
+    # Get raster bounds
+    r.range <- get.range(raster.list, st)
   
-  # Get raster bounds
-  r.range <- get.range(raster.list, st)
-  
-  # Convert the data to a ppp object
-  locations <- ppp(ipp.df$lon, ipp.df$lat, 
-                   window=owin(r.range$lon, 
-                               r.range$lat))
+    # Convert the data to a ppp object
+    locations <- ppp(ipp.df$lon, ipp.df$lat, 
+                     window=owin(r.range$lon, 
+                                 r.range$lat))
+  } else {
+    r.tmp <- r.reproject(raster.list[[st]])
+    tile.extents <- split.raster(r.tmp, ntiles)
+    locations <- purrr::map(tile.extents, function(rng) {
+      ppp(ipp.df$lon, ipp.df$lat,
+          window=owin(rng$lon, rng$lat))
+    })
+    locations
+  }
 }
+
+```
+
+### Bootstrap Confidence Bands for Pair Correlation Function
+
+The Pair Correlation Function (PCF) is a tool in spatial statistics used to describe how the spatial distribution of points deviates from complete spatial randomness (CSR). In the context of point pattern analysis, the PCF provides insights into the interaction between points as a function of distance.
+
+Here's a breakdown of the result of bootstrapping the points using the PCF:
+
+1. `r`: This represents different distance values (lag distances) at which the PCF is evaluated.
+2. `theo`: This is the theoretical value of the PCF under the assumption of complete spatial randomness (CSR). For a Poisson point process (which implies CSR), this value is always 1. This means that at any given distance `r`, the expected number of points around another point is the same as would be expected by random chance.
+3. `border`: This is the border-corrected estimate of $g(r)$. It is the PCF estimate, but it accounts for edge effects. In point pattern analysis, edge effects occur because points near the border of the study area may have neighbors outside the study area that are not included in the analysis.
+4. `lo` & `hi`: These columns represent the lower and upper 95% confidence intervals for $g(r)$, respectively. They were derived from the bootstrap resamples of the data.
+
+Interpreting the results:
+
+- If the border-corrected $g(r)$ is close to the theoretical line (i.e., 1 for a Poisson process), it suggests that the points do not interact, i.e., they are randomly distributed at that distance.
+- If $g(r)$ is greater than 1, it indicates clustering at distance $r$. There are more points within the distance $r$ than would be expected under CSR.
+- If $g(r)$ is less than 1, it indicates regularity or inhibition. There are fewer points within the distance $r$ than would be expected under CSR.
+
+Using the confidence intervals:
+
+- If the theoretical line (value of 1) lies between the `lo` and `hi` values, it suggests that the observed pattern might be due to random chance (given the variation captured by bootstrapping).
+- If the theoretical value is outside the confidence interval, it suggests that the observed pattern is significantly different from CSR.
+
+```{r ppp-pcf-boot}
+
+cb.pcf <- purrr::map(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  cat("Bootstrapping PCF for", spec, " observations in", st, "\n")
+  locations <- prep.ipp.data(df.train, st, spec, r.list)
+  loc.boot <- get.object(
+    spatstat.explore::lohboot(locations, fun="pcf"),
+    paste0(spec, "_", st, ".rds"),
+    file.path("artifacts", "cb_pcf")
+  )
+}) 
+names(cb.pcf) <- map_chr(1:nrow(spec.state), ~paste(spec.state[.x, ]$species,
+                                                    spec.state[.x, ]$state, sep="."))
+
+plot(cb.pcf$`Belted Kingfisher.CO`)
+
+```
+
+
+```{r ipp-model}
 
 min.max.scale <- function(r, na.rm=T) {
   min.r <- min(values(r), na.rm=na.rm)
@@ -355,11 +516,24 @@ get.rast.val <- function(x, y, r) {
 }
 
 
+ipp.raster.dir <- "artifacts/ipp_rasters"
+if (!dir.exists(ipp.raster.dir)) dir.create(ipp.raster.dir)
+
 ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
   cat("Fitting IPP model for", spec, "in", st, "\n")
   locations <- prep.ipp.data(df.train, st, spec, r.list)
+  
+  ## TODO: 
+  # 1) It is ok to have multiple observations at a single point. In fact, it might be good
+  #    to include. Use an aggregation of all observation at a point, then reshape to 
+  #    distinct rows. Then add "jitter" such that each point still exists within the 
+  #    original raster cell.
+  # 2) Similarly, for bootstrapping, you can sample with replacement. If the model 
+  #    doesn't like duplicate points though, you might need to add "jitter" again
+  #    prior to modeling. I.e., recompute the locations
+  # 3) 
   
   r <- r.list[[st]]
   
@@ -389,13 +563,16 @@ ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
   r.ipp <- r.fs %>%
     set_names() %>%
     purrr::map(function(.x) {
-      cat("Generating pre-processed raster for", .x, "\n")
-      r[[.x]] %>% 
-        # Scale the data
-        min.max.scale() %>%
-        # Reproject to same CRS as point data
-        terra::project(x=., 
-                       y=st_crs(4326, parameters=T)$Wkt)
+      fpath <- file.path(ipp.raster.dir, paste0(.x, "_", st, ".tif"))
+      if (file.exists(fpath)) return(rast(fpath)) else {
+        out <- r[[.x]] %>% 
+          # Scale the data
+          min.max.scale() %>%
+          # Reproject to same CRS as point data
+          terra::project(x=., 
+                         y=st_crs(4326, parameters=T)$Wkt)
+        terra::writeRaster(out, fpath, overwrite=T)
+      }
     })
   
   # Generate named function list
@@ -426,6 +603,8 @@ ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
   # Fit the IPP model
   fit <- get.object(
     obj=ppm(Q=.f, covariates=r.funcs, covfunargs=.covfunargs, method="logi"), 
+    # use.gam=T for general additive model
+    # gcontrol=list() for additional glm/gam parameters
     file.name=paste0(spec, "_", st, "_ipp.rds"), 
     obj.path="artifacts/models/ipp"
     ) 
@@ -433,6 +612,10 @@ ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
 
 
 ```
+
+### Bootstrap Confidence Bands for PCF
+
+
 
 ### MaxEnt Models
 
