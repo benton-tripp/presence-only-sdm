@@ -197,6 +197,8 @@ r.list <- set_names(states) %>%
   })
 
 
+### TODO: Create NA Mask (e.g., sum(r.list$NC), then get all NA values)
+
 ```
 
 ### Split into Training/Test Sets
