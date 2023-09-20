@@ -69,7 +69,7 @@ blok.boot.loh <- function(X,
 
   # first n columns are the local stats for the n points of X
   n <- npoints(X)
-  y <- pred$v 
+  y <- as.matrix(data.frame(f))[,1:n]
   nr <- nrow(y)
 
   W <- spatstat.geom::Window(X)

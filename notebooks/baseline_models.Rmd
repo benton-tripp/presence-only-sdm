@@ -600,6 +600,10 @@ ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
   .f <- paste(fs.df$variable, collapse=" + ") %>% 
     paste("locations ~", .) %>% 
     as.formula()
+  
+  # 1. Check for a spatial trend in residuals (Ripley's K-Function)
+  fit <- ppm(Q=.f, covariates=r.funcs, covfunargs=.covfunargs, 
+             method="mpl") # Method of Maximum PseudoLikelihood
   # Fit the IPP model
   fit <- get.object(
     obj=ppm(Q=.f, covariates=r.funcs, covfunargs=.covfunargs, method="logi"), 
