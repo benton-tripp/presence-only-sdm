@@ -176,8 +176,12 @@ purrr::walk(states, function(state) {
 
 # Reload rasters, this time excluding the Land Cover categorical layer and including the binary equivalents
 # single multi-layer raster by state
+out.dir <- "artifacts/final_rasters"
+if (!dir.exists(out.dir)) dir.create(out.dir)
 r.list <- set_names(states) %>%
   purrr::map(~{
+    fname <- file.path(out.dir, paste0(.x, ".tif"))
+    if (file.exists(fname)) return(rast(fname))
     r.files <- c(paste0("data/final_rasters/", .x, ".tif"),
                  file.path("artifacts/feature_engineered_final", 
                            paste0(.x, ".tif")),
@@ -193,11 +197,18 @@ r.list <- set_names(states) %>%
     r <- r[[r.filt]]
     # Clean up names
     names(r) <- gsub(paste0("_", .x), "", names(r))
+    # Update each layer based to have NA if any layer is NA
+    r <- names(r) %>%
+      set_names() %>%
+      purrr::map(function(n) {
+        layer <- r[[n]]
+        layer[is.na(sum(r))] <- NA
+        return(layer)
+      }) %>%
+      rast()
+    terra::writeRaster(r, fname, overwrite=T)
     r
   })
-
-
-### TODO: Create NA Mask (e.g., sum(r.list$NC), then get all NA values)
 
 ```
 
@@ -274,10 +285,11 @@ Feature selection was addressed in Part 2 of this study. ... ADDITIONAL DETAILS 
 ```{r remove-redundant-features}
 
 # Define "redundant" rasters/features
-redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity", "developed_medium_intensity",
-                 "developed_high_intensity", "hay_pasture", "cultivated_crops", "wetlands", "forest",
-                 "lon.lat.interaction", "waterbody", "urban_imperviousness", "tmax", "tmin", "dem", "Fall_NDVI",
-                 "Spring_NDVI", "Summer_NDVI", "Winter_NDVI")
+redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity",
+                 "developed_medium_intensity", "developed_high_intensity", "hay_pasture",
+                 "cultivated_crops", "wetlands", "forest", "lon.lat.interaction", 
+                 "waterbody", "urban_imperviousness", "tmax", "tmin", "dem", "Fall_NDVI",
+                 "Spring_NDVI", "Summer_NDVI", "Winter_NDVI", "lat.sqrd", "lon.sqr")
 
 ```
 
@@ -302,7 +314,7 @@ var.imp <- species %>% purrr::map_df(function(spec) {
         # Remove any columns where all values are the same
         .remove <- c(names(which(sapply(spec.df, function(x) length(unique(x)) <= 1))),
                      redund.feat, "lat", "lon", "observations") %>% unique()
-        
+        .remove <- .remove[.remove %in% names(spec.df)]
         .remove <- .remove[.remove != "presence"]
         if (!is_empty(.remove)) {
           spec.df <- spec.df %>% dplyr::select(-.remove)
@@ -312,7 +324,7 @@ var.imp <- species %>% purrr::map_df(function(spec) {
         # Identify fields to center/scale
         to.scale <- sapply(spec.df, function(x) is.numeric(x) && 
                              length(unique(x)) > 2)
-        to.scale$observations <- F
+        to.scale$presence <- F
         to.scale <- names(spec.df) %in% names(which(unlist(to.scale)))
         
         # Define the pre-processing steps (use the training data to avoid data leakage)
@@ -337,7 +349,6 @@ var.imp <- species %>% purrr::map_df(function(spec) {
           file.name=fname,
           obj.path=lasso.model.path)
         gc()
-        fit
       } else {
         fit <- readRDS(file.path(lasso.model.path, fname))
       }
@@ -346,7 +357,41 @@ var.imp <- species %>% purrr::map_df(function(spec) {
         as.data.frame()
       # Remove the intercept
       coef.df <- coef.df[-1, , drop = F]
-      
+      if (sum(coef.df$s1, na.rm=T) == 0) {
+        # Remove file
+        file.remove(file.path(lasso.model.path, fname))
+        # Re-train model, this time with variable alpha in the train grid
+        # fit <- get.object(
+        fit <- get.object(
+          train(presence ~ (.)^2, 
+                data = df.train.scaled, 
+                method = "glmnet",
+                family = "binomial",
+                trControl = ctrl,
+                tuneGrid = expand.grid(alpha = seq(0, 1, by = 0.1), 
+                                       lambda = seq(0, 1, by = 0.1)),
+                metric = "Accuracy"),
+          file.name=fname,
+          obj.path=lasso.model.path)
+        coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
+          as.matrix() %>%
+          as.data.frame()
+        # Remove the intercept
+        coef.df <- coef.df[-1, , drop = F]
+        if (sum(coef.df$s1, na.rm=T) == 0) {
+          file.remove(file.path(lasso.model.path, fname))
+          cat("\tERROR: Try another method for obtaining coefs for", spec, 
+              "in", st, "\n")
+          return(
+            tibble(
+              common.name=character(0),
+              state=character(0),
+              variable=character(0),
+              importance=numeric(0)
+            )
+          )
+        }
+      }
       # Create a data frame of variable importance
       var.importance <- tibble(
         common.name = spec,
@@ -368,96 +413,99 @@ var.imp <- species %>% purrr::map_df(function(spec) {
 
 ```{r ipp-data-prep}
 
-# Reproject raster
-r.reproject <- function(r, .crs=4326) {
-  terra::project(x=r, 
-                 y=st_crs(.crs, parameters=T)$Wkt)
+# Ensure counter-clockwise direction
+is.ccw <- function(p) {
+  tryCatch({owin(poly=p); T}, error=function(e) F)
 }
 
-# Get raster ranges
-get.range <- function(raster.list, state, .crs=4326) {
-  e <- raster.list[[state]] %>% 
-    terra::ext() %>%
-    terra::project(x=., 
-                   from=crs(raster.list[[state]], proj=T), 
-                   to=st_crs(.crs, parameters=T)$Wkt)
-  list(
-    lon=c(e$xmin[[1]], e$xmax[[1]]),
-    lat=c(e$ymin[[1]], e$ymax[[1]])
-  )
-}
-
-# Function to split raster into n evenly distributed rectangles
-split.raster <- function(r, n) {
-  
-  # Get raster dimensions
-  ncols <- ncol(r)
-  nrows <- nrow(r)
-  
-  # Determine the number of split rows and columns based on n
-  # Using the sqrt as a starting point
-  sqrt.n <- sqrt(n)
-  
-  if (sqrt.n == as.integer(sqrt.n)) {
-    nsplit.rows <- nsplit.cols <- sqrt.n
-  } else {
-    aspect.ratio <- nrows / ncols
-    nsplit.rows <- round(sqrt.n * aspect.ratio)
-    nsplit.cols <- n / nsplit.rows
-  }
-  
-  # Calculate the size of each split rectangle
-  block.rows <- nrows / nsplit.rows
-  block.cols <- ncols / nsplit.cols
-  
-  # Extract extents of each rectangle
-  extents.list <- list()
-  for (i in 1:nsplit.rows) {
-    for (j in 1:nsplit.cols) {
-      xmin <- (j - 1) * block.cols * xres(r) + xmin(r)
-      xmax <- j * block.cols * xres(r) + xmin(r)
-      ymin <- (i - 1) * block.rows * yres(r) + ymin(r)
-      ymax <- i * block.rows * yres(r) + ymin(r)
-      
-      ext <- list(
-        lon=c(xmin, xmax),
-        lat=c(ymin, ymax)
-      )
-      extents.list[[length(extents.list) + 1]] <- ext
+# Check that all polygons were traversed in the right direction
+ensure.ccw <- function(polygon.list) {
+  lapply(polygon.list, function(p) {
+    # Check the first polygon (outer boundary)
+    if (!is.ccw(p)) {
+      p$x <- rev(p$x)
+      p$y <- rev(p$y)
     }
-  }
-  
-  return(extents.list)
+    p
+  })
 }
 
-
-prep.ipp.data <- function(df, st, spec, 
-                          raster.list,
-                          bootstrap=F,
-                          ntiles=12) {
-  # IPP does not use absence points; filter by state & species
-  ipp.df <- df %>% 
-    filter(presence == 1 & state == st & common.name == spec) %>%
-    select(lon, lat) %>% 
-    unique()
-
-  if (!bootstrap) {
-    # Get raster bounds
-    r.range <- get.range(raster.list, st)
-  
-    # Convert the data to a ppp object
-    locations <- ppp(ipp.df$lon, ipp.df$lat, 
-                     window=owin(r.range$lon, 
-                                 r.range$lat))
-  } else {
-    r.tmp <- r.reproject(raster.list[[st]])
-    tile.extents <- split.raster(r.tmp, ntiles)
-    locations <- purrr::map(tile.extents, function(rng) {
-      ppp(ipp.df$lon, ipp.df$lat,
-          window=owin(rng$lon, rng$lat))
+# Function to convert polygon to required list format
+convert.to.list.format <- function(sf.object) {
+  polygons.list <- lapply(1:nrow(sf.object), function(i) {
+    sfc <- st_geometry(sf.object[i,])
+    if (class(sfc)[[1]] == "sfc_MULTIPOLYGON") {
+      sfc <- st_cast(sfc, "POLYGON")
+    }
+    lapply(sfc, function(poly) {
+      list(x = st_coordinates(poly)[,1], 
+           y = st_coordinates(poly)[,2])
     })
-    locations
+  })
+  
+  # If the object has only one row, we unlist one level to adhere 
+  # to the described format for `ppp` objects
+  if (length(polygons.list) == 1) {
+    polygons.list <- polygons.list[[1]]
   }
+  
+  # Ensure counter-clockwise
+  polygons.list <- ensure.ccw(polygons.list)
+
+  return(polygons.list)
+}
+
+prep.ipp.data <- function(data, st, spec, 
+                          r.list, just.presence=F) {
+  # Filter Raster List
+  r <- r.list[[st]]
+  
+  # filter by state & species
+  ipp.df <- data %>% 
+    filter(state == st & common.name == spec) %>%
+    # select location point
+    select(lon, lat, presence) %>% 
+    # Get the unique points, since I am not accounting for the temporal nature of the data
+    unique() 
+    
+  # Get the first layer, set it to either NA or TRUE
+  r.poly <- terra::project(x=r[[1]], 
+                           y=st_crs(4326, parameters=T)$Wkt) %>% 
+    lapp(function(z) ifelse(is.na(z), NA, T)) %>%
+    terra::as.polygons() %>%
+    # Convert to polygon
+    st_as_sf()
+  
+  # Convert polygon to list
+  r.poly.list <- convert.to.list.format(r.poly)
+  
+  # Convert your point dataframe to an sf object
+  ipp.sf <- st_as_sf(ipp.df, coords = c("lon", "lat"), crs = 4326)
+  
+  # Get indices of points that are within the polygon
+  valid.pts <- sapply(st_intersects(ipp.sf, r.poly), function(x) length(x) > 0)
+  
+  # Filter out invalid points
+  ipp.df <- filter(ipp.df, valid.pts)
+  
+  # Subset df by presence
+  ipp.presence <- filter(ipp.df, presence == 1)
+  ipp.dummies <- filter(ipp.df, presence == 0)
+  
+  # Convert the data to a ppp objects
+  locations <- ppp(ipp.presence$lon, 
+                   ipp.presence$lat, 
+                   poly=r.poly.list) 
+  
+  if (just.presence) return(locations)
+  
+  dummy.locs <- ppp(ipp.dummies$lon, 
+                    ipp.dummies$lat, 
+                    poly=r.poly.list) 
+  
+  # Create Quadscheme
+  Q <- quadscheme(locations, dummy.locs)
+  
 }
 
 ```
@@ -484,13 +532,13 @@ Using the confidence intervals:
 - If the theoretical line (value of 1) lies between the `lo` and `hi` values, it suggests that the observed pattern might be due to random chance (given the variation captured by bootstrapping).
 - If the theoretical value is outside the confidence interval, it suggests that the observed pattern is significantly different from CSR.
 
-```{r ppp-pcf-boot}
+```{r ppp-pcf-boot, results='hide'}
 
 cb.pcf <- purrr::map(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
   cat("Bootstrapping PCF for", spec, " observations in", st, "\n")
-  locations <- prep.ipp.data(df.train, st, spec, r.list)
+  locations <- prep.ipp.data(df.train, st, spec, r.list, just.presence=T)
   loc.boot <- get.object(
     spatstat.explore::lohboot(locations, fun="pcf"),
     paste0(spec, "_", st, ".rds"),
@@ -500,12 +548,17 @@ cb.pcf <- purrr::map(1:nrow(spec.state), function(i) {
 names(cb.pcf) <- map_chr(1:nrow(spec.state), ~paste(spec.state[.x, ]$species,
                                                     spec.state[.x, ]$state, sep="."))
 
+```
+
+```{r}
+
+# Show example
 plot(cb.pcf$`Belted Kingfisher.CO`)
 
 ```
 
 
-```{r ipp-model}
+```{r ipp-model, results='hide'}
 
 min.max.scale <- function(r, na.rm=T) {
   min.r <- min(values(r), na.rm=na.rm)
@@ -521,99 +574,109 @@ get.rast.val <- function(x, y, r) {
 ipp.raster.dir <- "artifacts/ipp_rasters"
 if (!dir.exists(ipp.raster.dir)) dir.create(ipp.raster.dir)
 
-ipp.models <- purrr::map(1:nrow(spec.state), function(i) {
+purrr::walk(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
-  cat("Fitting IPP model for", spec, "in", st, "\n")
-  locations <- prep.ipp.data(df.train, st, spec, r.list)
-  
-  ## TODO: 
-  # 1) It is ok to have multiple observations at a single point. In fact, it might be good
-  #    to include. Use an aggregation of all observation at a point, then reshape to 
-  #    distinct rows. Then add "jitter" such that each point still exists within the 
-  #    original raster cell.
-  # 2) Similarly, for bootstrapping, you can sample with replacement. If the model 
-  #    doesn't like duplicate points though, you might need to add "jitter" again
-  #    prior to modeling. I.e., recompute the locations
-  # 3) 
-  
-  r <- r.list[[st]]
-  
-  # Select rasters based on feature importance
-  fs.df <- var.imp %>% 
-    filter(state == st & common.name == spec) %>%
-    mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
-           var2 = purrr::map_chr(variable, ~ {
+  glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
+                        paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
+  gam.path <- file.path("artifacts/models/ipp_gam_mpl", 
+                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
+  if (!all(file.exists(c(glm.path, gam.path)))) {
+    cat("Fitting IPP model for", spec, "in", st, "\n")
+    Q <- prep.ipp.data(df.train, st, spec, r.list)
+    
+    r <- r.list[[st]]
+    
+    # Select rasters based on feature importance
+    fs.df <- var.imp %>% 
+      filter(state == st & common.name == spec) %>%
+      mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
+             var2 = purrr::map_chr(variable, ~ {
                split_result <- stringr::str_split(.x, "\\:")[[1]]
                if(length(split_result) > 1) split_result[2] else NA_character_
-           })) %>%
-    filter(!(var1 %in% c("lat", "lon")) & !(var2 %in% c("lat", "lon"))) %>%
-    mutate(var1 = purrr::map_chr(
-      var1, ~tryCatch({r[[.x]]; .x}, error=function(e) {
-        ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
-      })),
-      var2 = purrr::map_chr(
-        var2, ~tryCatch({r[[.x]]; .x}, error=function(e) {
+             })) %>%
+      filter(!(var1 %in% c("lat", "lon")) & !(var2 %in% c("lat", "lon"))) %>%
+      mutate(var1 = purrr::map_chr(
+        var1, ~tryCatch({r[[.x]]; .x}, error=function(e) {
           ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
-        }))) %>%
-    mutate(variable = ifelse(is.na(var2), var1, paste(var1, var2, sep = ":")))
-
-  r.fs <- c(fs.df$var1, fs.df$var2) %>% 
-    unique() %>% 
-    sort()
+        })),
+        var2 = purrr::map_chr(
+          var2, ~tryCatch({r[[.x]]; .x}, error=function(e) {
+            ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
+          }))) %>%
+      mutate(variable = ifelse(is.na(var2), var1, paste(var1, var2, sep = ":"))) %>%
+      head(30)
     
-  r.ipp <- r.fs %>%
-    set_names() %>%
-    purrr::map(function(.x) {
-      fpath <- file.path(ipp.raster.dir, paste0(.x, "_", st, ".tif"))
-      if (file.exists(fpath)) return(rast(fpath)) else {
-        out <- r[[.x]] %>% 
-          # Scale the data
-          min.max.scale() %>%
-          # Reproject to same CRS as point data
-          terra::project(x=., 
-                         y=st_crs(4326, parameters=T)$Wkt)
-        terra::writeRaster(out, fpath, overwrite=T)
-      }
-    })
-  
-  # Generate named function list
-  r.funcs <- names(r.ipp) %>%
-    set_names() %>%
-    purrr::map(~{
-      # Create the list of arguments dynamically
-      arg.list <- setNames(list(quote(NULL), quote(NULL), quote(NULL), quote(NULL)), 
-                           c("x", "y", "raster.list", .x))
-      
-      # Create the body of the function
-      body.expr <- substitute({
-        coords <- cbind(x, y)
-        terra::extract(raster.list[[RASTER.NAME]], coords)[[RASTER.NAME]]
-      }, list(RASTER.NAME = as.name(.x)))
-
-      # Make the function
-      f <- pryr::make_function(arg.list, body.expr)
-      f
-    })
-  
-  .covfunargs <- set_names(names(r.ipp)) %>% as.list()
-  .covfunargs$raster.list <- r.ipp
-  # Create formula
-  .f <- paste(fs.df$variable, collapse=" + ") %>% 
-    paste("locations ~", .) %>% 
-    as.formula()
-  
-  # 1. Check for a spatial trend in residuals (Ripley's K-Function)
-  fit <- ppm(Q=.f, covariates=r.funcs, covfunargs=.covfunargs, 
-             method="mpl") # Method of Maximum PseudoLikelihood
-  # Fit the IPP model
-  fit <- get.object(
-    obj=ppm(Q=.f, covariates=r.funcs, covfunargs=.covfunargs, method="logi"), 
-    # use.gam=T for general additive model
-    # gcontrol=list() for additional glm/gam parameters
-    file.name=paste0(spec, "_", st, "_ipp.rds"), 
-    obj.path="artifacts/models/ipp"
+    if (nrow(fs.df) > 0) {
+      r.fs <- c(fs.df$var1, fs.df$var2) %>% 
+      unique() %>% 
+      sort()
+    } else {
+      browser()
+    }
+    r.ipp <- r.fs %>%
+      set_names() %>%
+      purrr::map(function(.x) {
+        fpath <- file.path(ipp.raster.dir, paste0(.x, "_", st, ".tif"))
+        if (file.exists(fpath)) return(rast(fpath)) else {
+          out <- r[[.x]] %>% 
+            # Scale the data
+            min.max.scale() %>%
+            # Reproject to same CRS as point data
+            terra::project(x=., 
+                           y=st_crs(4326, parameters=T)$Wkt)
+          terra::writeRaster(out, fpath, overwrite=T)
+        }
+      })
+    
+    # Generate named function list
+    r.funcs <- names(r.ipp) %>%
+      set_names() %>%
+      purrr::map(~{
+        # Create the list of arguments dynamically
+        arg.list <- setNames(list(quote(NULL), quote(NULL), quote(NULL), quote(NULL)), 
+                             c("x", "y", "raster.list", .x))
+        
+        # Create the body of the function
+        body.expr <- substitute({
+          coords <- cbind(x, y)
+          terra::extract(raster.list[[RASTER.NAME]], coords)[[RASTER.NAME]]
+        }, list(RASTER.NAME = as.name(.x)))
+        
+        # Make the function
+        f <- pryr::make_function(arg.list, body.expr)
+        f
+      })
+    
+    .covfunargs <- set_names(names(r.ipp)) %>% as.list()
+    .covfunargs$raster.list <- r.ipp
+    # Create formula
+    .f <- paste(fs.df$variable, collapse=" + ") %>% 
+      paste("~", .) %>% 
+      as.formula()
+    
+    # TODO: Check for a spatial trend in residuals (Ripley's K-Function)
+    
+    # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
+    # * gcontrol=list() for additional glm/gam parameters
+    
+    # GLM Model
+    fit.glm <- get.object(
+      obj=ppm(Q=Q, trend=.f, covariates=r.funcs, covfunargs=.covfunargs, 
+              method="mpl"), # 
+      file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
+      obj.path="artifacts/models/ipp_glm_mpl"
     ) 
+    # GAM Model
+    fit.gam <- get.object(
+      obj=ppm(Q=Q, trend=.f, covariates=r.funcs, covfunargs=.covfunargs, 
+              method="mpl", use.gam=T), # Method of Maximum PseudoLikelihood 
+      # gcontrol=list() for additional glm/gam parameters
+      file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
+      obj.path="artifacts/models/ipp_gam_mpl"
+    ) 
+  }
+  gc()
 }, .progress=T)
 
 

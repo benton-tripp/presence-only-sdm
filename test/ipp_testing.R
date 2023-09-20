@@ -15,16 +15,6 @@ df.train <- readRDS("test/df.train.rds")
 # Load pre-processed rasters (covariates)
 r <- rast("test/NC_covariates.tif")
 
-# Update each layer based to have NA if any layer is NA
-r <- names(r) %>%
-  set_names() %>%
-  purrr::map(function(n) {
-    layer <- r[[i]]
-    layer[is.na(sum(r))] <- NA
-    return(layer)
-  }) %>%
-  rast()
-
 # Load feature selection results from EDA
 fs.df <- readRDS("test/fs.df.rds")
 
@@ -128,12 +118,18 @@ dummy.locs <- ppp(ipp.dummies$lon,
                   ipp.dummies$lat, 
                   poly=r.poly.list) 
 
+# Create Quadscheme
 Q <- quadscheme(locations, dummy.locs)
+# Quadrature scheme (Berman-Turner)
+# 789 data points, 858 dummy points
+#   (provided manually)
+#   Total weight 12.5619752974165
+
 
 # Limit raster layers to those variables selected in during 
 # Feature selection (during EDA), and with importance >= 1
 fs.df <- fs.df %>%
-  filter(importance >= 1)
+  filter(importance >= 13)
 
 # Get list of distinct variable names
 r.fs <- c(fs.df$var1, fs.df$var2) %>% 
@@ -193,93 +189,15 @@ r.funcs <- names(r.ipp) %>%
 .covfunargs$raster.list <- r.ipp
 # Create formula
 .f <- paste(fs.df$variable, collapse=" + ") %>% 
-  paste("locations ~", .) %>% 
+  paste("~", .) %>% 
   as.formula()
 
-# Fit point-process model
-# TODO: Address the problem with NA values in the `locations` variable
-# How come some of the points are apperently outside of the bounds, even
-# after taking measures to ensure they are within the bounds? I even 
-# checked extracting all of the values from the rasters
 fit <- ppm(Q=Q, trend=.f, covariates=r.funcs, covfunargs=.covfunargs, method="mpl")
+
+# ...
+# Standard errors unavailable; variance-covariance matrix is singular
+# *** Model is not valid ***
+# *** Some coefficients are NA or Inf ***
 # Warning message:
-#   Values of the covariates ‘emergent_herbaceous_wetlands’, ‘avg_prcp’, ‘lon.sqrd’, 
-# ‘shrubland’, ‘developed’, ‘herbaceous’, ‘max.ndvi’, ‘mixed_forest’, ‘barren’, ‘temp.diff’,
-# ‘water’, ‘min.ndvi’, ‘woody_wetlands’, ‘lat.sqrd’, ‘dem.detrended’, ‘deciduous_forest’,
-# ‘evergreen_forest’, ‘coastline’ were NA or undefined at 0.49% (15 out of 3032) of the
-# quadrature points. Occurred while executing: ppm.ppp(Q = locations, trend =
-# ~emergent_herbaceous_wetlands +  
-
-
-na.pts.idx <- which(fit$problems$na.covariates$quadpoints.na)
-loc.df <- data.frame(x=c(locations$x, fit$Q$dummy$x), 
-                     y=c(locations$y, fit$Q$dummy$y))
-loc.df[na.pts.idx, ] %>% as_tibble()
-
-faulty.pts <- st_as_sf(loc.df[na.pts.idx, ], 
-                            coords = c("x", "y"), 
-                            crs = st_crs(r.poly))
-intersects.check <- st_intersects(faulty.pts, r.poly)
-outside.pts <- sapply(intersects.check, length) == 0
-# All of them are true
-
-# Try fitting the model with the window
-W <- owin(poly = r.poly.list)
-fit <- ppm(Q = .f, Window = W, covariates = r.funcs, 
-           covfunargs = .covfunargs, method = "mpl")
-# Still get warning
-# Warning message:
-#   Values of the covariates ‘emergent_herbaceous_wetlands’, ‘avg_prcp’, ‘lon.sqrd’, 
-# ‘shrubland’, ‘developed’, ‘herbaceous’, ‘max.ndvi’, ‘mixed_forest’, ‘barren’, ‘temp.diff’,
-# ‘water’, ‘min.ndvi’, ‘woody_wetlands’, ‘lat.sqrd’, ‘dem.detrended’, ‘deciduous_forest’,
-# ‘evergreen_forest’, ‘coastline’ were NA or undefined at 0.49% (15 out of 3032) of the
-# quadrature points. Occurred while executing: ppm.ppp(Q = locations, trend =
-# ~emergent_herbaceous_wetlands +  
-
-
-bb <- st_bbox(faulty.pts)
-ggplot() +
-  geom_sf(data = r.poly, fill = "tan") +  
-  geom_sf(data = faulty.pts, color = "red", size = 2.5) +  
-  theme_minimal() +
-  coord_sf(xlim = c(bb["xmin"], bb["xmax"]), ylim = c(bb["ymin"], bb["ymax"]))
-  
-
-# visual inspection shows that the points are indeed outside of the boundaries of the polygon. I
-# have double checked spatial extents and projections, and that doesn't appear to be the issue.
-# And my code also shows that the `r.func` functions are working fine, extracting onlyy valid 
-# points in my test. The issue seems to be how `ppm` is getting dummy locations.
-
-
-# Generate a dense grid over the bounding box
-bb <- as(st_bbox(r.poly), "bbox")
-grid.pts <- expand.grid(x = seq(bb[1], bb[3], by = 0.01),  # adjust the step size as needed
-                        y = seq(bb[2], bb[4], by = 0.01))
-
-# Convert grid_points to sf object
-grid.sf <- st_as_sf(grid.pts, coords = c("x", "y"), crs = 4326)
-
-# Keep only those points within the study region
-inside.pts <- st_within(grid.sf, r.poly)
-inside.pt.mask <- sapply(inside.pts, length) > 0
-inside.grid.sf <- grid.sf[inside.pt.mask,]
-
-# Convert these inside_points to a ppp object for spatstat
-inside.ppp <- as(inside.grid.sf, "ppp")
-
-new.dummy <- default.dummy(locations, npix=c(nrow(r), ncol(r)), verbose=T)
-
-dummy.df <- data.frame(x=new.dummy$x, 
-                       y=new.dummy$y)
-
-dummy.df <- st_as_sf(dummy.df, 
-                       coords = c("x", "y"), 
-                       crs = st_crs(r.poly))
-intersects.check <- st_intersects(dummy.df, r.poly)
-outside.pts <- sapply(intersects.check, length) == 0
-
-# Fit the model using this new point pattern
-fit <- ppm(locations_with_quad, trend=.f, covariates=r.funcs, 
-           covfunargs=.covfunargs, method="mpl")
-
+# Cannot compute variance; model is not valid 
 
