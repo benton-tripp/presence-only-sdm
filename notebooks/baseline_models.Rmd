@@ -456,7 +456,8 @@ convert.to.list.format <- function(sf.object) {
 }
 
 prep.ipp.data <- function(data, st, spec, 
-                          r.list, just.presence=F) {
+                          r.list, just.presence=F,
+                          covariates=NULL) {
   # Filter Raster List
   r <- r.list[[st]]
   
@@ -464,8 +465,9 @@ prep.ipp.data <- function(data, st, spec,
   ipp.df <- data %>% 
     filter(state == st & common.name == spec) %>%
     # select location point
-    select(lon, lat, presence) %>% 
-    # Get the unique points, since I am not accounting for the temporal nature of the data
+    select(c("lon", "lat", "presence", covariates)) %>% 
+    # Get the unique points, since we are not accounting 
+    # for the temporal nature of the data
     unique() 
     
   # Get the first layer, set it to either NA or TRUE
@@ -505,7 +507,58 @@ prep.ipp.data <- function(data, st, spec,
   
   # Create Quadscheme
   Q <- quadscheme(locations, dummy.locs)
+  if (is.null(covariates)) return(Q)
   
+  # Make sure rejections are excluded
+  reject.x <- c(attr(locations, "rejects")$x,
+                attr(dummy.locs, "rejects")$x)
+  reject.y <- c(attr(locations, "rejects")$y,
+                attr(dummy.locs, "rejects")$y)
+
+  pairs <- tibble(
+    x=reject.x,
+    y=reject.y
+  ) 
+  if (nrow(pairs) > 0) {
+    rejects <- mutate(pairs, coords=paste(x, y, sep=", "))$coords
+  } else {
+    rejects <- NULL
+  }
+  
+  # Get subset of ipp.df for scaling
+  ipp.df.scaled <- ipp.df %>% 
+    mutate(lon.lat = paste(lon, lat, sep=", "))
+  if (!is.null(rejects)) ipp.df.scaled <- filter(ipp.df.scaled , 
+                                                 !(lon.lat %in% rejects)) 
+  ipp.df.scaled  <- select(ipp.df.scaled , -c("lon", "lat")) 
+  ipp.df.scaled %>% setDT()
+  
+  # Select variables to scale
+  to.scale <- sapply(ipp.df.scaled, function(x) is.numeric(x) && 
+                     length(unique(x)) > 2)
+  to.scale$presence <- F
+  to.scale <- names(ipp.df.scaled) %in% names(which(unlist(to.scale)))
+  
+  # Scale data, saving the pre-processing function
+  preproc <- preProcess(ipp.df.scaled[, ..to.scale], 
+                        method = c("center", "scale"))
+  
+  # Center/Scale the training data
+  ipp.df.scaled <- bind_cols(ipp.df.scaled[, !(..to.scale)],
+                             predict(preproc, ipp.df.scaled[, ..to.scale]))
+  
+  # Subset df by presence using scaled data
+  ipp.presence <-ipp.df.scaled[presence == 1][, presence := NULL]
+  ipp.dummies <- ipp.df.scaled[presence == 0][, presence := NULL]
+  
+  list(
+    Q=Q,
+    covariates.presence=ipp.presence,
+    covariates.dummies=ipp.dummies,
+    covariates=covariates,
+    preprocess=preproc,
+    scaled.covariates=to.scale
+  )
 }
 
 ```
@@ -560,19 +613,12 @@ plot(cb.pcf$`Belted Kingfisher.CO`)
 
 ```{r ipp-model, results='hide'}
 
+# Define min/max scaling function for rasters
 min.max.scale <- function(r, na.rm=T) {
   min.r <- min(values(r), na.rm=na.rm)
   max.r <- max(values(r), na.rm=na.rm)
   (r - min.r) / (max.r- min.r)
 }
-
-get.rast.val <- function(x, y, r) {
-  terra::extract(r, c(x, y))
-}
-
-
-ipp.raster.dir <- "artifacts/ipp_rasters"
-if (!dir.exists(ipp.raster.dir)) dir.create(ipp.raster.dir)
 
 purrr::walk(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
@@ -583,11 +629,10 @@ purrr::walk(1:nrow(spec.state), function(i) {
                         paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
   if (!all(file.exists(c(glm.path, gam.path)))) {
     cat("Fitting IPP model for", spec, "in", st, "\n")
-    Q <- prep.ipp.data(df.train, st, spec, r.list)
     
     r <- r.list[[st]]
     
-    # Select rasters based on feature importance
+    # Select covariates based on feature importance
     fs.df <- var.imp %>% 
       filter(state == st & common.name == spec) %>%
       mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
@@ -608,48 +653,39 @@ purrr::walk(1:nrow(spec.state), function(i) {
       head(30)
     
     if (nrow(fs.df) > 0) {
-      r.fs <- c(fs.df$var1, fs.df$var2) %>% 
+      covariates <- c(fs.df$var1, fs.df$var2) %>% 
       unique() %>% 
       sort()
     } else {
-      browser()
+      cat("\tERROR: There are no specified covariates for", spec, st, "\n")
     }
-    r.ipp <- r.fs %>%
+    
+    ipp.data <- prep.ipp.data(df.train, st, spec, r.list,
+                       covariates=covariates)
+    Q <- ipp.data$Q
+    
+    # Use pre-processing scaler on rasters
+    to.scale <- covariates[ipp.data$scaled.covariates]
+    
+    # Load/compute filtered & pre-processed rasters
+    covariates <- covariates %>%
       set_names() %>%
       purrr::map(function(.x) {
-        fpath <- file.path(ipp.raster.dir, paste0(.x, "_", st, ".tif"))
-        if (file.exists(fpath)) return(rast(fpath)) else {
-          out <- r[[.x]] %>% 
-            # Scale the data
-            min.max.scale() %>%
-            # Reproject to same CRS as point data
-            terra::project(x=., 
-                           y=st_crs(4326, parameters=T)$Wkt)
-          terra::writeRaster(out, fpath, overwrite=T)
+        if (.x %in% to.scale) {
+          # Scale the data
+          out <- min.max.scale(r[[.x]])
+        } else {
+          out <- r[[.x]]
         }
+        out <- out %>%
+          # Reproject to same CRS as point data
+          terra::project(x=., 
+                         y=st_crs(4326, parameters=T)$Wkt) %>%
+          as.data.frame(xy=T) %>%
+          filter(!is.na(!!.x)) %>%
+          as.im()
       })
-    
-    # Generate named function list
-    r.funcs <- names(r.ipp) %>%
-      set_names() %>%
-      purrr::map(~{
-        # Create the list of arguments dynamically
-        arg.list <- setNames(list(quote(NULL), quote(NULL), quote(NULL), quote(NULL)), 
-                             c("x", "y", "raster.list", .x))
-        
-        # Create the body of the function
-        body.expr <- substitute({
-          coords <- cbind(x, y)
-          terra::extract(raster.list[[RASTER.NAME]], coords)[[RASTER.NAME]]
-        }, list(RASTER.NAME = as.name(.x)))
-        
-        # Make the function
-        f <- pryr::make_function(arg.list, body.expr)
-        f
-      })
-    
-    .covfunargs <- set_names(names(r.ipp)) %>% as.list()
-    .covfunargs$raster.list <- r.ipp
+
     # Create formula
     .f <- paste(fs.df$variable, collapse=" + ") %>% 
       paste("~", .) %>% 
@@ -661,20 +697,20 @@ purrr::walk(1:nrow(spec.state), function(i) {
     # * gcontrol=list() for additional glm/gam parameters
     
     # GLM Model
-    fit.glm <- get.object(
-      obj=ppm(Q=Q, trend=.f, covariates=r.funcs, covfunargs=.covfunargs, 
-              method="mpl"), # 
-      file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
-      obj.path="artifacts/models/ipp_glm_mpl"
-    ) 
+    fit.glm <- ppm(Q=Q, trend=.f, covariates=covariates, 
+                   rbord=.05, method="mpl") %>%
+      get.object(
+        obj=.,
+        file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
+        obj.path="artifacts/models/ipp_glm_mpl")
     # GAM Model
-    fit.gam <- get.object(
-      obj=ppm(Q=Q, trend=.f, covariates=r.funcs, covfunargs=.covfunargs, 
-              method="mpl", use.gam=T), # Method of Maximum PseudoLikelihood 
-      # gcontrol=list() for additional glm/gam parameters
-      file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
-      obj.path="artifacts/models/ipp_gam_mpl"
-    ) 
+    fit.gam <- ppm(Q=Q, trend=.f, covariates=covariates, 
+                   rbord=.05, method="mpl", use.gam=T) %>%
+      get.obj(
+        obj=.,
+        file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
+        obj.path="artifacts/models/ipp_gam_mpl"
+      )
   }
   gc()
 }, .progress=T)
@@ -682,8 +718,46 @@ purrr::walk(1:nrow(spec.state), function(i) {
 
 ```
 
-### Bootstrap Confidence Bands for PCF
 
+```{r examine-mel-results}
+
+ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  tibble(
+    common.name=spec,
+    state=st,
+    glm.path=file.path("artifacts/models/ipp_glm_mpl", 
+                        paste0(spec, "_", st, "_ipp_glm_mpl.rds")),
+    gam.path=file.path("artifacts/models/ipp_gam_mpl", 
+                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
+  )
+})
+
+belted.kf.CO.glm <- readRDS(ipp.models[1, ]$glm.path)
+
+# Diagnostics
+bkf.co.glm.diag <- diagnose.ppm(belted.kf.CO.glm$fit, plot.it=F)
+
+bkf.co.glm.diag
+```
+
+*From `spatstat` documentation*:
+
+`which = "marks`:
+
+Plot the residual measure. For the exponential energy weights (`type="eem"`) this displays circles centred at the points of the data pattern, with radii proportional to the exponential energy weights. For the residuals (`type="raw"`, `type="inverse"` or `type="pearson"`) this again displays circles centred at the points of the data pattern with radii proportional to the (positive) residuals, while the plotting of the negative residuals depends on the argument plot.neg. If `plot.neg="image"` then the negative part of the residual measure, which is a density, is plotted as a colour image. If `plot.neg="discrete"` then the discretised negative residuals (obtained by approximately integrating the negative density using the quadrature scheme of the fitted model) are plotted as squares centred at the dummy points with side lengths proportional to the (negative) residuals. [To control the size of the circles and squares, use the argument `maxsize`.]
+
+`which = "smooth"`:
+
+Plot a kernel-smoothed version of the residual measure. Each data or dummy point is taken to have a ‘mass’ equal to its residual or exponential energy weight. (Note that residuals can be negative). This point mass is then replaced by a bivariate isotropic Gaussian density with standard deviation sigma. The value of the smoothed residual field at any point in the window is the sum of these weighted densities. If the fitted model is correct, this smoothed field should be flat, and its height should be close to 0 (for the residuals) or 1 (for the exponential energy weights). The field is plotted either as an image, contour plot or perspective view of a surface, according to the argument `plot.smooth`. The range of values of the smoothed field is printed if the option `which="sum"` is also selected.
+
+
+```{r ipp-diag-plot-ex, fig.width=8, fig.height=6}
+
+
+
+```
 
 
 ### MaxEnt Models
