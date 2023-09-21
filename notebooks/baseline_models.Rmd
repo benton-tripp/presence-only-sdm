@@ -629,10 +629,11 @@ purrr::walk(1:nrow(spec.state), function(i) {
                         paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
   if (!all(file.exists(c(glm.path, gam.path)))) {
     cat("Fitting IPP model for", spec, "in", st, "\n")
-    
+    # Get raster
     r <- r.list[[st]]
     
     # Select covariates based on feature importance
+    cat("\tFetching variable importance...\n")
     fs.df <- var.imp %>% 
       filter(state == st & common.name == spec) %>%
       mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
@@ -659,13 +660,15 @@ purrr::walk(1:nrow(spec.state), function(i) {
     } else {
       cat("\tERROR: There are no specified covariates for", spec, st, "\n")
     }
+    cat("\Gtetting `spatstat.geom::ppp` object with training points...\n")
+    Q <- prep.ipp.data(df.train, st, spec, r.list)
     
-    ipp.data <- prep.ipp.data(df.train, st, spec, r.list,
-                       covariates=covariates)
-    Q <- ipp.data$Q
-    
+    cat("\tPre-Processing covariates...\n")
     # Use pre-processing scaler on rasters
-    to.scale <- covariates[ipp.data$scaled.covariates]
+    filt.df <- df.train[state == st & common.name == spec, ..covariates]
+    to.scale <- sapply(filt.df, function(x) is.numeric(x) && 
+                         length(unique(x)) > 2)
+    to.scale <- covariates[covariates %in% names(which(unlist(to.scale)))]
     
     # Load/compute filtered & pre-processed rasters
     covariates <- covariates %>%
@@ -677,13 +680,18 @@ purrr::walk(1:nrow(spec.state), function(i) {
         } else {
           out <- r[[.x]]
         }
-        out <- out %>%
+        out <- get.object(
+          out %>%
           # Reproject to same CRS as point data
           terra::project(x=., 
                          y=st_crs(4326, parameters=T)$Wkt) %>%
           as.data.frame(xy=T) %>%
           filter(!is.na(!!.x)) %>%
-          as.im()
+          as.im(),
+          paste0(st, "_", .x, ".rds"),
+          "artifacts/spatstat_imgs"
+        )
+        
       })
 
     # Create formula
@@ -691,26 +699,28 @@ purrr::walk(1:nrow(spec.state), function(i) {
       paste("~", .) %>% 
       as.formula()
     
-    # TODO: Check for a spatial trend in residuals (Ripley's K-Function)
-    
     # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
     # * gcontrol=list() for additional glm/gam parameters
     
     # GLM Model
+    cat("\tFitting GLM Model using the Method of Maximum PseudoLikelihood...\n")
     fit.glm <- ppm(Q=Q, trend=.f, covariates=covariates, 
                    rbord=.05, method="mpl") %>%
       get.object(
         obj=.,
         file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
         obj.path="artifacts/models/ipp_glm_mpl")
+    
     # GAM Model
+    cat("\tFitting GAM Model using the Method of Maximum PseudoLikelihood...\n")
     fit.gam <- ppm(Q=Q, trend=.f, covariates=covariates, 
                    rbord=.05, method="mpl", use.gam=T) %>%
-      get.obj(
+      get.object(
         obj=.,
         file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
         obj.path="artifacts/models/ipp_gam_mpl"
       )
+    cat("\tFinished IPP model for", spec, "in", st, "\n")
   }
   gc()
 }, .progress=T)
@@ -757,6 +767,12 @@ Plot a kernel-smoothed version of the residual measure. Each data or dummy point
 
 
 
+```
+
+```{r r-k}
+
+# TODO: Check for a spatial trend in residuals (Ripley's K-Function)
+# 
 ```
 
 
