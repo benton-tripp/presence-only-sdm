@@ -660,7 +660,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
     } else {
       cat("\tERROR: There are no specified covariates for", spec, st, "\n")
     }
-    cat("\Gtetting `spatstat.geom::ppp` object with training points...\n")
+    cat("\tGetting `spatstat.geom::ppp` object with training points...\n")
     Q <- prep.ipp.data(df.train, st, spec, r.list)
     
     cat("\tPre-Processing covariates...\n")
