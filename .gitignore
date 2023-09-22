@@ -7,6 +7,8 @@ benton-tripp.github.io/
 .ssh/*
 docs/archive/*
 notebooks/archive/*
+artifacts/models/ipp_glm_mpl/*
+artifacts/models/ipp_gam_mpl/*
 spatstat.model/*
 spatstat.model
 
