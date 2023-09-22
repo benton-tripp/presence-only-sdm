@@ -610,6 +610,36 @@ plot(cb.pcf$`Belted Kingfisher.CO`)
 
 ```
 
+```{r r-k}
+
+# Check for a spatial trend in residuals (Ripley's K-Function)
+ripleys.k <- function(l, nsim=50) {
+  k <- Kest(l)
+  e <- spatstat.explore::envelope(l, Kest, nsim=nsim)
+  list(
+    k=k,
+    envelope=e
+  )
+}
+
+nsim <- 50
+rk <- purrr::walk(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  cat("Estimating Ripley's K for", spec, " observations in", 
+      paste0(st, ", and computing ", nsim, " simulations.\n"))
+  locations <- prep.ipp.data(df.train, st, spec, r.list, just.presence=T)
+  rip.k <- get.object(
+    ripleys.k(locations, nsim),
+    paste0(spec, "_", st, ".rds"),
+    file.path("artifacts", "ripleys_k")
+  )
+}) 
+names(rk) <- map_chr(1:nrow(spec.state), ~paste(spec.state[.x, ]$species,
+                                                spec.state[.x, ]$state, sep="."))
+
+```
+
 
 ```{r ipp-model, results='hide'}
 
@@ -744,12 +774,16 @@ ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
   )
 })
 
-belted.kf.CO.glm <- readRDS(ipp.models[1, ]$glm.path)
+```
+
+```{r rd-or-glm}
+
+rd.OR.glm <- readRDS("artifacts/models/ipp_glm_mpl/Ruddy Duck_OR_ipp_glm_mpl.rds")
 
 # Diagnostics
-bkf.co.glm.diag <- diagnose.ppm(belted.kf.CO.glm$fit, plot.it=F)
+d <- diagnose.ppm(rd.OR.glm, plot.it=F)
 
-bkf.co.glm.diag
+plot(d)
 ```
 
 *From `spatstat` documentation*:
@@ -769,11 +803,7 @@ Plot a kernel-smoothed version of the residual measure. Each data or dummy point
 
 ```
 
-```{r r-k}
 
-# TODO: Check for a spatial trend in residuals (Ripley's K-Function)
-# 
-```
 
 
 ### MaxEnt Models
