@@ -610,6 +610,44 @@ plot(cb.pcf$`Belted Kingfisher.CO`)
 
 ```
 
+### Ripley's K-Function Simulation Envelopes
+
+When evaluating the K-function, the idea is to examine how the distribution of points in a given dataset changes or behaves as we consider larger and larger distances from each point.
+
+For a given point in a spatial dataset, consider all possible distances to every other point in the dataset. The K-function evaluates, on average, how many points one would expect to find within a circle of radius $r$ (distance) centered on a typical point, relative to what would be expected under a completely random process.
+
+The values in the $r$ field of the envelope function output represent a sequence of increasing distances. For each of these distances, the K-function is calculated, telling about the spatial structure of the data at that particular scale.
+
+If, at a specific distance $r$, the observed K-function value is higher than what's expected under a random process, it suggests that the points are clustering at that distance. Conversely, if the K-function value is lower than expected, it indicates repulsion or regular spacing between points at that distance.
+
+Different structures or patterns in data might become apparent at different scales. By evaluating the K-function over a range of distances, insights can be gained about the spatial characteristics of the data at multiple scales. For example, there might be clustering at short distances but dispersal or regularity at larger distances.
+
+Assessing spatial randomness of the data based on the K-function.
+
+- `r`: The sequence of distance values. It's the set of distances at which the K-function has been evaluated for both the observed data and the simulations.
+- `obs`: The observed value of the summary statistic (K-function in this case) for the dataset.
+`theo`: The theoretical value of the summary statistic under complete spatial randomness (CSR).
+`lo`: The lower simulation envelope. This is essentially the smallest value of the summary statistic observed in the simulations at each distance.
+`hi`: The upper simulation envelope. This is the largest value of the summary statistic observed in the simulations at each distance.
+
+Interpreting the Results:
+
+The idea is to check if the observed K-function for the data (`obs`) lies within the simulation envelope (`lo` and `hi`). If it does, this suggests that the observed spatial pattern could be the result of random chance (according to the model of randomness assumed in the simulations). If the observed K-function lies outside of the envelope, this indicates a statistically significant departure from randomness.
+
+  *If `obs` is above `hi`, it suggests clustering at that scale.*
+  
+  *If `obs` is below `lo`, it suggests regularity or inhibition at that scale.*
+
+Interpreting the Visualizations
+
+- The x-axis represents distance (or scale).
+- The y-axis represents the value of the K-function (or envelope value at each distance).
+- The observed K-function (`obs`) is a line on this plot.
+- The simulation envelope is represented by two other lines: `lo` and `hi`.
+
+Envelopes provide a way to judge whether an observed spatial structure could be due to random chance, given the assumptions behind the simulations. If the assumptions don't hold for the data, the interpretation might not be valid.
+
+
 ```{r r-k}
 
 # Check for a spatial trend in residuals (Ripley's K-Function)
@@ -623,21 +661,40 @@ ripleys.k <- function(l, nsim=50) {
 }
 
 nsim <- 50
-rk <- purrr::walk(1:nrow(spec.state), function(i) {
+rk <- purrr::map(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
+  fname <- paste0(spec, "_", st, ".rds")
+  fpath <- file.path("artifacts", "ripleys_k")
+  if (file.exists(file.path(fpath, fname))) {
+    return(readRDS(file.path(fpath, fname)))
+  }
   cat("Estimating Ripley's K for", spec, " observations in", 
       paste0(st, ", and computing ", nsim, " simulations.\n"))
   locations <- prep.ipp.data(df.train, st, spec, r.list, just.presence=T)
   rip.k <- get.object(
     ripleys.k(locations, nsim),
-    paste0(spec, "_", st, ".rds"),
-    file.path("artifacts", "ripleys_k")
+    fname, fpath
   )
 }) 
-names(rk) <- map_chr(1:nrow(spec.state), ~paste(spec.state[.x, ]$species,
-                                                spec.state[.x, ]$state, sep="."))
+names(rk) <- map_chr(1:nrow(spec.state), 
+                     ~paste(spec.state[.x, ]$species,
+                            spec.state[.x, ]$state, sep="."))
 
+rk.env.df <- names(rk) %>%
+  map_df(~{
+    spec <- stringr::str_split(.x, "\\.")[[1]][[1]]
+    st <- stringr::str_split(.x, "\\.")[[1]][[2]]
+    rk[[.x]]$envelope %>%
+      as_tibble() %>%
+      mutate(flag=case_when(obs>hi~"Possible Clustering",
+                            obs<lo~"Possible Regularity",
+                            T~NA),
+             common.name = spec, 
+             state = st)
+  })
+
+rk.env.df
 ```
 
 
@@ -776,14 +833,16 @@ ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
 
 ```
 
+
+
 ```{r rd-or-glm}
 
-rd.OR.glm <- readRDS("artifacts/models/ipp_glm_mpl/Ruddy Duck_OR_ipp_glm_mpl.rds")
+# rd.OR.glm <- readRDS("artifacts/models/ipp_glm_mpl/Ruddy Duck_OR_ipp_glm_mpl.rds")
 
 # Diagnostics
-d <- diagnose.ppm(rd.OR.glm, plot.it=F)
+# d <- diagnose.ppm(rd.OR.glm, plot.it=F)
 
-plot(d)
+# plot(d)
 ```
 
 *From `spatstat` documentation*:
