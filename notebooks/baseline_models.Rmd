@@ -28,6 +28,7 @@ library(purrr)
 library(caret)
 library(spatstat)
 library(rJava)
+library(plotly)
 
 ```
 
@@ -694,9 +695,98 @@ rk.env.df <- names(rk) %>%
              state = st)
   })
 
-rk.env.df
 ```
 
+```{r kest-plts, fig.width=9, fig.height=8}
+
+
+# Add all plots to the same plot_ly object using a loop
+p <- plot_ly()
+
+color.mapping <- c("None Found" = "blue", 
+                   "Possible Clustering" = "red", 
+                   "Possible Regularity" = "red")
+
+for (i in 1:nrow(spec.state)) {
+  vis <- ifelse(i==29, T, F)
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  data <- rk.env.df %>% 
+    filter(common.name == spec & state == st) %>%
+    mutate(spatial.structure = ifelse(is.na(flag), "None Found", flag),
+           custom.color = color.mapping[spatial.structure])
+  
+  # Separate traces for each spatial structure
+  # No Spatial Structure Found
+  data.none <- data %>% filter(spatial.structure == "None Found")
+  p <- p %>%
+    add_trace(data=data.none, x = ~r, y = ~obs, 
+              type = 'scatter', mode = 'markers', 
+              marker = list(size = 5, opacity = 1, color="transparent",
+                            line = list(color = "blue", width = .7)),
+              name=paste0("No Spatial Structure Found<br>for ", 
+                          spec, " in ", st), visible = vis)
+  
+  # Possible Spatial Structure
+  data.spatial <- data %>% filter(spatial.structure != "None Found")
+  p <- p %>%
+    add_trace(data=data.spatial, x = ~r, y = ~obs, 
+              type = 'scatter', mode = 'markers', 
+              marker = list(size = 5, opacity = 1, color="transparent",
+                            line = list(color = "red", width = .7)),
+              name=paste0("Possible Spatial Structure<br>for ", 
+                          spec, " in ", st), visible = vis)
+  # Intervals
+  p <- p %>%
+    add_ribbons(data=data, x=~r, ymin=~lo, ymax=~hi, visible = vis, 
+                line=list(color='transparent'),
+                fillcolor="lightgray", name="Simulation Envelope") %>%
+    add_lines(data=data, x=~r, y = ~lo, name = "Low", visible = vis,
+              line = list(dash = "solid", color = "black", width = .7),
+              showlegend=T) %>%
+    add_lines(data=data, x=~r, y = ~hi, name = "High", visible = vis,
+              line = list(dash = "solid", color = "black", width = .7), 
+              showlegend=T)
+# Add title
+  p <- p %>% 
+    layout(title = "Spatial Randomness Measure Using K-Estimate")
+}
+
+p <- p %>% layout(yaxis = list(type = "log", 
+                               title = "K-Estimate (log10 scale)"))
+
+
+# Adjusting visibility logic for the dropdown
+dropdown <- list(
+    active = 0,
+    buttons = purrr::map(1:nrow(spec.state), function(i) {
+        # Create a visibility array for the current dropdown option
+        visibility.array <- purrr::map_lgl(1:(5*nrow(spec.state)), 
+                                           ~.x %in% c(5*i-3, 
+                                                      5*i-2, 
+                                                      5*i-1, 
+                                                      5*i))
+        
+        list(
+            args = list("visible", visibility.array),
+            label = names(rk)[i],  
+            method = "restyle"
+        )
+    })
+)
+
+# Add the dropdown to the layout
+p <- layout(p, updatemenus = list(list(x = 0.3, y = 1.42,  
+                                       yanchor = "top", 
+                                       buttons = dropdown$buttons)))
+
+# htmltools::div(
+#   style="overflow-x:scroll; overflow-y:hide; padding:3px;",
+#   p
+# )
+p
+
+```
 
 ```{r ipp-model, results='hide'}
 
