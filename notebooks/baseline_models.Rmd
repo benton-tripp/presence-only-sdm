@@ -591,25 +591,139 @@ Using the confidence intervals:
 cb.pcf <- purrr::map(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
-  cat("Bootstrapping PCF for", spec, " observations in", st, "\n")
-  locations <- prep.ipp.data(df.train, st, spec, r.list, just.presence=T)
-  loc.boot <- get.object(
-    spatstat.explore::lohboot(locations, fun="pcf"),
-    paste0(spec, "_", st, ".rds"),
-    file.path("artifacts", "cb_pcf")
-  )
+  fname <- paste0(spec, "_", st, ".rds")
+  fpath <- file.path("artifacts", "cb_pcf")
+  if (!file.exists(file.path(fpath, fname))) {
+    cat("Bootstrapping PCF for", spec, " observations in", st, "\n")
+    locations <- prep.ipp.data(df.train, st, spec, r.list, just.presence=T)
+    loc.boot <- get.object(
+      spatstat.explore::lohboot(locations, fun="pcf"),
+      fname, fpath
+    )
+  } else {
+   loc.boot <- readRDS(file.path(fpath, fname)) 
+  }
+  loc.boot
 }) 
 names(cb.pcf) <- map_chr(1:nrow(spec.state), ~paste(spec.state[.x, ]$species,
                                                     spec.state[.x, ]$state, sep="."))
 
+pcf.df <- names(cb.pcf) %>%
+  map_df(~{
+    spec <- stringr::str_split(.x, "\\.")[[1]][[1]]
+    st <- stringr::str_split(.x, "\\.")[[1]][[2]]
+    cb.pcf[[.x]] %>%
+      as_tibble() %>%
+      mutate(
+        spatial.structure=case_when(lo > theo ~ "Possible Clustering",
+                                    hi < theo ~ "Possible Regularity",
+                                    T ~ "No Significant Pattern"),
+        common.name = spec, 
+        state = st)
+  })
+
 ```
 
-```{r}
 
-# Show example
-plot(cb.pcf$`Belted Kingfisher.CO`)
+```{r pcf-plts, fig.width=9, fig.height=8}
+
+
+# Add all plots to the same plot_ly object using a loop
+p <- plot_ly()
+
+fill.first.na <- function(data, filler, x) {
+  dt <- data %>% as.data.table()
+  # Get groups of data, grouped by consecutive NA status
+  dt[, grp := rleid(is.na(.SD)), .SD=x]
+  # Get the first row of each NA group
+  first.rows <- dt[is.na(get(x)), .I[1], by = grp]$V1
+  # Fill the first NA of each group with the filler column value
+  dt[first.rows, (x) := get(filler)]
+  dt %>% pull(!!x)
+}
+
+for (i in 1:nrow(spec.state)) {
+  vis <- ifelse(i==1, T, F)
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  data <- pcf.df %>% 
+    filter(!is.na(border) & !is.na(lo) & !is.na(hi)) %>%
+    filter(common.name == spec & state == st) %>%
+    mutate(border.sig = ifelse(spatial.structure != "No Significant Pattern",
+                               border, NA),
+           border.insig = ifelse(spatial.structure == "No Significant Pattern",
+                                 border, NA)) %>%
+    mutate(border.sig = fill.first.na(., filler="border", x="border.sig"),
+           border.insig = fill.first.na(., filler="border", x="border.insig"))
+  
+  # Separate traces for each spatial structure
+  p <- p %>%
+    # Intervals
+    add_ribbons(data=data, x = ~r, ymin = ~lo, ymax= ~hi, visible = vis, 
+                line=list(color='transparent'),
+                fillcolor="lightgray", name="95% CI") %>%
+    add_lines(data=data, x = ~r, y = ~lo, name = "Low CI", visible = vis,
+              line = list(dash = "solid", color = "black", width = .7),
+              showlegend=T) %>%
+    add_lines(data=data, x = ~r, y = ~hi, name = "High CI", visible = vis,
+              line = list(dash = "solid", color = "black", width = .7), 
+              showlegend=T) %>%
+   # Theoretical PCF assuming CSR (~1 for Poisson Process)
+    add_lines(data=data, x = ~r, y = ~theo, 
+              name = "Theoretical PCF Assuming CSR", 
+              visible = vis, showlegend=T,
+              line = list(dash = "dash", color = "darkorange", width = 1)) %>%
+    # Possible Spatial Structure
+    add_lines(data=data, x = ~r, y = ~border.sig, 
+              line = list(dash = "solid", color = "darkred", width = 1.5),
+              name=paste0("Possible Spatial Structure<br>for ", 
+                          spec, " in ", st), visible = vis) %>%
+    # No Spatial Structure Found
+    add_lines(data=data, x = ~r, y = ~border.insig, 
+              line = list(dash = "solid", color = "blue", width = 1.5),
+              name=paste0("No Significant Pattern<br>for ", 
+                          spec, " in ", st), visible = vis) 
+}
+
+ # Add title
+p <- p %>% layout(
+  title = paste0("Spatial Randomness Measure Using <br>",
+                 "Bootstrap Confidence Bands for Pair Correlation Function"),
+  yaxis = list(title = "Lag Distance (border)"))
+
+
+# Adjusting visibility logic for the dropdown
+dropdown <- list(
+    active = 0,
+    buttons = purrr::map(1:nrow(spec.state), function(i) {
+        # Create a visibility array for the current dropdown option
+        visibility.array <- purrr::map_lgl(1:(6*nrow(spec.state)), 
+                                           ~.x %in% c(
+                                             6*i-5,
+                                             6*i-4, 
+                                             6*i-3, 
+                                             6*i-2, 
+                                             6*i-1, 
+                                             6*i))
+        
+        list(
+            args = list("visible", visibility.array),
+            label = names(cb.pcf)[i],  
+            method = "restyle"
+        )
+    })
+)
+
+# Add the dropdown to the layout
+p <- layout(p, updatemenus = list(list(x = 0.3, y = 1.42,  
+                                       yanchor = "top", 
+                                       buttons = dropdown$buttons)))
+
+
+p
 
 ```
+
 
 ### Ripley's K-Function Simulation Envelopes
 
@@ -708,7 +822,7 @@ color.mapping <- c("None Found" = "blue",
                    "Possible Regularity" = "red")
 
 for (i in 1:nrow(spec.state)) {
-  vis <- ifelse(i==29, T, F)
+  vis <- ifelse(i==1, T, F)
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
   data <- rk.env.df %>% 
@@ -747,12 +861,10 @@ for (i in 1:nrow(spec.state)) {
     add_lines(data=data, x=~r, y = ~hi, name = "High", visible = vis,
               line = list(dash = "solid", color = "black", width = .7), 
               showlegend=T)
-# Add title
-  p <- p %>% 
-    layout(title = "Spatial Randomness Measure Using K-Estimate")
 }
 
-p <- p %>% layout(yaxis = list(type = "log", 
+p <- p %>% layout(title = "Spatial Randomness Measure Using K-Estimate",
+                  yaxis = list(type = "log", 
                                title = "K-Estimate (log10 scale)"))
 
 
@@ -762,7 +874,8 @@ dropdown <- list(
     buttons = purrr::map(1:nrow(spec.state), function(i) {
         # Create a visibility array for the current dropdown option
         visibility.array <- purrr::map_lgl(1:(5*nrow(spec.state)), 
-                                           ~.x %in% c(5*i-3, 
+                                           ~.x %in% c(5*i-3,
+                                                      5*i-4,
                                                       5*i-2, 
                                                       5*i-1, 
                                                       5*i))
@@ -776,14 +889,11 @@ dropdown <- list(
 )
 
 # Add the dropdown to the layout
-p <- layout(p, updatemenus = list(list(x = 0.3, y = 1.42,  
+p <- layout(p, updatemenus = list(list(x = 0.3, y = 1.4,  
                                        yanchor = "top", 
                                        buttons = dropdown$buttons)))
 
-# htmltools::div(
-#   style="overflow-x:scroll; overflow-y:hide; padding:3px;",
-#   p
-# )
+
 p
 
 ```
