@@ -9,6 +9,8 @@ docs/archive/*
 notebooks/archive/*
 artifacts/models/ipp_glm_mpl/*
 artifacts/models/ipp_gam_mpl/*
+artifacts/plots/*
+!artifats/plots/all_rasters_html.rds
 spatstat.model/*
 spatstat.model
 
