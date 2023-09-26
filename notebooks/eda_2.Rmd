@@ -100,11 +100,11 @@ r.list <- set_names(states) %>%
                      file.path("artifacts/feature_engineered_final", 
                                paste0(.x, ".tif")))))
 
-plt.x.dims <- list(
-  NC=24,
-  CO=21,
-  VT=15,
-  OR=18
+plt.ncol <- list(
+  NC=4,
+  CO=5,
+  VT=6,
+  OR=5
 )
 # Get plots as encoded html objects
 r.plots <- get.object(
@@ -112,6 +112,8 @@ r.plots <- get.object(
     set_names() %>%
     purrr::map(function(st) {
       cat("Getting raster plots for", st, "\n")
+      ncol <- plt.ncol[[st]]
+      nrow <- ceiling(length(names(r.list[[st]])) / ncol)
       p <- get.object(
         # Create plots of all rasters, by state; Save plot
         purrr::map(names(r.list[[st]]), function(r.name) {
@@ -122,8 +124,7 @@ r.plots <- get.object(
           if (r.name != "NLCD_Land") p <- p + scale_fill_viridis_c()
           p + labs(title=r.name) + theme(legend.position="none")
         }) %>%
-          ggarrange(plotlist=., 
-                    ncol=4, nrow=ceiling(length(names(r.list[[st]])) / 4)) +
+          ggarrange(plotlist=., ncol=ncol, nrow=nrow) +
           ggtitle(paste0("All Raster Layers for ", st)),
         paste0(st, "_rasters.rds"),
         "artifacts/plots"
@@ -132,7 +133,7 @@ r.plots <- get.object(
       # Create a temporary file
       tmpfile <- tempfile(fileext = ".svg")
       # Save the ggplot to this file
-      ggsave(filename = tmpfile, p, width = plt.x.dims[[st]], height = 24)
+      ggsave(filename = tmpfile, p, width = 24, height = 24)
       # Use img() function from htmltools to display it within a div
       img.src <- paste0("data:image/svg+xml;base64,", base64enc::base64encode(tmpfile))
       file.remove(tmpfile)
@@ -917,115 +918,75 @@ p
 ```{r ipp-model, results='hide'}
 
 # Define min/max scaling function for rasters
-min.max.scale <- function(r, na.rm=T) {
-  min.r <- min(values(r), na.rm=na.rm)
-  max.r <- max(values(r), na.rm=na.rm)
-  (r - min.r) / (max.r- min.r)
+min.max.scale <- function(r, x=NULL, na.rm=T) {
+  # If training data is provided
+  if (!is.null(x)) {
+    min.x <- min(x, na.rm=na.rm)
+    max.x <- max(x, na.rm=na.rm)
+  # Or just scale based on full raster values
+  } else {
+    min.x <- min(values(r), na.rm=na.rm)
+    max.x <- max(values(r), na.rm=na.rm)
+  }
+  (r - min.x) / (max.x - min.x)
 }
 
-purrr::walk(1:nrow(spec.state), function(i) {
+# Get training/testing spatstat data, and 
+# pre-process (scale) rasters using training data
+final.ipp.data <- purrr::map(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
-  glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
-                        paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
-  gam.path <- file.path("artifacts/models/ipp_gam_mpl", 
-                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
-  if (!all(file.exists(c(glm.path, gam.path)))) {
-    cat("Fitting IPP model for", spec, "in", st, "\n")
-    # Get raster
-    r <- r.list[[st]]
-    
-    # Select covariates based on feature importance
-    cat("\tFetching variable importance...\n")
-    fs.df <- var.imp %>% 
-      filter(state == st & common.name == spec) %>%
-      mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
-             var2 = purrr::map_chr(variable, ~ {
-               split_result <- stringr::str_split(.x, "\\:")[[1]]
-               if(length(split_result) > 1) split_result[2] else NA_character_
-             })) %>%
-      filter(!(var1 %in% c("lat", "lon")) & !(var2 %in% c("lat", "lon"))) %>%
-      mutate(var1 = purrr::map_chr(
-        var1, ~tryCatch({r[[.x]]; .x}, error=function(e) {
-          ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
-        })),
-        var2 = purrr::map_chr(
-          var2, ~tryCatch({r[[.x]]; .x}, error=function(e) {
-            ifelse(is.na(.x), NA_character_, paste0(.x, "_", st))
-          }))) %>%
-      mutate(variable = ifelse(is.na(var2), var1, paste(var1, var2, sep = ":"))) %>%
-      head(30)
-    
-    if (nrow(fs.df) > 0) {
-      covariates <- c(fs.df$var1, fs.df$var2) %>% 
-      unique() %>% 
-      sort()
-    } else {
-      cat("\tERROR: There are no specified covariates for", spec, st, "\n")
-    }
-    cat("\tGetting `spatstat.geom::ppp` object with training points...\n")
-    Q <- prep.ipp.data(df.train, st, spec, r.list)
-    
-    cat("\tPre-Processing covariates...\n")
-    # Use pre-processing scaler on rasters
-    filt.df <- df.train[state == st & common.name == spec, ..covariates]
-    to.scale <- sapply(filt.df, function(x) is.numeric(x) && 
-                         length(unique(x)) > 2)
-    to.scale <- covariates[covariates %in% names(which(unlist(to.scale)))]
-    
-    # Load/compute filtered & pre-processed rasters
-    covariates <- covariates %>%
-      set_names() %>%
-      purrr::map(function(.x) {
-        if (.x %in% to.scale) {
-          # Scale the data
-          out <- min.max.scale(r[[.x]])
-        } else {
-          out <- r[[.x]]
-        }
-        out <- get.object(
-          out %>%
-          # Reproject to same CRS as point data
+  cat("Prepping final data for", spec, "in", st, "\n")
+  # Get raster
+  r <- r.list[[st]]
+  cat("\tGetting `spatstat.geom::ppp` object with training points...\n")
+  Q <- get.object(
+    prep.ipp.data(df.train, st, spec, r.list),
+    paste(st, "_", spec, "_Q.rds"),
+    file.path("artifacts", "train_spatstat_Q")
+  )
+  cat("\tGetting `spatstat.geom::ppp` object with testing points...\n")
+  Q.test <- get.object(
+    prep.ipp.data(df.test, st, spec, r.list),
+    paste(st, "_", spec, "_Q.rds"),
+    file.path("artifacts", "test_spatstat_Q")
+  )
+  
+  cat("\tPre-Processing covariates...\n")
+  # Use pre-processing scaler on rasters
+  covariates <- names(r)
+  filt.df <- df.train[state == st & common.name == spec, ..covariates]
+  to.scale <- sapply(filt.df, function(x) is.numeric(x) && 
+                       length(unique(x)) > 2)
+  to.scale <- covariates[covariates %in% names(which(unlist(to.scale)))]
+  
+  # Load/compute filtered & pre-processed rasters
+  covariates <- covariates %>%
+    set_names() %>%
+    purrr::map(function(.x) {
+      if (.x %in% to.scale) {
+        # Scale the data
+        out <- min.max.scale(r[[.x]], pull(filt.df, !!.x))
+      } else {
+        out <- r[[.x]]
+      }
+      out <- get.object(
+        out %>%
+          # Re-project to same CRS as point data
           terra::project(x=., 
                          y=st_crs(4326, parameters=T)$Wkt) %>%
           as.data.frame(xy=T) %>%
           filter(!is.na(!!.x)) %>%
           as.im(),
-          paste0(st, "_", .x, ".rds"),
-          "artifacts/spatstat_imgs"
-        )
-        
-      })
-
-    # Create formula
-    .f <- paste(fs.df$variable, collapse=" + ") %>% 
-      paste("~", .) %>% 
-      as.formula()
-    
-    # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
-    # * gcontrol=list() for additional glm/gam parameters
-    
-    # GLM Model
-    cat("\tFitting GLM Model using the Method of Maximum PseudoLikelihood...\n")
-    fit.glm <- ppm(Q=Q, trend=.f, covariates=covariates, 
-                   rbord=.05, method="mpl") %>%
-      get.object(
-        obj=.,
-        file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
-        obj.path="artifacts/models/ipp_glm_mpl")
-    
-    # GAM Model
-    cat("\tFitting GAM Model using the Method of Maximum PseudoLikelihood...\n")
-    fit.gam <- ppm(Q=Q, trend=.f, covariates=covariates, 
-                   rbord=.05, method="mpl", use.gam=T) %>%
-      get.object(
-        obj=.,
-        file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
-        obj.path="artifacts/models/ipp_gam_mpl"
+        paste0(st, "_", .x, ".rds"),
+        "artifacts/spatstat_imgs"
       )
-    cat("\tFinished IPP model for", spec, "in", st, "\n")
-  }
-  gc()
+    })
+  list(
+    train.Q=Q,
+    test.Q=Q.test,
+    covariates=covariates
+  )
 })
 
 
