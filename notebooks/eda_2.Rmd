@@ -14,15 +14,19 @@ output:
 
 ```{r setup, include=F, warning=F, message=F}
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
-
 ```
 
 ## Overview
 
+The Species Distribution Model (SDM) Benchmark Study Part 3 continues an exploration of the data from from eight bird species across Colorado, Oregon, North Carolina, and Vermont, as well as the corresponding environmental rasters. Along with in-depth testing of the data ensuring that it meets model assumptions, this part of the study further refines the feature selection process and completes the pre-processes of the raster datasets.
+
 ## Setup
 
-```{r setup-stuff}
+The data is already available from Parts 1 and 2 of the study. To begin, it will need to be loaded into the session, along with the required libraries. A helper function will also be declared, which will be used to help simplify the caching process of the analysis outputs.
 
+```{r setup-stuff, results='hide'}
+
+# Source jquery
 htmltools::tags$head(
   htmltools::tags$script(
     src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"
@@ -89,9 +93,55 @@ df %>% as_tibble()
 
 ```
 
+### Split into Training/Test Sets
+
+As was done in Part 2 of the study, the data is split into a training set and a test set. The data is stratified based on latitude, longitude, species, state, and absence to ensure that the distribution of these variables is consistent between the train and test sets. This stratification helps maintain representative samples and mitigates potential biases.
+
+```{r train-test-split}
+
+# Set seed for splitting and modeling
+set.seed(19)
+
+stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
+  # Cut along lat/lon values to create grids (lat.bin & lon.bin)
+  # lat.lon.bins is the number of divisions you want
+  df$lat.bin <- cut(df$lat, breaks=lat.lon.bins, labels = F)
+  df$lon.bin <- cut(df$lon, breaks=lat.lon.bins, labels = F)
+  
+  # Create a new variable combining the stratification variables
+  df %>%
+    # stratify on lat/lon bins, species, state, and presence/absence
+    mutate(strata = paste(lat.bin, lon.bin, common.name, state, presence)) %>%
+    pull(strata) %>%
+    # Create the data partitions
+    createDataPartition(., p = p, list = F) %>%
+    suppressWarnings()
+}
+
+prepare.data <- function(df, p=.7, lat.lon.bins=25) {
+  train.index <- stratified.split.idx(df, p=p, lat.lon.bins = lat.lon.bins)
+  df.train <- df[train.index, ]
+  df.test <- df[-train.index, ]
+  
+  list(train = df.train, 
+       test = df.test,
+       index = train.index)
+}
+
+# Get train/test indices
+train.test <- prepare.data(df, .7)
+
+# Split datatset
+df.train <- df[train.test$index,] 
+df.test <- df[-train.test$index,]
+
+```
+
 ### Load Rasters
 
-```{r load-rasters, results='hide'}
+All of the rasters saved in parts 1 and 2 of the study are loaded into 4 multi-layer rasters (one for each state).
+
+```{r load-rasters}
 
 # Load "Feature Engineered" rasters and original rasters into a 
 # single multi-layer raster by state
@@ -99,6 +149,14 @@ r.list <- set_names(states) %>%
   purrr::map(~rast(c(paste0("data/final_rasters/", .x, ".tif"),
                      file.path("artifacts/feature_engineered_final", 
                                paste0(.x, ".tif")))))
+
+```
+
+### Visualize the Rasters
+
+In the prior sections, not all of the raster visualizations were output to the rendered results. To gain a better understanding of each of the raster layers, an interactive plot can be generated to simplify parsing through all of the layers at each state.
+
+```{r load-rasters-plot-stuff, results='hide'}
 
 plt.ncol <- list(
   NC=4,
@@ -173,6 +231,14 @@ htmltools::div(
 
 ```
 
+## Feature Selection
+
+Feature selection was addressed in Part 2 of this study. However, this took place using ALL of the covariates of the dataset. However, many of the resulting "important" features or feature interactions were redundant (i.e., colinear). To ensure that the models produced are unbiased and meet the assumptions required by the different model types, these results will be re-produced using a subset of the original variables.
+
+### Update Categorical Rasters to Binary Layers
+
+Prior to refining the feature-selection process, some pre-processing needs to be done. The categorical rasters need to be converted to individual binary layers.
+
 ```{r convert-land-cover}
 
 if (!dir.exists("artifacts/land_cover_binary")) dir.create("artifacts/land_cover_binary")
@@ -245,51 +311,9 @@ r.list <- set_names(states) %>%
 
 ```
 
-### Split into Training/Test Sets
+### Identify "Redundant" Rasters
 
-```{r train-test-split}
-
-# Set seed for splitting and modeling
-set.seed(19)
-
-stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
-  # Cut along lat/lon values to create grids (lat.bin & lon.bin)
-  # lat.lon.bins is the number of divisions you want
-  df$lat.bin <- cut(df$lat, breaks=lat.lon.bins, labels = F)
-  df$lon.bin <- cut(df$lon, breaks=lat.lon.bins, labels = F)
-  
-  # Create a new variable combining the stratification variables
-  df %>%
-    # stratify on lat/lon bins, species, state, and presence/absence
-    mutate(strata = paste(lat.bin, lon.bin, common.name, state, presence)) %>%
-    pull(strata) %>%
-    # Create the data partitions
-    createDataPartition(., p = p, list = F) %>%
-    suppressWarnings()
-}
-
-prepare.data <- function(df, p=.7, lat.lon.bins=25) {
-  train.index <- stratified.split.idx(df, p=p, lat.lon.bins = lat.lon.bins)
-  df.train <- df[train.index, ]
-  df.test <- df[-train.index, ]
-  
-  list(train = df.train, 
-       test = df.test,
-       index = train.index)
-}
-
-# Get train/test indices
-train.test <- prepare.data(df, .7)
-
-# Split datatset
-df.train <- df[train.test$index,] 
-df.test <- df[-train.test$index,]
-
-```
-
-## Feature Selection
-
-Feature selection was addressed in Part 2 of this study. ... ADDITIONAL DETAILS HERE ...
+As previously stated, many of the features are redundant. In particular, the "engineered" features were meant to improve upon the original features, and reduce multi-collinearity. Based on the original results of the feature selection process, it was shown that the new variables weren't always necessarily "better". Below is the list of raster layers that were determined should be removed from each of the rasters in order to minimize multi-collinearity and maximize model performance. 
 
 ```{r remove-redundant-features}
 
@@ -302,6 +326,9 @@ redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity"
 
 ```
 
+### Re-Fit LASSO Models with All Features
+
+As was done in part 2, a GLM model is fit for each of the species/state subsets using the training data, but this time with the refined raster subset.
 
 ```{r glm-feature-selection}
 
@@ -417,6 +444,13 @@ var.imp <- species %>% purrr::map_df(function(spec) {
 
 ```
 
+## EDA and Pre-Processing for Inhomogeneous Poisson Process Models
+
+There will be two model types that serve as "baseline" models during this study: Inhomogeneous Poisson Process models, and 
+Maximum Entropy models. The details of these models will be described in greater detail in future phases of the study. That being said, it is still important during the preparation phase to ensure that the data is ready for modeling, and that all model assumptions are met. In particular, the `spatstat` package, which will be used to fit the Inhomogeneous Poisson Process models, requires that the model inputs are structured in a less general format (i.e., a tabular dataset). As a result, the next sections are focused on (a) pre-processing the data and save the outputs to `spatstat.geom::ppp` (Poisson Point Process) and `spatstat.geom::quadscheme` (Quadrature Scheme) objects; and (b) using several available `spatstat.explore` methods to help ensure that the data is well suited for modeling using an IPP model.
+
+### Define Pre-Processing Functions
+
 ```{r ipp-data-prep}
 
 # Ensure counter-clockwise direction
@@ -460,6 +494,12 @@ convert.to.list.format <- function(sf.object) {
 
   return(polygons.list)
 }
+
+```
+
+### Pre-Process Data for IPP Models
+
+```{r pre-process-ipp}
 
 prep.ipp.data <- function(data, st, spec, 
                           r.list, just.presence=F,
@@ -634,6 +674,7 @@ pcf.df <- names(cb.pcf) %>%
 
 ```
 
+#### Plot Bootstrapped PCF Results 
 
 ```{r pcf-plts, fig.width=9, fig.height=8}
 
@@ -732,8 +773,7 @@ p
 
 ```
 
-
-#### Action Based on Spatial Structure Analysis
+#### Results
 
 The results from the Pair Correlation Function (PCF) analysis provide insights into the underlying spatial distribution of the bird species in their different sample areas. If a significant spatial structure is identified at certain distances (either clustering or regularity), it suggests that the spatial distribution of the species in that region deviates from complete spatial randomness. In such cases, it's important to account for this non-random distribution when building a predictive Poisson Point Process model. Specifically, including spatially-aware covariates or interaction terms might improve the accuracy and robustness of the predictions.
 
@@ -825,6 +865,8 @@ rk.env.df <- names(rk) %>%
 
 ```
 
+#### Plot K-Function Simulation Results
+
 ```{r kest-plts, fig.width=9, fig.height=8}
 
 
@@ -912,8 +954,11 @@ p
 
 ```
 
+#### Results
 
+To reiterate the implications of the plots above, the Ripley's K-Function Simulation Envelopes analysis evaluates the spatial distribution of bird species across different distances. If the observed K-function surpasses the upper simulation envelope, it indicates clustering at that scale, possibly due to shared resources or social behaviors. Values below the lower envelope suggest regular spacing or inhibition, potentially arising from territorial behaviors or competition. When the observed K-function remains within the simulation envelope, the distribution might be random, emphasizing that environmental factors predominantly influence the species' distribution. However, even in such cases, it's essential to consider potential spatial patterns not captured in this analysis when building predictive models.
 
+### Pre-Processing IPP Model Covariates
 
 ```{r ipp-model, results='hide'}
 
@@ -991,3 +1036,9 @@ final.ipp.data <- purrr::map(1:nrow(spec.state), function(i) {
 
 
 ```
+
+## Conclusion
+
+The second phase of the exploratory analysis adds depth to the initial findings, establishing another layer of groundwork for the study. Just as in the initial phase, this stage does not yield conclusive results. In subsequent phases, various models will be applied to the data, and their outcomes compared, facilitating a detailed examination of the data's specifications and emergent patterns.
+
+

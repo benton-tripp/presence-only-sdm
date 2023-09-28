@@ -34,6 +34,7 @@ library(plotly)
 ## Overview
 
 
+
 ### Inhomogeneous Poisson Process (IPP)
 
 An Inhomogeneous Poisson Process (IPP) is a statistical model used for events that occur randomly over space or time. Unlike a regular Poisson process, the rate of event occurrence in an IPP can vary.
