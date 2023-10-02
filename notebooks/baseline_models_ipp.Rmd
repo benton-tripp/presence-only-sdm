@@ -1,0 +1,277 @@
+---
+title: 'SDM Benchmark Study Part 5: Inhomogeneous Poisson Process Models'
+author: "Benton Tripp"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+    df_print: paged
+  
+---
+
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
+```
+
+## Setup
+
+```{r setup-2, results='hide'}
+
+library(sf)
+library(terra)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(purrr)
+library(caret)
+library(spatstat)
+library(rJava)
+library(plotly)
+
+# Set seed for splitting and modeling
+set.seed(19)
+
+# Load the dataset saved in part 2 of the study 
+df <- readRDS("artifacts/final_data/final_data.rds") %>% setDT()
+
+# Define some global variables that will be referenced throughout the modeling 
+states <- sort(unique(df$state))
+species <- sort(unique(df$common.name))
+spec.state <- expand.grid(species=species, 
+                          state=states, 
+                          stringsAsFactors=F)
+
+```
+
+For computational efficiency, models are cached. This section uses the function defined below to retrieve the model from cache if it exists or save it to the cache if it doesn't. This approach speeds up the modeling process, especially when iterating and fine-tuning various models, by avoiding retraining on the same dataset unless necessary.
+
+```{r get-object-func}
+
+# Get model or other object from cache if it has been saved before
+get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=saveRDS, ...) {
+  f.path <- file.path(obj.path, file.name)
+  if (!dir.exists(obj.path)) {
+    dir.create(obj.path)
+  }
+  # Object cache check
+  if (file.exists(f.path)) {
+    obj <- read.func(f.path)
+  } else {
+    save.func(obj, f.path, ...)
+  }
+  obj
+}
+
+```
+
+
+## IPP Models
+
+### Load Variable Importance
+
+```{r varimp}
+# Load variable importance from fitted LASSO models
+lasso.model.path="artifacts/models/lasso_2_fs"
+
+var.imp <- species %>% purrr::map_df(function(spec) {
+    spec.state.fit <- states %>% purrr::map_df(function(st) {
+      fname <- paste0(tolower(gsub(" ", "_", spec)), "_", st, "_regr_l1.rds")
+      fit <- readRDS(file.path(lasso.model.path, fname))
+      coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
+        as.matrix() %>%
+        as.data.frame()
+      # Remove the intercept
+      coef.df <- coef.df[-1, , drop = F]
+      
+      # Create a data frame of variable importance
+      var.importance <- tibble(
+        common.name = spec,
+        state = st,
+        variable = rownames(coef.df),
+        importance = abs(coef.df[,1])
+      ) %>%
+        # Rank variables by importance
+        arrange(state, common.name, -importance, variable) %>%
+        # Only look at variables where imp. > 0
+        filter(importance > 0)
+    })
+  })
+
+```
+
+
+```{r ipp-model, results='hide'}
+
+purrr::walk(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
+                        paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
+  gam.path <- file.path("artifacts/models/ipp_gam_mpl", 
+                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
+  if (!all(file.exists(c(glm.path, gam.path)))) {
+    cat("Fitting IPP model for", spec, "in", st, "\n")
+
+    # Select covariates based on feature importance
+    cat("\tFetching variable importance...\n")
+    fs.df <- var.imp %>% 
+      filter(state == st & common.name == spec) %>%
+      mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
+             var2 = purrr::map_chr(variable, ~ {
+               split_result <- stringr::str_split(.x, "\\:")[[1]]
+               if(length(split_result) > 1) split_result[2] else NA_character_
+             })) %>%
+      mutate(variable = ifelse(is.na(var2), var1, paste(var1, var2, sep = ":"))) %>%
+      # Keep only at most 30 variables/interactions
+      head(30)
+    
+    if (nrow(fs.df) > 0) {
+      covariates <- c(fs.df$var1, fs.df$var2) %>% 
+      unique() %>% 
+      sort()
+    } else {
+      cat("\tERROR: There are no specified covariates for", spec, st, "\n")
+    }
+    
+    cat("\tGetting pre-processed `spatstat.geom::ppp` object (train)...\n")
+    Q <- readRDS(file.path("artifacts", "train_spatstat_Q",
+                           paste(st, "_", spec, "_Q.rds")))
+    cat("\tGetting `spatstat.geom::ppp` object (test)...\n")
+    Q.test <- readRDS(file.path("artifacts", "test_spatstat_Q",
+                                paste(st, "_", spec, "_Q.rds")))
+    
+    # Load/compute filtered & pre-processed rasters
+    covariates <- covariates %>%
+      set_names() %>%
+      purrr::map(function(.x) {
+        file <- file.path("artifacts/spatstat_imgs", paste0(st, "_", .x, ".rds"))
+        readRDS(file)
+      })
+
+    # Create formula
+    .f <- paste(fs.df$variable, collapse=" + ") %>% 
+      paste("~", .) %>% 
+      as.formula()
+    
+    # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
+    # * gcontrol=list() for additional glm/gam parameters
+    
+    # GLM Model
+    cat("\tFitting GLM Model using the Method of Maximum PseudoLikelihood...\n")
+    fit.glm <- ppm(Q=Q, trend=.f, covariates=covariates, 
+                   rbord=.05, method="mpl") %>%
+      get.object(
+        obj=.,
+        file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
+        obj.path="artifacts/models/ipp_glm_mpl")
+    
+    glm.roc <- spatstat.model::roc.ppm(fit.glm)
+    
+    locations.test <- data.table::rbindlist(
+      list(
+        data.table(x=Q.test$data$x, y=Q.test$data$y, obs=T), 
+        data.table(x=Q.test$dummy$x, y=Q.test$dummy$y, obs=F)
+      )
+    ) 
+    all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
+
+    .auc <- auc.ppm(fit.glm)
+    glm.pred <- spatstat.model::predict.ppm(fit.glm, 
+                                            locations=locations.test[, .(x,y)],
+                                            type="trend", se=T)
+    glm.ci <- spatstat.model::predict.ppm(fit.glm, locations=locations.test[, .(x,y)],
+                                          type="trend", interval="c")
+    glm.test <- cbind(locations.test,
+                      data.table(
+                        est=glm.pred$estimate,
+                        se=glm.pred$se,
+                        lo=glm.ci[1:length(glm.pred$estimate)],
+                        hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
+    )
+    
+    # If there is an intensity of at least one, then predict it as a 
+    # probability of 1
+    # Calculate the probability of finding at least one sloth at a location as 
+    # 1 - exp(-λ), where λ is the predicted intensity. This calculation is based 
+    # on the cumulative distribution function of the Poisson distribution. I.e.,
+    # the probability of observing zero events in a Poisson dist. is given by:
+    # P(X = 0) = exp(-λ), and so P(X≥1)=1−P(X=0)=1−exp(−λ)
+    glm.test[, (c("prob", "prob.lo", "prob.hi")) := 
+               purrr::map(.SD, ~{1 - exp(-.x)}), .SDcols=c("est", "lo", "hi")]
+    
+    glm.count.pred <- spatstat.model::predict.ppm(fit.glm, type="count", se=T)
+    glm.pi <- spatstat.model::predict.ppm(fit.glm, type="count", 
+                                          se=T, interval="p")
+    
+    # GAM Model
+    cat("\tFitting GAM Model using the Method of Maximum PseudoLikelihood...\n")
+    fit.gam <- ppm(Q=Q, trend=.f, covariates=covariates, 
+                   rbord=.05, method="mpl", use.gam=T) %>%
+      get.object(
+        obj=.,
+        file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
+        obj.path="artifacts/models/ipp_gam_mpl"
+      )
+    cat("\tFinished IPP model for", spec, "in", st, "\n")
+  }
+  gc()
+})
+
+
+```
+
+
+```{r examine-mel-results}
+
+ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  tibble(
+    common.name=spec,
+    state=st,
+    glm.path=file.path("artifacts/models/ipp_glm_mpl", 
+                        paste0(spec, "_", st, "_ipp_glm_mpl.rds")),
+    gam.path=file.path("artifacts/models/ipp_gam_mpl", 
+                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
+  )
+})
+
+```
+
+
+
+```{r rd-or-glm}
+
+# rd.OR.glm <- readRDS("artifacts/models/ipp_glm_mpl/Ruddy Duck_OR_ipp_glm_mpl.rds")
+
+# Diagnostics
+# d <- diagnose.ppm(rd.OR.glm, plot.it=F)
+
+# plot(d)
+```
+
+*From `spatstat` documentation*:
+
+`which = "marks`:
+
+Plot the residual measure. For the exponential energy weights (`type="eem"`) this displays circles centred at the points of the data pattern, with radii proportional to the exponential energy weights. For the residuals (`type="raw"`, `type="inverse"` or `type="pearson"`) this again displays circles centred at the points of the data pattern with radii proportional to the (positive) residuals, while the plotting of the negative residuals depends on the argument plot.neg. If `plot.neg="image"` then the negative part of the residual measure, which is a density, is plotted as a colour image. If `plot.neg="discrete"` then the discretised negative residuals (obtained by approximately integrating the negative density using the quadrature scheme of the fitted model) are plotted as squares centred at the dummy points with side lengths proportional to the (negative) residuals. [To control the size of the circles and squares, use the argument `maxsize`.]
+
+`which = "smooth"`:
+
+Plot a kernel-smoothed version of the residual measure. Each data or dummy point is taken to have a ‘mass’ equal to its residual or exponential energy weight. (Note that residuals can be negative). This point mass is then replaced by a bivariate isotropic Gaussian density with standard deviation sigma. The value of the smoothed residual field at any point in the window is the sum of these weighted densities. If the fitted model is correct, this smoothed field should be flat, and its height should be close to 0 (for the residuals) or 1 (for the exponential energy weights). The field is plotted either as an image, contour plot or perspective view of a surface, according to the argument `plot.smooth`. The range of values of the smoothed field is printed if the option `which="sum"` is also selected.
+
+
+```{r ipp-diag-plot-ex, fig.width=8, fig.height=6}
+
+
+
+```
+
+
+
