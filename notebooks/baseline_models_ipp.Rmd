@@ -117,7 +117,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
                         paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
   if (!all(file.exists(c(glm.path, gam.path)))) {
     cat("Fitting IPP model for", spec, "in", st, "\n")
-
+    
     # Select covariates based on feature importance
     cat("\tFetching variable importance...\n")
     fs.df <- var.imp %>% 
@@ -133,8 +133,8 @@ purrr::walk(1:nrow(spec.state), function(i) {
     
     if (nrow(fs.df) > 0) {
       covariates <- c(fs.df$var1, fs.df$var2) %>% 
-      unique() %>% 
-      sort()
+        unique() %>% 
+        sort()
     } else {
       cat("\tERROR: There are no specified covariates for", spec, st, "\n")
     }
@@ -153,7 +153,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
         file <- file.path("artifacts/spatstat_imgs", paste0(st, "_", .x, ".rds"))
         readRDS(file)
       })
-
+    
     # Create formula
     .f <- paste(fs.df$variable, collapse=" + ") %>% 
       paste("~", .) %>% 
@@ -171,22 +171,13 @@ purrr::walk(1:nrow(spec.state), function(i) {
         file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
         obj.path="artifacts/models/ipp_glm_mpl")
     
-    glm.roc <- spatstat.model::roc.ppm(fit.glm)
-    
     locations.test <- data.table::rbindlist(
       list(
         data.table(x=Q.test$data$x, y=Q.test$data$y, obs=T), 
         data.table(x=Q.test$dummy$x, y=Q.test$dummy$y, obs=F)
       )
     ) 
-    # covariates.dt <- names(covariates) %>%
-    #   set_names() %>%
-    #   purrr::map(function(x) {
-    #     covariates[[x]] %>% 
-    #       as.data.table() %>% 
-    #       setnames(c("x", "y", x))
-    #   }) %>%
-    #   Reduce(function(x, y) merge(x, y, by = c("x", "y"), all = F), .)
+    
     covariates.rasters <- names(covariates) %>%
       set_names() %>%
       purrr::map(function(x) {
@@ -201,12 +192,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
                        terra::extract(r, cbind(locations.test$x, 
                                                locations.test$y))]
     })
-    resp.yhat <- predict.glm(fit.glm$internal$glmfit, 
-                             newdata=locations.test, type="r")
     
-    all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
-
-    .auc <- auc.ppm(fit.glm)
     glm.pred <- spatstat.model::predict.ppm(fit.glm, 
                                             locations=locations.test[, .(x,y)],
                                             type="trend", se=T)
@@ -225,20 +211,18 @@ purrr::walk(1:nrow(spec.state), function(i) {
       p.obs.hi = 1 - dpois(0, hi)
     )]
     
-    # If there is an intensity of at least one, then predict it as a 
-    # probability of 1
-    # Calculate the probability of finding at least one sloth at a location as 
-    # 1 - exp(-λ), where λ is the predicted intensity. This calculation is based 
-    # on the cumulative distribution function of the Poisson distribution. I.e.,
-    # the probability of observing zero events in a Poisson dist. is given by:
-    # P(X = 0) = exp(-λ), and so P(X≥1)=1−P(X=0)=1−exp(−λ)
-    glm.test[, (c("prob", "prob.lo", "prob.hi")) := 
-               purrr::map(.SD, ~{1 - exp(-.x)}), .SDcols=c("est", "lo", "hi")]
-    
-   
+    all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
     glm.count.pred <- spatstat.model::predict.ppm(fit.glm, type="count", se=T)
     glm.pi <- spatstat.model::predict.ppm(fit.glm, type="count", 
                                           se=T, interval="p")
+    
+    glm.results <- list(
+      fit=fit.glm,
+      test=glm.test,
+      all.preds=all.predictions,
+      count=glm.count.pred,
+      pi=glm.pi
+    )
     
     # GAM Model
     cat("\tFitting GAM Model using the Method of Maximum PseudoLikelihood...\n")
@@ -249,7 +233,41 @@ purrr::walk(1:nrow(spec.state), function(i) {
         file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
         obj.path="artifacts/models/ipp_gam_mpl"
       )
+    
+    gam.pred <- spatstat.model::predict.ppm(fit.gam, 
+                                            locations=locations.test[, .(x,y)],
+                                            type="trend", se=T)
+    gam.ci <- spatstat.model::predict.ppm(fit.gam, locations=locations.test[, .(x,y)],
+                                          type="trend", interval="c")
+    gam.test <- cbind(locations.test,
+                      data.table(
+                        est=gam.pred$estimate,
+                        se=gam.pred$se# ,
+                        # lo=gam.ci[1:length(gam.pred$estimate)],
+                        # hi=gam.ci[(length(gam.pred$estimate) + 1):length(gam.ci)]
+                      )
+    )
+    gam.test[, `:=` (
+      p.obs = 1 - dpois(0, est)# , # probability > 0
+      # p.obs.lo = 1 - dpois(0, lo),
+      # p.obs.hi = 1 - dpois(0, hi)
+    )]
+    
+    all.predictions.gam <- response.ppm(fit.gam)$window %>% as.matrix()
+    gam.count.pred <- spatstat.model::predict.ppm(fit.gam, type="count", se=T)
+    gam.pi <- spatstat.model::predict.ppm(fit.gam, type="count", 
+                                          se=T, interval="p")
+    
+    gam.results <- list(
+      fit=fit.gam,
+      test=gam.test,
+      all.preds=all.predictions,
+      count=gam.count.pred,
+      pi=gam.pi
+    )
+    
     cat("\tFinished IPP model for", spec, "in", st, "\n")
+
   }
   gc()
 })
