@@ -179,6 +179,31 @@ purrr::walk(1:nrow(spec.state), function(i) {
         data.table(x=Q.test$dummy$x, y=Q.test$dummy$y, obs=F)
       )
     ) 
+    # covariates.dt <- names(covariates) %>%
+    #   set_names() %>%
+    #   purrr::map(function(x) {
+    #     covariates[[x]] %>% 
+    #       as.data.table() %>% 
+    #       setnames(c("x", "y", x))
+    #   }) %>%
+    #   Reduce(function(x, y) merge(x, y, by = c("x", "y"), all = F), .)
+    covariates.rasters <- names(covariates) %>%
+      set_names() %>%
+      purrr::map(function(x) {
+        r <- terra::rast(covariates[[x]])
+        set.crs(r, st_crs(4326, parameters=T)$Wkt)
+        names(r) <- x
+        r
+      })
+    
+    purrr::walk2(names(covariates), covariates.rasters, function(n, r) {
+      locations.test[, (n) := 
+                       terra::extract(r, cbind(locations.test$x, 
+                                               locations.test$y))]
+    })
+    resp.yhat <- predict.glm(fit.glm$internal$glmfit, 
+                             newdata=locations.test, type="r")
+    
     all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
 
     .auc <- auc.ppm(fit.glm)
@@ -194,6 +219,11 @@ purrr::walk(1:nrow(spec.state), function(i) {
                         lo=glm.ci[1:length(glm.pred$estimate)],
                         hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
     )
+    glm.test[, `:=` (
+      p.obs = 1 - dpois(0, est), # probability > 0
+      p.obs.lo = 1 - dpois(0, lo),
+      p.obs.hi = 1 - dpois(0, hi)
+    )]
     
     # If there is an intensity of at least one, then predict it as a 
     # probability of 1
@@ -205,6 +235,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
     glm.test[, (c("prob", "prob.lo", "prob.hi")) := 
                purrr::map(.SD, ~{1 - exp(-.x)}), .SDcols=c("est", "lo", "hi")]
     
+   
     glm.count.pred <- spatstat.model::predict.ppm(fit.glm, type="count", se=T)
     glm.pi <- spatstat.model::predict.ppm(fit.glm, type="count", 
                                           se=T, interval="p")
