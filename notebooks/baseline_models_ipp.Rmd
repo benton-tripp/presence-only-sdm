@@ -108,36 +108,22 @@ var.imp <- species %>% purrr::map_df(function(spec) {
 
 ```{r ipp-model, results='hide'}
 
+optimize.threshold <- function(roc.obj) {
+  # Calculate Youden's J statistic for each threshold
+  j.values <- roc.obj$fobs + (1 - roc.obj$ftheo) - 1
+  # Find the threshold that maximizes the J statistic
+  optimal.threshold <- roc.obj$p[which.max(j.values)]
+  return(optimal.threshold)
+}
+
 purrr::walk(1:nrow(spec.state), function(i) {
+  covariates.keep <- 50
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
-  glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
-                        paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
-  gam.path <- file.path("artifacts/models/ipp_gam_mpl", 
-                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
-  if (!all(file.exists(c(glm.path, gam.path)))) {
+  glm.results.path <- file.path("artifacts/test_results/ipp_glm_mpl",
+                                paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
+  if (!file.exists(glm.results.path)) {
     cat("Fitting IPP model for", spec, "in", st, "\n")
-    
-    # Select covariates based on feature importance
-    cat("\tFetching variable importance...\n")
-    fs.df <- var.imp %>% 
-      filter(state == st & common.name == spec) %>%
-      mutate(var1 = purrr::map_chr(variable, ~ stringr::str_split(.x, "\\:")[[1]][1]),
-             var2 = purrr::map_chr(variable, ~ {
-               split_result <- stringr::str_split(.x, "\\:")[[1]]
-               if(length(split_result) > 1) split_result[2] else NA_character_
-             })) %>%
-      mutate(variable = ifelse(is.na(var2), var1, paste(var1, var2, sep = ":"))) %>%
-      # Keep only at most 30 variables/interactions
-      head(30)
-    
-    if (nrow(fs.df) > 0) {
-      covariates <- c(fs.df$var1, fs.df$var2) %>% 
-        unique() %>% 
-        sort()
-    } else {
-      cat("\tERROR: There are no specified covariates for", spec, st, "\n")
-    }
     
     cat("\tGetting pre-processed `spatstat.geom::ppp` object (train)...\n")
     Q <- readRDS(file.path("artifacts", "train_spatstat_Q",
@@ -146,128 +132,187 @@ purrr::walk(1:nrow(spec.state), function(i) {
     Q.test <- readRDS(file.path("artifacts", "test_spatstat_Q",
                                 paste(st, "_", spec, "_Q.rds")))
     
-    # Load/compute filtered & pre-processed rasters
-    covariates <- covariates %>%
-      set_names() %>%
-      purrr::map(function(.x) {
-        file <- file.path("artifacts/spatstat_imgs", paste0(st, "_", .x, ".rds"))
-        readRDS(file)
-      })
-    
-    # Create formula
-    .f <- paste(fs.df$variable, collapse=" + ") %>% 
-      paste("~", .) %>% 
-      as.formula()
-    
-    # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
-    # * gcontrol=list() for additional glm/gam parameters
-    
-    # GLM Model
-    cat("\tFitting GLM Model using the Method of Maximum PseudoLikelihood...\n")
-    fit.glm <- ppm(Q=Q, trend=.f, covariates=covariates, 
-                   rbord=.05, method="mpl") %>%
-      get.object(
-        obj=.,
-        file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"), 
-        obj.path="artifacts/models/ipp_glm_mpl")
-    
-    locations.test <- data.table::rbindlist(
-      list(
-        data.table(x=Q.test$data$x, y=Q.test$data$y, obs=T), 
-        data.table(x=Q.test$dummy$x, y=Q.test$dummy$y, obs=F)
+    converged <- F
+    no.pred.error <- F
+    roc.obj <- NULL
+    while (!converged | !no.pred.error | is.null(roc.obj)) {
+      # Set path
+      glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
+                            paste0(spec, "_", st, "_", covariates.keep,
+                                   "_ipp_glm_mpl.rds"))
+      if (covariates.keep > 0) {
+        # Select covariates based on feature importance
+        cat("\tFetching variable importance with `covariates.keep` set to", 
+            covariates.keep, "\n")
+        fs.df <- var.imp %>% 
+          filter(state == st & common.name == spec) %>%
+          mutate(var1 = purrr::map_chr(variable, 
+                                       ~ stringr::str_split(.x, "\\:")[[1]][1]),
+                 var2 = purrr::map_chr(variable, ~ {
+                   split_result <- stringr::str_split(.x, "\\:")[[1]]
+                   if(length(split_result) > 1) split_result[2] else NA_character_
+                 })) %>%
+          mutate(variable = ifelse(is.na(var2), 
+                                   var1, 
+                                   paste(var1, var2, sep = ":"))) %>%
+          # Keep only pre-determined # of variables/interactions
+          head(covariates.keep)
+        covariates.keep <- nrow(fs.df) # in case there are fewer available
+        
+        if (nrow(fs.df) > 0) {
+          covariates <- c(fs.df$var1, fs.df$var2) %>% 
+            unique() %>% 
+            sort()
+        } else {
+          cat("\tThere are no specified covariates for", spec, st, "\n")
+        }
+        
+        # Load/compute filtered & pre-processed rasters
+        covariates <- covariates %>%
+          set_names() %>%
+          purrr::map(function(.x) {
+            file <- file.path("artifacts/spatstat_imgs", 
+                              paste0(st, "_", .x, ".rds"))
+            readRDS(file)
+          })
+        
+        # Create formula
+        .f <- paste(fs.df$variable, collapse=" + ") %>% 
+          paste("~", .) %>% 
+          as.formula()
+        # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
+        # * gcontrol=list() for additional glm/gam parameters
+        
+        # GLM Model
+        cat("\tFitting GLM Model using the Method of Maximum",
+            "PseudoLikelihood...\n")
+        fit.glm <- tryCatch({
+          ppm(Q=Q, trend=.f, covariates=covariates, 
+              rbord=.05, method="mpl") %>%
+            get.object(
+              obj=.,
+              file.name=paste0(spec, "_", st, "_", covariates.keep,
+                               "_ipp_glm_mpl.rds"), 
+              obj.path="artifacts/models/ipp_glm_mpl")}, 
+          error=function(e) NULL)
+        if (is.null(fit.glm)) {
+          if (covariates.keep > 15) {
+            covariates.keep <- covariates.keep - 5
+          } else {
+            covariates.keep <- covariates.keep - 1
+          }
+          if (covariates.keep < 0) stop("\tNo trend identified.\n")
+          warning("\tThere was an error fitting the model. Trying a",
+                  "different number of covariates\n")
+          next
+        }
+        converged <- fit.glm$internal$glmfit$converged
+      } else {
+        cat("\tFitting GLM Model using the Method of Maximum",
+            "PseudoLikelihood with no trend...\n")
+        fit.glm <- ppm(Q=Q, rbord=.05, method="mpl") %>%
+          get.object(
+            obj=.,
+            file.name=paste0(spec, "_", st, "_", covariates.keep,
+                             "_ipp_glm_mpl.rds"), 
+            obj.path="artifacts/models/ipp_glm_mpl")
+        converged <- T
+      }
+      # Check for errors when predicting
+      options(show.error.messages = F)
+      no.pred.error <- suppressWarnings(
+        tryCatch(
+          expr={predict.ppm(fit.glm, se=T); T}, 
+          error=function(e) {F}
+        )
       )
-    ) 
+      options(show.error.messages = T)
+      # Compute the ROC curve, check for errors
+      cat("\tGetting ROC...\n")
+      roc.obj <- tryCatch(expr={spatstat.explore::roc(fit.glm)}, 
+                          error=function(e) {NULL})
+      if (!converged | !no.pred.error | is.null(roc.obj)) {
+        warning("\tThe model converged or there was an error",
+                "for covariates.keep ==", covariates.keep, "\n")
+        
+        file.remove(glm.path)
+        if (covariates.keep > 15) {
+          covariates.keep <- covariates.keep - 5
+        } else {
+          covariates.keep <- covariates.keep - 1
+        }
+        if (covariates.keep < 0) stop("\tNo trend identified.\n")
+      }
+    }
     
-    covariates.rasters <- names(covariates) %>%
-      set_names() %>%
-      purrr::map(function(x) {
-        r <- terra::rast(covariates[[x]])
-        set.crs(r, st_crs(4326, parameters=T)$Wkt)
-        names(r) <- x
-        r
-      })
-    
-    purrr::walk2(names(covariates), covariates.rasters, function(n, r) {
-      locations.test[, (n) := 
-                       terra::extract(r, cbind(locations.test$x, 
-                                               locations.test$y))]
-    })
-    
-    glm.pred <- spatstat.model::predict.ppm(fit.glm, 
-                                            locations=locations.test[, .(x,y)],
-                                            type="trend", se=T)
-    glm.ci <- spatstat.model::predict.ppm(fit.glm, locations=locations.test[, .(x,y)],
-                                          type="trend", interval="c")
-    glm.test <- cbind(locations.test,
-                      data.table(
-                        est=glm.pred$estimate,
-                        se=glm.pred$se,
-                        lo=glm.ci[1:length(glm.pred$estimate)],
-                        hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
+    glm.results <- get.object(
+      obj={
+        locations.test <- data.table::rbindlist(
+          list(
+            data.table(x=Q.test$data$x, y=Q.test$data$y, obs=T), 
+            data.table(x=Q.test$dummy$x, y=Q.test$dummy$y, obs=F)
+          )
+        ) 
+        if (covariates.keep > 0) {
+          covariates.rasters <- names(covariates) %>%
+            set_names() %>%
+            purrr::map(function(x) {
+              r <- terra::rast(covariates[[x]])
+              set.crs(r, st_crs(4326, parameters=T)$Wkt)
+              names(r) <- x
+              r
+            })
+          purrr::walk2(names(covariates), covariates.rasters, function(n, r) {
+            locations.test[, (n) := 
+                             terra::extract(r, cbind(locations.test$x, 
+                                                     locations.test$y))]
+          })
+        }
+        
+        glm.pred <- spatstat.model::predict.ppm(
+          fit.glm, 
+          locations=locations.test[, .(x,y)],
+          type="trend", se=T)
+        glm.ci <- spatstat.model::predict.ppm(
+          fit.glm, 
+          locations=locations.test[, .(x,y)],
+          type="trend", interval="c")
+        glm.test <- cbind(
+          locations.test,
+          data.table(
+            est=glm.pred$estimate,
+            se=glm.pred$se,
+            lo=glm.ci[1:length(glm.pred$estimate)],
+            hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
+        )
+        glm.test[, `:=` (
+          p.obs = 1 - dpois(0, est), # probability > 0
+          p.obs.lo = 1 - dpois(0, lo),
+          p.obs.hi = 1 - dpois(0, hi)
+        )]
+        
+        all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
+        glm.count.pred <- tryCatch(spatstat.model::predict.ppm(fit.glm, 
+                                                               type="count", se=T),
+                           error=function(e) NULL)
+        glm.pi <- tryCatch(spatstat.model::predict.ppm(fit.glm, type="count", 
+                                                       se=T, interval="p"),
+                           error=function(e) NULL)
+        
+        optimal.threshold <- optimize.threshold(roc.obj)
+        list(
+          test=glm.test,
+          all.preds=all.predictions,
+          count=glm.count.pred,
+          pi=glm.pi,
+          roc=roc.obj,
+          thresh=optimal.threshold
+        )
+      },
+      file.name=paste0(spec, "_", st, "_ipp_glm_mpl.rds"),
+      obj.path="artifacts/test_results/ipp_glm_mpl"
     )
-    glm.test[, `:=` (
-      p.obs = 1 - dpois(0, est), # probability > 0
-      p.obs.lo = 1 - dpois(0, lo),
-      p.obs.hi = 1 - dpois(0, hi)
-    )]
-    
-    all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
-    glm.count.pred <- spatstat.model::predict.ppm(fit.glm, type="count", se=T)
-    glm.pi <- spatstat.model::predict.ppm(fit.glm, type="count", 
-                                          se=T, interval="p")
-    
-    glm.results <- list(
-      fit=fit.glm,
-      test=glm.test,
-      all.preds=all.predictions,
-      count=glm.count.pred,
-      pi=glm.pi
-    )
-    
-    # GAM Model
-    cat("\tFitting GAM Model using the Method of Maximum PseudoLikelihood...\n")
-    fit.gam <- ppm(Q=Q, trend=.f, covariates=covariates, 
-                   rbord=.05, method="mpl", use.gam=T) %>%
-      get.object(
-        obj=.,
-        file.name=paste0(spec, "_", st, "_ipp_gam_mpl.rds"), 
-        obj.path="artifacts/models/ipp_gam_mpl"
-      )
-    
-    gam.pred <- spatstat.model::predict.ppm(fit.gam, 
-                                            locations=locations.test[, .(x,y)],
-                                            type="trend", se=T)
-    gam.ci <- spatstat.model::predict.ppm(fit.gam, locations=locations.test[, .(x,y)],
-                                          type="trend", interval="c")
-    gam.test <- cbind(locations.test,
-                      data.table(
-                        est=gam.pred$estimate,
-                        se=gam.pred$se# ,
-                        # lo=gam.ci[1:length(gam.pred$estimate)],
-                        # hi=gam.ci[(length(gam.pred$estimate) + 1):length(gam.ci)]
-                      )
-    )
-    gam.test[, `:=` (
-      p.obs = 1 - dpois(0, est)# , # probability > 0
-      # p.obs.lo = 1 - dpois(0, lo),
-      # p.obs.hi = 1 - dpois(0, hi)
-    )]
-    
-    all.predictions.gam <- response.ppm(fit.gam)$window %>% as.matrix()
-    gam.count.pred <- spatstat.model::predict.ppm(fit.gam, type="count", se=T)
-    gam.pi <- spatstat.model::predict.ppm(fit.gam, type="count", 
-                                          se=T, interval="p")
-    
-    gam.results <- list(
-      fit=fit.gam,
-      test=gam.test,
-      all.preds=all.predictions,
-      count=gam.count.pred,
-      pi=gam.pi
-    )
-    
     cat("\tFinished IPP model for", spec, "in", st, "\n")
-
   }
   gc()
 })
@@ -278,21 +323,49 @@ purrr::walk(1:nrow(spec.state), function(i) {
 
 ```{r examine-mel-results}
 
+get.acc <- function(results.path, thresh) {
+  test <- readRDS(results.path)$test
+  df <- test[, .(pred=as.factor(ifelse(p.obs > thresh, T, F)), obs=as.factor(obs))]
+  
+  cm <- confusionMatrix(df$pred, df$obs, positive = "TRUE", mode="everything")
+}
+
 ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
+  glm.base.path <- "artifacts/models/ipp_glm_mpl"
+  # Regular expression pattern to match the filename
+  pattern <- paste0("^", spec, "_", st, "_([0-9]{1,2})_ipp_glm_mpl\\.rds$")
+  glm.path <- list.files(path = glm.base.path, pattern = pattern, full.names = T)
+  num.of.covariates <- as.numeric(regmatches(glm.path, regexpr("[0-9]{1,2}", glm.path)))
+  results.path <- file.path("artifacts/test_results/ipp_glm_mpl",
+                        paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
+  thresh <- 1-readRDS(results.path)$thresh
+  cm <- get.acc(results.path, thresh)
   tibble(
     common.name=spec,
     state=st,
-    glm.path=file.path("artifacts/models/ipp_glm_mpl", 
-                        paste0(spec, "_", st, "_ipp_glm_mpl.rds")),
-    gam.path=file.path("artifacts/models/ipp_gam_mpl", 
-                        paste0(spec, "_", st, "_ipp_gam_mpl.rds"))
-  )
+    covariate.count=num.of.covariates,
+    optimal.threshold=thresh,
+    Fpred.Fref=cm$table[1,1],
+    Fpred.Tref=cm$table[1,2],
+    Tpred.Fref=cm$table[2,1],
+    Tpred.Tref=cm$table[2,2],
+    glm.path=glm.path,
+    results=results.path
+  ) %>%
+    cbind(as.list(c(cm$overall, cm$byClass)) %>% as_tibble())
 })
+
+ipp.models
 
 ```
 
+```{r model-acc}
+
+
+
+```
 
 
 ```{r rd-or-glm}
