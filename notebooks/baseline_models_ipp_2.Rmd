@@ -29,6 +29,7 @@ library(readr)
 library(data.table)
 library(knitr)
 library(purrr)
+library(caret)
 library(tidyr)
 
 # Set seed for splitting
@@ -37,7 +38,7 @@ set.seed(19)
 # Load dataset containing observation points, 
 # but we can remove the "absence" points
 df <- setDT(readRDS("artifacts/final_data/final_data.rds"))[
-  observations > 0, .(common.name, state, lon, lat)]
+  observations > 0, .(common.name, state, lon, lat, geometry)]
 
 # Define some global variables that will be referenced throughout the modeling 
 states <- sort(unique(df$state))
@@ -125,6 +126,112 @@ r.list <- states %>%
 
 ```
 
+### Split into Training/Test Sets
+
+As was done in Part 2 of the study, the data is split into a training set and a test set. The data is stratified based on latitude, longitude, species, and state to ensure that the distribution of these variables is consistent between the train and test sets. This stratification helps maintain representative samples and mitigates potential biases.
+
+```{r train-test-split}
+
+stratified.split.idx <- function(df, p=0.7, lat.lon.bins=25) {
+  # Cut along lat/lon values to create grids (lat.bin & lon.bin)
+  # lat.lon.bins is the number of divisions you want
+  df$lat.bin <- cut(df$lat, breaks=lat.lon.bins, labels = F)
+  df$lon.bin <- cut(df$lon, breaks=lat.lon.bins, labels = F)
+  
+  # Create a new variable combining the stratification variables
+  df %>%
+    # stratify on lat/lon bins, species, state
+    mutate(strata = paste(lat.bin, lon.bin, common.name, state)) %>%
+    pull(strata) %>%
+    # Create the data partitions
+    createDataPartition(., p = p, list = F) %>%
+    suppressWarnings()
+}
+
+prepare.data <- function(df, p=.7, lat.lon.bins=25) {
+  train.index <- stratified.split.idx(df, p=p, lat.lon.bins = lat.lon.bins)
+  df.train <- df[train.index, ]
+  df.test <- df[-train.index, ]
+  
+  list(train = df.train, 
+       test = df.test,
+       index = train.index)
+}
+
+# Get train/test indices
+train.test <- prepare.data(df, .7)
+
+# Split datatset
+df.train <- df[train.test$index,] 
+df.test <- df[-train.test$index,]
+
+```
+
+### BIOCLIM
+
+```{r bioclim}
+                         
+bioclim.suitability <- function(sf.subset, r) {
+  
+  # Remove spatial layers (lat, lon, etc.)
+  r <- r[[names(r)[!names(r) %in% 
+                     c("lat", "lat.sqrd", "lon", 
+                       "lon.lat.interaction", "lon.sqrd")]]]
+  
+  # Extract values from rasters at presence locations
+  values.at.presences <- terra::extract(r, st_transform(sf.subset, crs=crs(r)))
+  
+  # Determine suitability masks based on unique values
+  suitable.masks <- names(r) %>%
+    set_names() %>%
+    purrr::map(function(name) {
+      unique.vals <- unique(values.at.presences[[name]])
+      if (length(unique.vals) == 2) {
+        # Binary method
+        mode.val <- as.numeric(names(sort(table(values.at.presences[[name]]), 
+                                          decreasing = T)[1]))
+        return(r[[name]] == mode.val)
+      } else {
+        # 10th and 90th percentile method
+        lower.bound <- quantile(values.at.presences[[name]], 0.1, na.rm = T)
+        upper.bound <- quantile(values.at.presences[[name]], 0.9, na.rm = T)
+        return((r[[name]] >= lower.bound) & (r[[name]] <= upper.bound))
+      }
+    }) %>% rast()
+  
+  # Combine individual masks to get areas that have the highest suitablity
+  sum(suitable.masks)
+}
+
+bioclim.list <- purrr::map(1:nrow(spec.state), function(i) {
+  st=spec.state[i,]$state
+  spec=spec.state[i,]$species
+  sf.subset <- sf::st_as_sf(df[state == st & common.name==spec], 
+                            crs=4326, sf_column_name = "geometry")
+  suitable.areas <- bioclim.suitability(sf.subset, r.list[[st]])
+  list(
+    bioclim=suitable.areas,
+    state=st,
+    species=spec,
+    df=sf.subset
+  )
+})
+
+
+# Example
+plot(purrr::detect(bioclim.list, ~.x$state == "OR" & 
+             .x$species == "Sanderling")$bioclim, 
+     main = "BIOCLIM Suitability for Sanderlings in Oregon")
+```
+
+```{r bioclim-ex-2}
+# Example
+qnt.25 <- quantile(values(purrr::detect(bioclim.list, ~.x$state == "OR" & 
+                         .x$species == "Sanderling")$bioclim), .25, na.rm=T)
+plot(purrr::detect(bioclim.list, ~.x$state == "OR" & 
+             .x$species == "Sanderling")$bioclim < qnt.25, 
+     main = "BIOCLIM Suitable sample regions for Sanderlings in Oregon")
+```
 
 
 ```{r mask-rasters, results="hide"}
