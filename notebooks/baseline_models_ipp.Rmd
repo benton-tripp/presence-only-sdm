@@ -1,5 +1,5 @@
 ---
-title: 'SDM Benchmark Study Part 5: Inhomogeneous Poisson Process Models'
+title: 'SDM Benchmark Study Part 5: Fitting and Testing Inhomogeneous Poisson Process Models'
 author: "Benton Tripp"
 date: "`r Sys.Date()`"
 output:
@@ -31,8 +31,7 @@ library(knitr)
 library(purrr)
 library(caret)
 library(spatstat)
-library(rJava)
-library(plotly)
+library(tidyr)
 
 # Set seed for splitting and modeling
 set.seed(19)
@@ -362,36 +361,44 @@ ipp.models
 ```
 
 ```{r model-acc}
-
-
-
+summary(ipp.models)
 ```
 
 
-```{r rd-or-glm}
+```{r box-plots-1, fig.width=4, fig.height=5}
 
-# rd.OR.glm <- readRDS("artifacts/models/ipp_glm_mpl/Ruddy Duck_OR_ipp_glm_mpl.rds")
+# Assuming your dataframe is named `ipp.models`
+# Reshape the data to long format
+long.data <- ipp.models %>%
+  select(common.name, Accuracy:`Balanced Accuracy`) %>%
+  gather(key = "Metric", value = "Value", -common.name)
 
-# Diagnostics
-# d <- diagnose.ppm(rd.OR.glm, plot.it=F)
+# Overall box-plot representation
+ggplot(long.data, aes(x = Metric, y = Value)) +
+  geom_boxplot(fill = "white", outlier.shape = NA) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.background = element_rect(fill = "lightgray"),
+        plot.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  coord_flip()
 
-# plot(d)
 ```
 
-*From `spatstat` documentation*:
+```{r box-plot-2, fig.width=8, fig.height=20}
 
-`which = "marks`:
-
-Plot the residual measure. For the exponential energy weights (`type="eem"`) this displays circles centred at the points of the data pattern, with radii proportional to the exponential energy weights. For the residuals (`type="raw"`, `type="inverse"` or `type="pearson"`) this again displays circles centred at the points of the data pattern with radii proportional to the (positive) residuals, while the plotting of the negative residuals depends on the argument plot.neg. If `plot.neg="image"` then the negative part of the residual measure, which is a density, is plotted as a colour image. If `plot.neg="discrete"` then the discretised negative residuals (obtained by approximately integrating the negative density using the quadrature scheme of the fitted model) are plotted as squares centred at the dummy points with side lengths proportional to the (negative) residuals. [To control the size of the circles and squares, use the argument `maxsize`.]
-
-`which = "smooth"`:
-
-Plot a kernel-smoothed version of the residual measure. Each data or dummy point is taken to have a ‘mass’ equal to its residual or exponential energy weight. (Note that residuals can be negative). This point mass is then replaced by a bivariate isotropic Gaussian density with standard deviation sigma. The value of the smoothed residual field at any point in the window is the sum of these weighted densities. If the fitted model is correct, this smoothed field should be flat, and its height should be close to 0 (for the residuals) or 1 (for the exponential energy weights). The field is plotted either as an image, contour plot or perspective view of a surface, according to the argument `plot.smooth`. The range of values of the smoothed field is printed if the option `which="sum"` is also selected.
-
-
-```{r ipp-diag-plot-ex, fig.width=8, fig.height=6}
-
-
+# Box plot for each species
+ggplot(long.data, aes(x = Metric, y = Value)) +
+  geom_boxplot(fill = "white", outlier.shape = NA) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.background = element_rect(fill = "lightgray"),
+        plot.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  coord_flip() +
+  facet_wrap(~ common.name, scales = "free_y", ncol = 2)
 
 ```
 

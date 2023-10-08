@@ -1,0 +1,379 @@
+---
+title: 'SDM Benchmark Study Part 6: Re-Sampling Pseudo-Absence Points Using Iterative Sampling and BIOCLIM'
+author: "Benton Tripp"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+    df_print: paged
+  
+---
+
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
+```
+
+## Setup
+
+```{r setup-2, results='hide'}
+
+library(sf)
+library(terra)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(purrr)
+library(tidyr)
+
+# Set seed for splitting
+set.seed(19)
+
+# Load dataset containing observation points, 
+# but we can remove the "absence" points
+df <- setDT(readRDS("artifacts/final_data/final_data.rds"))[
+  observations > 0, .(common.name, state, lon, lat)]
+
+# Define some global variables that will be referenced throughout the modeling 
+states <- sort(unique(df$state))
+species <- sort(unique(df$common.name))
+spec.state <- expand.grid(species=species, 
+                          state=states, 
+                          stringsAsFactors=F)
+                          
+# Load Rasters
+r.list <- states %>%
+  set_names() %>%
+  purrr::map(~rast(file.path("artifacts/final_rasters", 
+                             paste0(.x, ".tif"))))
+
+# Pre-processed rasters
+# Define min/max scaling function for rasters
+min.max.scale <- function(r, x=NULL, na.rm=T) {
+  # If training data is provided
+  if (!is.null(x)) {
+    min.x <- min(x, na.rm=na.rm)
+    max.x <- max(x, na.rm=na.rm)
+    # Or just scale based on full raster values
+  } else {
+    min.x <- min(values(r), na.rm=na.rm)
+    max.x <- max(values(r), na.rm=na.rm)
+  }
+  (r - min.x) / (max.x - min.x)
+}
+
+# Get model or other object from cache if it has been saved before
+get.object <- function(obj, file.name, obj.path, 
+                       read.func=readRDS, save.func=saveRDS, ...) {
+  f.path <- file.path(obj.path, file.name)
+  if (!dir.exists(obj.path)) {
+    dir.create(obj.path)
+  }
+  # Object cache check
+  if (file.exists(f.path)) {
+    obj <- read.func(f.path)
+  } else {
+    save.func(obj, f.path, ...)
+  }
+  obj
+}
+
+# Get training/testing spatstat data, and 
+# pre-process (scale) rasters 
+r.list <- states %>%
+  set_names() %>%
+  purrr::map(function(st) {
+    get.object(obj = {
+      # Get raster
+      r <- r.list[[st]]
+      # Compute filtered & pre-processed rasters
+      names(r) %>%
+        set_names() %>%
+        purrr::map(function(.x) {
+          cat("Pre-processing", .x, "data in", st, "\n")
+          r.layer <- r[[.x]]
+          if (length(unique(values(r.layer))) > 2) {
+            # Scale the data
+            return(min.max.scale(r.layer))
+          } else {
+            return(r.layer)
+          }
+        }) %>%
+        terra::rast()
+    },
+    file.name=paste0(st, ".tif"),
+    obj.path="artifacts/preprocessed_rasters_updated",
+    read.func=terra::rast,
+    save.func=terra::writeRaster)
+  })
+
+```
+
+
+## Updated Pseudo-Absence Selection Process
+
+```{r select-pa}
+
+# 1) Split into train/test sets
+# 2) BIOCLIM
+# 3) Select pseudo-absence points
+
+```
+
+
+
+```{r mask-rasters, results="hide"}
+
+# Set up output directory
+output.dir <- "artifacts/masks_5k"
+if (!dir.exists("artifacts")) dir.create("artifacts")
+if (!dir.exists(output.dir)) dir.create(output.dir)
+
+# Load Data
+
+# Get raster data
+states <- c("CO", "NC", "OR", "VT")
+r.list <- purrr::map(paste0("data/final_rasters/", states, ".tif"), rast)
+names(r.list) <- states
+
+# Get observation data
+obs.df <- list.files("data/final", full.names = T) %>%
+  purrr::map_df(readRDS) %>%
+  dplyr::select(state, common.name, observation.point=geometry)
+
+# Buffering Raster Data
+
+dist <- 5e3
+
+mask.update <- function(i, mask.raster, obs.df, obs.field="observation.point",
+                        dist=10000, u="m") {
+  obs.pt <- st_transform(obs.df[i, "observation.point"], st_crs(mask.raster))
+  # Create a buffer around the point, ensuring correct units
+  buf <- st_buffer(obs.pt, dist=units::as_units(paste(dist, u)))
+  return(terra::rasterize(buf, mask.raster, update=T, field=1))
+}
+
+# For each observation point, you can now create a distance 
+# raster and then mask cells within the buffer distance
+get.buffered.zones <- function(r, obs.df, obs.field="observation.point",
+                               dist=10000, u="m") {
+  # Create an empty raster with the same extent and resolution as r
+  mask.raster <- terra::rast(r)
+  # Recursively update mask.raster with additional buffered regions
+  for(i in 1:nrow(obs.df)) {
+    mask.raster <- mask.update(i, mask.raster, obs.df, 
+                               obs.field=obs.field, 
+                               dist=dist, u=u)
+    gc()
+  }
+  return(mask.raster)
+}
+
+# Get masks by state, species
+masks <- purrr::map(states, function(state) {
+    specs <- sort(unique(obs.df$common.name))
+    spec.masks <- purrr::map(specs, function(spec, st=state) {
+      fname <- file.path(output.dir, paste0(st, "_", spec, ".tif"))
+      if (file.exists(fname)) {
+        cat("Reading", spec, st, "mask from", fname, "\n")
+        r.mask <- rast(fname)
+      } else {
+        cat("Computing", spec, st, "mask, and saving to", fname, "\n")
+        r.mask <- get.buffered.zones(r=r.list[[st]], 
+                                     obs.df=filter(obs.df, state == st & 
+                                                     common.name == spec),
+                                     dist=dist)
+        terra::writeRaster(r.mask, fname, overwrite=T)
+      }
+      gc()
+      r.mask
+    }, .progress=T)
+    names(spec.masks) <- specs
+    spec.masks
+  })
+names(masks) <- states
+
+```
+
+### Sampling Pseudo-Absences and Comparing Totals
+
+This section identifies areas outside the buffers as potential zones for pseudo-absences. To ensure an accurate representation, a random sampling mechanism is implemented. For each bird species in a state, an equivalent number of pseudo-absence points (or a pre-defined minimum threshold), based on observed data are generated. The result is a set of coordinates representing regions where the bird species have not been observed. 
+
+```{r select-pa, results="hide"}
+
+# Set seed
+set.seed(19)
+
+# Function to sample n points from the non-masked parts
+sample.inverse.mask <- function(r.original, r.mask, n, 
+                                species, state,
+                                sample.crs=4326, min.n=500,
+                                output.dir="artifacts/pseudo_absence_regions") {
+  if (!dir.exists(output.dir)) dir.create(output.dir)
+  output.path <- file.path(output.dir,
+                           gsub(" |\\-", "_", 
+                                paste0(
+                                  paste(state, tolower(species), sep="_"), 
+                                  ".tif")
+                           ))
+  if (!file.exists(output.path)) {
+    # Get inverse mask;
+    # Set NA cells to 0, keep 0 cells as 0, change other cells to 1
+    r.inverse <- terra::ifel(is.na(r.mask), 0, r.mask)
+    # Set 0 to 1 and everything else to NA
+    r.inverse <- terra::lapp(r.inverse, fun = function(x) ifelse(x == 0, 1, NA))
+    # Crop so that anything outside of the state is NA
+    r.cropped <- terra::crop(r.inverse, terra::ext(r.original))
+    
+    # Create a binary raster from r.original where valid values are 
+    # set to 1 and NA values remain NA
+    r.binary <- terra::lapp(r.original[[1]], 
+                            fun = function(x) ifelse(!is.na(x), 1, NA))
+    
+    # Multiply the cropped raster by the binary raster to ensure 
+    # outside values are set to NA
+    r.final <- r.cropped * r.binary
+    terra::writeRaster(r.final, output.path, overwrite=T)
+  } else {
+    r.final <- terra::rast(output.path)
+  }
+  
+  # Convert the raster to SpatialPoints
+  gdf <- terra::as.points(r.final) %>%
+    st_as_sf() %>%
+    st_transform(crs=sample.crs)
+  if (nrow(gdf) > 0) {
+    gdf <- gdf %>%
+      filter(!is.na(layer)) %>%
+      select(geometry)
+  } else {
+    return(gdf)
+  }
+  
+  # Set to min.n size if n < min.n
+  if (n < min.n) n <- min.n
+  # Make sure there is sufficient available sample points
+  if (n > nrow(gdf)) n <- nrow(gdf)
+  
+  # Randomly sample n points from the available (non-masked) space
+  sample.idx <- sample(1:nrow(gdf), n)
+  samples <- gdf[sample.idx,] %>%
+    mutate(common.name = species, 
+           state = state, 
+           lon = NA, 
+           lat = NA,
+           observations=0)
+  
+  # Populate lon and lat values:
+  coords <- st_coordinates(samples)
+  samples$lon <- coords[, "X"]
+  samples$lat <- coords[, "Y"]
+  
+  return(samples)
+}
+
+# Get totals by species and state
+totals <- obs.df %>%
+  as_tibble() %>%
+  select(state, common.name) %>%
+  group_by(state, common.name) %>%
+  summarize(N=n(), .groups="keep")
+
+
+if (!dir.exists(file.path("data", "final_pseudo_absence"))) {
+  dir.create(file.path("data", "final_pseudo_absence"))
+}
+
+if (!all(
+  file.exists(
+    paste0(file.path("data", "final_pseudo_absence", 
+                     paste0("pa_", states, ".rds")))
+  )
+)) {
+  # Create a list of pseudo absence points, by species and state,
+  # where the sample number `n` >= 500 | `n` == the total observed
+  # for each respective state and species
+  pseudo.absence.pts <- list()
+  for (st in states) {
+    r.original <- r.list[[st]]
+    r.masks <- masks[[st]]
+    pseudo.absence.pts[[st]] <- list()
+    for (spec in names(r.masks)) {
+      r.mask <- r.masks[[spec]]
+      n <- totals %>% filter(state == st & common.name == spec) %>% pull(N)
+      cat("Generating", n, "pseudo-absence points for the", spec, "in", st, "\n")
+      pseudo.absence.pts[[st]][[spec]] <- sample.inverse.mask(
+        r.original, r.mask, spec, st, n=n, sample.crs=4326)
+      cat("\tGenerated", nrow(pseudo.absence.pts[[st]][[spec]]), "/", n, "points.\n")
+    }
+  }
+  
+  # Extract raster values for each point
+  for (state in states) {
+    out.file.all <- file.path("data", "final_pseudo_absence", paste0("pa_", state, ".rds"))
+    if (!file.exists(out.file.all)) {
+      r <- r.list[[state]]
+      
+      cat(sprintf("Extracting points to values for %s...\n", state))
+      # Load observations shapefile
+      geo.df <- pseudo.absence.pts[[state]] %>% do.call("rbind", .)
+      rownames(geo.df) <- NULL
+      
+      geo.df.crs <- st_crs(geo.df)
+      
+      # Define target CRS and update
+      target.crs <- st_crs(r)
+      cat(sprintf("Updating CRS for %s...\n", state))
+      geo.df <- st_transform(geo.df, target.crs)
+      
+      # Extract raster values
+      for (r.name in names(r)) {
+        cat("\tExtracting", r.name, "values for", state, "\n")
+        x <- terra::extract(r[[r.name]], geo.df)[[r.name]]
+        geo.df[[gsub(paste0("_", state), "", r.name)]] <- x
+      }
+      
+      # Update crs back
+      geo.df <- st_transform(geo.df, geo.df.crs)
+      
+      # Fix names; Filter NA values
+      geo.df <- geo.df %>%
+        filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
+        suppressWarnings() 
+      
+      saveRDS(geo.df, out.file.all)
+      cat("--------------\n")
+    }
+  }
+}
+
+```
+
+The table below compares the generated pseudo-absence data with the observed dataset. This comparison ensures that the number of pseudo-absence points matches the observed ones, balancing the dataset and making it ready for the next analysis steps.
+
+```{r compare-pa-obs-totals}
+
+# Get all pseudo-absence data
+abs.df <- list.files(file.path("data", "final_pseudo_absence"), full.names = T) %>%
+  purrr::map_df(readRDS) %>%
+  select(state, common.name, observation.point=geometry)
+
+# There might be some slight differences since there are occasionally NA values
+abs.df %>%
+  as_tibble() %>%
+  select(state, common.name) %>%
+  group_by(state, common.name) %>%
+  summarize(psuedo.absence.N=n(), .groups="keep") %>%
+  left_join(totals, by=c("state", "common.name")) %>%
+  rename(observed.N = N) %>%
+  knitr::kable()
+
+```
+
+
+

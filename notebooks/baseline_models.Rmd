@@ -1,5 +1,5 @@
 ---
-title: 'SDM Benchmark Study Part 4: Baseline Models - Overview'
+title: 'SDM Benchmark Study Part 4: Inhomogeneous Poisson Processes - a Quick Overview'
 author: "Benton Tripp"
 date: "`r Sys.Date()`"
 output:
@@ -16,7 +16,7 @@ output:
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 ```
 
-## Overview
+## Introduction
 
 ### Inhomogeneous Poisson Process (IPP)
 
