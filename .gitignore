@@ -15,7 +15,7 @@ artifacts/models/lasso_3_fs/*
 artifacts/pa_probs/*
 artifacts/pa_prob_results/*
 artifacts/plots/*
-!artifats/plots/all_rasters_html.rds
+!artifacts/plots/all_rasters_html.rds
 spatstat.model/*
 spatstat.model
 

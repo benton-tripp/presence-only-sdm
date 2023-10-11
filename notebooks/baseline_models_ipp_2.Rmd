@@ -673,21 +673,48 @@ get.pa.prob <- function(st, spec, dfs,
                     geometry=geom, state=st,
                     common.name=spec)] %>% 
       setorderv(x=., cols="med", order=-1)
+    preds.j[, .(state, common.name, id, sample, med, train, geometry)]
   }) %>% rbindlist()
 }
 
 purrr::walk(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
-  get.object(
-    {get.pa.prob(st, spec, dfs, verbose=T) %>% 
+  cat(spec, st, "\n")
+  tryCatch({get.object(
+    {get.pa.prob(st, spec, dfs, 
+                 train.samples=train.samples, 
+                 test.samples=test.samples,
+                 verbose=F) %>% 
         setorderv(c("train", "med"), order=c(-1, -1))},
     paste0(st, "_", spec, ".rds"),
     "artifacts/pa_prob_results"
-  )
+  )}, error=function(e) NULL)
 })
 
 ```
 
 
+```{r}
 
+purrr::walk(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  f <- file.path("artifacts/pa_prob_results", paste0(st, "_", spec, ".rds"))
+  if (file.exists(f)) {
+    get.object({
+      dt <- readRDS(f)
+      ntrain <- train.test$train[common.name==spec & state==st] %>% nrow()
+      ntest <- train.test$test[common.name==spec & state==st] %>% nrow()
+      cat(spec, st, ntrain, ntest, "\n")
+      trn <- dt[train==T][1:ntrain] %>% 
+        sf::st_as_sf(x=., crs=4326, wkt="geometry")
+      tst <- dt[train==F][1:ntest] %>% 
+        sf::st_as_sf(x=., crs=4326, wkt="geometry")
+      list(train=trn, test=tst)
+    }, paste0(st, "_", spec, ".rds"),
+    "artifacts/train_test_pseudo_abs_updated")
+  }
+})
+
+```
