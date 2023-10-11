@@ -9,6 +9,11 @@ docs/archive/*
 notebooks/archive/*
 artifacts/models/ipp_glm_mpl/*
 artifacts/models/ipp_gam_mpl/*
+artifacts/resampled_pa_with_bioclim_values/*
+artifacts/resampled_pseudo_absences_with_bioclim/*
+artifacts/models/lasso_3_fs/*
+artifacts/pa_probs/*
+artifacts/pa_prob_results/*
 artifacts/plots/*
 !artifats/plots/all_rasters_html.rds
 spatstat.model/*

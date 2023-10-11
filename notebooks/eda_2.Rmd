@@ -322,7 +322,7 @@ redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity"
                  "developed_medium_intensity", "developed_high_intensity", "hay_pasture",
                  "cultivated_crops", "wetlands", "forest", "lon.lat.interaction", 
                  "waterbody", "urban_imperviousness", "tmax", "tmin", "dem", "Fall_NDVI",
-                 "Spring_NDVI", "Summer_NDVI", "Winter_NDVI", "lat.sqrd", "lon.sqr")
+                 "Spring_NDVI", "Summer_NDVI", "Winter_NDVI", "lat.sqrd", "lon.sqrd")
 
 ```
 
