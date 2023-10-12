@@ -55,7 +55,7 @@ r.list <- states %>%
 
 # Pre-processed rasters
 # Define min/max scaling function for rasters
-min.max.scale <- function(r, x=NULL, na.rm=T) {
+min.max.scale.raster <- function(r, x=NULL, na.rm=T) {
   # If training data is provided
   if (!is.null(x)) {
     min.x <- min(x, na.rm=na.rm)
@@ -100,7 +100,7 @@ r.list <- states %>%
           r.layer <- r[[.x]]
           if (length(unique(values(r.layer))) > 2) {
             # Scale the data
-            return(min.max.scale(r.layer))
+            return(min.max.scale.raster(r.layer))
           } else {
             return(r.layer)
           }
@@ -195,12 +195,20 @@ bioclim.suitability <- function(sf.subset, r) {
   sum(suitable.masks)
 }
 
+bcr.dir <- "artifacts/bioclim_suitable_rast"
+if (!dir.exists(bcr.dir )) dir.create(bcr.dir )
 bioclim.list <- purrr::map(1:nrow(spec.state), function(i) {
   st=spec.state[i,]$state
   spec=spec.state[i,]$species
   sf.subset <- sf::st_as_sf(df[state == st & common.name==spec], 
                             crs=4326, sf_column_name = "geometry")
-  suitable.areas <- bioclim.suitability(sf.subset, r.list[[st]])
+  f <- file.path(bcr.dir, paste0(st, "_", spec, ".tif"))
+  if (!file.exists(f)) {
+    suitable.areas <- bioclim.suitability(sf.subset, r.list[[st]])
+    terra::writeRaster(suitable.areas, f)
+  } else {
+    suitable.areas <- rast(f)
+  }
   list(
     bioclim=suitable.areas,
     state=st,
@@ -211,18 +219,18 @@ bioclim.list <- purrr::map(1:nrow(spec.state), function(i) {
 
 
 # Example
-plot(purrr::detect(bioclim.list, ~.x$state == "OR" & 
-             .x$species == "Sanderling")$bioclim, 
-     main = "BIOCLIM Suitability for Sanderlings in Oregon")
+plot(purrr::detect(bioclim.list, ~.x$state == "VT" & 
+             .x$species == "Wild Turkey")$bioclim, 
+     main = "BIOCLIM Suitability for Wild Turkeys in Vermont")
 ```
 
 ```{r bioclim-ex-2}
 # Example
-qnt.25 <- quantile(values(purrr::detect(bioclim.list, ~.x$state == "OR" & 
-                         .x$species == "Sanderling")$bioclim), .25, na.rm=T)
-plot(purrr::detect(bioclim.list, ~.x$state == "OR" & 
-             .x$species == "Sanderling")$bioclim < qnt.25, 
-     main = "BIOCLIM Suitable sample regions for Sanderlings in Oregon")
+qnt.5.wtvt <- quantile(values(purrr::detect(bioclim.list, ~.x$state == "VT" & 
+                         .x$species == "Wild Turkey")$bioclim), .5, na.rm=T)
+plot(purrr::detect(bioclim.list, ~.x$state == "VT" & 
+             .x$species == "Wild Turkey")$bioclim < qnt.5.wtvt, 
+     main = "BIOCLIM Suitable sample regions for Wild Turkeys in Vermont")
 ```
 
 
@@ -267,16 +275,16 @@ purrr::walk(1:nrow(spec.state), function(i) {
                         .x$species == spec)
   bioclim.list[[idx]]$mask <<- msk
   bioclim.list[[idx]]$pseudo.absence.region <<- pa.region
-  qnt.25 <- quantile(values(bioclim.list[[idx]]$bioclim), .25, na.rm=T)
-  bioclim.list[[idx]]$qnt.25 <<- qnt.25
+  qnt.5 <- quantile(values(bioclim.list[[idx]]$bioclim), .5, na.rm=T)
+  bioclim.list[[idx]]$qnt.5 <<- qnt.5
   bioclim.list[[idx]]$final.pseudo.absence.region <<-
-    bioclim.list[[idx]]$bioclim <= qnt.25 & pa.region == 1
+    bioclim.list[[idx]]$bioclim <= qnt.5 & pa.region == 1
 })
    
 
-plot(purrr::detect(bioclim.list, ~.x$state == "OR" & 
-             .x$species == "Sanderling")$final.pseudo.absence.region, 
-     main = "Final Suitable sample regions for Sanderlings in Oregon") 
+plot(purrr::detect(bioclim.list, ~.x$state == "VT" & 
+             .x$species == "Wild Turkey")$final.pseudo.absence.region, 
+     main = "Final Suitable sample regions for Wild Turkeys in Vermont") 
 
 ```
 
@@ -286,12 +294,28 @@ This section identifies areas outside the buffers as potential zones for pseudo-
 
 ```{r select-pa, results="hide"}
 
+get.samples <- function(gdf, sample.idx, spec, st) {
+  samples <- gdf[sample.idx,] %>%
+    mutate(common.name = spec, 
+           state = st, 
+           lon = NA, 
+           lat = NA,
+           observations=0)
+  
+  # Populate lon and lat values:
+  coords <- st_coordinates(samples)
+  samples$lon <- coords[, "X"]
+  samples$lat <- coords[, "Y"]
+  samples
+}
+
 # Function to sample n points from the non-masked parts
 sample.inverse.mask <- function(r.final, n, 
                                 spec, st,
                                 sample.crs=4326, 
-                                min.n=500,
-                                resamples=100) {
+                                min.n=200,
+                                resamples=10,
+                                train.sample.size=0.7) {
   
   # Convert the raster to SpatialPoints
   gdf <- terra::as.points(r.final) %>%
@@ -307,38 +331,54 @@ sample.inverse.mask <- function(r.final, n,
   
   # Set to min.n size if n < min.n
   if (n < min.n) n <- min.n
-  # Make sure there is sufficient available sample points
+  # Last n check
   if (n > nrow(gdf)) n <- nrow(gdf)
-  
+  # Make sure there is sufficient available sample points
+  resamples <- case_when(floor(nrow(gdf) / n) == 0 ~ 1, 
+                         floor(nrow(gdf) / n) > resamples ~ resamples,
+                         T ~ floor(nrow(gdf) / n))
+  cat("\tGetting", resamples, "sample(s) of", n, "for", spec, "in", st, "\n")
+  if (resamples > 1) {
+    sample.indices <- sample(1:nrow(gdf), n*resamples, replace = F)
+    indices <- cut(sample.indices, breaks=resamples, labels = F)
+  }
   # Resample multiple times
   resampled.data <- lapply(1:resamples, function(i) {
-    sample.idx <- sample(1:nrow(gdf), n)
-    samples <- gdf[sample.idx,] %>%
-      mutate(common.name = spec, 
-             state = st, 
-             lon = NA, 
-             lat = NA,
-             observations=0)
+    if (resamples > 1) {
+      sample.idx <- sample.indices[indices == i]
+    } else {
+      sample.idx <- 1:n
+    }
+    train.idx <- 1:floor(train.sample.size*length(sample.idx))
+    test.idx <- (max(train.idx)+1):length(sample.idx)
+    train.idx <- sample.idx[train.idx]
+    test.idx <- sample.idx[test.idx]
+    train.samples <- get.samples(gdf, train.idx, spec, st)
+    test.samples <- get.samples(gdf, test.idx, spec, st)
     
-    # Populate lon and lat values:
-    coords <- st_coordinates(samples)
-    samples$lon <- coords[, "X"]
-    samples$lat <- coords[, "Y"]
-    
-    list(sample.indices = sample.idx, samples = samples)
+    list(train.indices = train.idx,
+         test.indices = test.idx,
+         train.samples = train.samples,
+         test.samples = test.samples)
   })
   
   # Separate the sample indices and samples into two lists
-  sample.indices.list <- lapply(resampled.data, `[[`, "sample.indices")
-  samples.list <- lapply(resampled.data, `[[`, "samples")
+  train.indices.list <- lapply(resampled.data, `[[`, "train.indices")
+  test.indices.list <- lapply(resampled.data, `[[`, "test.indices")
+  train.list <- lapply(resampled.data, `[[`, "train.samples")
+  test.list <- lapply(resampled.data, `[[`, "test.samples")
   
-  list(sample.indices = sample.indices.list, 
-       samples = samples.list)
+  list(train.indices = train.indices.list, 
+       test.indices = test.indices.list,
+       train.samples = train.list,
+       test.samples = test.list)
 }
 
 # Get totals by species and state
 totals <- df[, .(.N), by=.(state, common.name)]
-n.resamples <- 100
+n.resamples <- 10
+train.sample.size <- 0.7
+test.sample.size <- 1 - train.sample.size
 
 resampled.pa <- states %>%
   set_names() %>%
@@ -356,9 +396,10 @@ resampled.pa <- states %>%
           sample.inverse.mask(
             r.final, spec, st, n=n, 
             sample.crs=4326, 
-            resamples=n.resamples)
+            resamples=n.resamples,
+            train.sample.size=train.sample.size)
         },
-        paste0(st, "_", spec, "_", n, "_", n.resamples, ".rds"),
+        paste0(st, "_", spec, ".rds"),
         "artifacts/resampled_pseudo_absences_with_bioclim")
       })
   })
@@ -367,6 +408,32 @@ resampled.pa <- states %>%
 
 
 ```{r get-rast-vals, results='hide'}
+
+get.pres.df <- function(df, st, spec, r) {
+  sf.pres <- sf::st_as_sf(
+    df[state == st & common.name==spec, 
+       .(geometry, common.name, state)], 
+    crs=4326, sf_column_name = "geometry")
+  # Extract values from rasters at presence locations
+  pres.vals <- sf.pres %>%
+    cbind(terra::extract(r, st_transform(sf.pres, crs=crs(r)))) %>%
+    select(-ID) %>%
+    st_transform(crs(sf.pres)) %>%
+    filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
+    suppressWarnings()
+}
+
+get.abs.df <- function(df.list, r, sf.pres) {
+  abs.vals <- df.list %>%
+    purrr::map(~{
+      .x %>%
+        cbind(terra::extract(r, st_transform(.x, crs=crs(r)))) %>%
+        select(-ID) %>%
+        st_transform(crs(sf.pres)) %>%
+        filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
+        suppressWarnings()
+    })
+}
 
 dfs <- states %>%
   set_names() %>%
@@ -377,29 +444,18 @@ dfs <- states %>%
       purrr::map(function(spec) {
         cat("Getting values for", spec, "in", st, "\n")
         get.object({
-          sf.pres <- sf::st_as_sf(
-            df[state == st & common.name==spec, 
-               .(geometry, common.name, state)], 
-            crs=4326, sf_column_name = "geometry")
-          # Extract values from rasters at presence locations
-          pres.vals <- sf.pres %>%
-            cbind(terra::extract(r, st_transform(sf.pres, crs=crs(r)))) %>%
-            select(-ID) %>%
-            st_transform(crs(sf.pres)) %>%
-            filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
-            suppressWarnings()
-          abs.vals <- resampled.pa[[st]][[spec]]$samples %>%
-            purrr::map(~{
-              .x %>%
-                cbind(terra::extract(r, st_transform(.x, crs=crs(r)))) %>%
-                select(-ID) %>%
-                st_transform(crs(sf.pres)) %>%
-                filter(dplyr::if_all(names(.), ~!is.na(.))) %>%
-                suppressWarnings()
-            })
+          sf.pres.train <- get.pres.df(df.train, st, spec, r)
+          sf.pres.test <- get.pres.df(df.test, st, spec, r)
+          abs.vals.train <- get.abs.df(resampled.pa[[st]][[spec]]$train.samples, 
+                                       r, sf.pres.train)
+          abs.vals.test <- get.abs.df(resampled.pa[[st]][[spec]]$test.samples, 
+                                      r, sf.pres.test)
+
           list(
-            presence=pres.vals,
-            pseudo.absence=abs.vals
+            presence.train=sf.pres.train,
+            presence.test=sf.pres.test,
+            pseudo.absence.train=abs.vals.train,
+            pseudo.absence.test=abs.vals.test
           )
         },
         paste0(spec, "_", st, ".rds"),
@@ -408,6 +464,8 @@ dfs <- states %>%
   })
 ```
 
+
+
 ```{r compare-tots}
 
 # Compare the total number of values in each dataset (just spot-checking here)
@@ -415,16 +473,19 @@ purrr::map_df(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
   d <- dfs[[st]][[spec]]
-  prs <- nrow(d$presence)
-  p.abs <- purrr::map_dbl(d$pseudo.absence, ~nrow(.x))
-  min.p.abs <- min(p.abs)
-  max.p.abs <- max(p.abs)
+  prs.trn <- nrow(d$presence.train)
+  prs.tst <- nrow(d$presence.test)
+  p.abs.trn <- purrr::map_dbl(d$pseudo.absence.train, ~nrow(.x))
+  p.abs.tst <- purrr::map_dbl(d$pseudo.absence.test, ~nrow(.x))
   tibble(
     state=st,
     species=spec,
-    presence=prs,
-    min.pseudo.abs=min.p.abs,
-    max.pseudo.abs=max.p.abs
+    presence.train=prs.trn,
+    presence.test=prs.tst,
+    min.pseudo.abs.train=min(p.abs.trn),
+    max.pseudo.abs.train=max(p.abs.trn),
+    min.pseudo.abs.test=min(p.abs.tst),
+    max.pseudo.abs.test=max(p.abs.tst)
   )
 })
 
@@ -453,8 +514,6 @@ As was done in part 2, a GLM model is fit for each of the species/state subsets 
 
 # Load variable importance from fitted LASSO models
 lasso.model.path="artifacts/models/lasso_3_fs"
-train.samples <- floor(.75 * length(dfs[[st]][[spec]]$pseudo.absence))
-test.samples <- length(dfs[[st]][[spec]]$pseudo.absence) - train.samples
 
 species %>% 
   purrr::walk(function(spec) {
@@ -464,7 +523,7 @@ species %>%
         ctrl <- trainControl(method = "cv", number = 5)
         
         cat("Fitting LASSO model for", spec, "in", st, "\n")
-        spec.df <- dfs[[st]][[spec]]$presence[train.test$index,] %>%
+        spec.df <- dfs[[st]][[spec]]$presence.train %>%
           setDT()
         spec.df <- spec.df[
           common.name == spec & state == st][
@@ -481,7 +540,7 @@ species %>%
         if (!is_empty(.remove)) {
           spec.df <- spec.df %>% dplyr::select(-.remove)
         }
-        # The last iteration will be saved as a test set
+        train.samples <- length(dfs[[st]][[spec]]$pseudo.absence.train)
         purrr::walk(
           1:train.samples, function(i) {
             fname <- paste0(tolower(gsub(" ", "_", spec)), "_", st,
@@ -490,7 +549,7 @@ species %>%
               if (i == 1) gc()
               cat("Fitting LASSO model for", i, "/", train.samples,
                   "iterations, for", spec, "observations in", st, "\n")
-              abs.df <- dfs[[st]][[spec]]$pseudo.absence[[i]] %>% setDT()
+              abs.df <- dfs[[st]][[spec]]$pseudo.absence.train[[i]] %>% setDT()
               abs.df <- abs.df[
                 common.name == spec & state == st][
                   , `:=` (state=NULL, common.name = NULL, geometry=NULL, 
@@ -617,44 +676,20 @@ var.imp
 
 ```{r pa-prob}
 
-get.pa.prob <- function(st, spec, dfs,
-                        dir="artifacts/models/lasso_3_fs", 
-                        train.samples=75,
-                        test.samples=25,
-                        verbose=F) {
-  files <- list.files(dir) %>%
-    .[grepl(paste(tolower(gsub(" ", "_", spec)), st, sep="_"), .)] %>%
-    file.path(dir, .)
-  if (length(files) == 0) return(NULL)
-  
-  # Get columns that should be removed (based on original presence data)
-  spec.df <- dfs[[st]][[spec]]$presence[train.test$index,] %>%
-    setDT()
-  spec.df <- spec.df[
-    common.name == spec & state == st][
-      , `:=` (state=NULL, common.name = NULL, geometry=NULL, 
-              presence=factor(T, levels=c("TRUE", "FALSE")))]
-  .remove <- c(names(which(sapply(spec.df, function(x) {
-    length(unique(x)) <= 1}))),
-    redund.feat, "lat", "lon", "observations") %>% 
-    unique()
-  .remove <- .remove[.remove %in% names(spec.df)]
-  .remove <- .remove[.remove != "presence"]
-  tot <- length(dfs[[st]][[spec]]$pseudo.absence)
+preds.abs.df <- function(df.list, tot, spec, st, files, .train=T, verbose=F) {
   preds <- purrr::map(1:tot, function(i) {
-    .train <- ifelse(i <= train.samples, T, F) 
-    abs.df <- dfs[[st]][[spec]]$pseudo.absence[[i]] %>%
+    abs.df <- df.list[[i]] %>%
       setDT() %>%
       .[common.name == spec & state == st] %>%
       .[, `:=` (state=NULL, common.name = NULL, 
-                geometry=sf::st_as_text(geometry),
+                geometry=geometry,
                 presence=factor(F, levels=c("TRUE", "FALSE")))]
     geom <- abs.df$geometry
     abs.df[, geometry := NULL]
     if (!is_empty(.remove)) {
       abs.df <- abs.df %>% dplyr::select(-.remove)
     }
-    preds.j <- files[1:train.samples] %>%
+    preds.j <- files %>%
       purrr::imap(function(f, j) {
         if (verbose) cat(i, "/", tot, "Getting predictions for model", j, 
                          "for", spec, "in", st, "\n")
@@ -665,7 +700,7 @@ get.pa.prob <- function(st, spec, dfs,
             .[, .(`FALSE`)] %>%
             setnames("FALSE", paste0("abs.prob.", j))},
           paste0(st, "_", spec, "_", i, "_", j, ".rds"),
-          "artifacts/pa_probs")
+          ifelse(.train, "artifacts/pa_probs/train", "artifacts/pa_probs/test"))
       }) %>% do.call("cbind", .)
     
     preds.j[, `:=` (med=apply(.SD, 1, median), 
@@ -673,8 +708,38 @@ get.pa.prob <- function(st, spec, dfs,
                     geometry=geom, state=st,
                     common.name=spec)] %>% 
       setorderv(x=., cols="med", order=-1)
-    preds.j[, .(state, common.name, id, sample, med, train, geometry)]
+    preds.j[, .(state, common.name, train, med, geometry)]
   }) %>% rbindlist()
+}
+
+if (!dir.exists("artifacts/pa_probs")) dir.create("artifacts/pa_probs")
+get.pa.prob <- function(st, spec, dfs,
+                        dir="artifacts/models/lasso_3_fs", 
+                        verbose=F) {
+  files <- list.files(dir) %>%
+    .[grepl(paste(tolower(gsub(" ", "_", spec)), st, sep="_"), .)] %>%
+    file.path(dir, .)
+  if (length(files) == 0) return(NULL)
+  
+  # Get columns that should be removed (based on original presence data)
+  spec.df <- dfs[[st]][[spec]]$presence.train %>%
+    setDT() %>%
+    .[common.name == spec & state == st] %>%
+    .[, `:=` (state=NULL, common.name = NULL, geometry=NULL, 
+              presence=factor(T, levels=c("TRUE", "FALSE")))]
+  .remove <- c(names(which(sapply(spec.df, function(x) {
+    length(unique(x)) <= 1}))),
+    redund.feat, "lat", "lon", "observations") %>% 
+    unique()
+  .remove <- .remove[.remove %in% names(spec.df)]
+  .remove <- .remove[.remove != "presence"]
+  tot.train <- length(dfs[[st]][[spec]]$pseudo.absence.train)
+  tot.test <- length(dfs[[st]][[spec]]$pseudo.absence.test)
+  preds.train <- preds.abs.df(dfs[[st]][[spec]]$pseudo.absence.train, 
+                              tot.train, spec, st, files, .train=T)
+  preds.test <- preds.abs.df(dfs[[st]][[spec]]$pseudo.absence.test, 
+                              tot.test, spec, st, files, .train=F)
+  rbindlist(list(preds.train, preds.test))
 }
 
 purrr::walk(1:nrow(spec.state), function(i) {
@@ -683,9 +748,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
   cat(spec, st, "\n")
   tryCatch({get.object(
     {get.pa.prob(st, spec, dfs, 
-                 train.samples=train.samples, 
-                 test.samples=test.samples,
-                 verbose=F) %>% 
+                 verbose=T) %>% 
         setorderv(c("train", "med"), order=c(-1, -1))},
     paste0(st, "_", spec, ".rds"),
     "artifacts/pa_prob_results"
@@ -703,18 +766,164 @@ purrr::walk(1:nrow(spec.state), function(i) {
   f <- file.path("artifacts/pa_prob_results", paste0(st, "_", spec, ".rds"))
   if (file.exists(f)) {
     get.object({
-      dt <- readRDS(f)
-      ntrain <- train.test$train[common.name==spec & state==st] %>% nrow()
-      ntest <- train.test$test[common.name==spec & state==st] %>% nrow()
+      dt <- readRDS(f)[, .(common.name, state, train, geometry)]
+      pres.train <- df.train[common.name == spec & state == st] %>% 
+        sf::st_as_sf(x=., crs=4326) %>%
+        mutate(presence=factor(T, levels=c("TRUE", "FALSE")))
+      pres.test <- df.test[common.name == spec & state == st] %>% 
+        sf::st_as_sf(x=., crs=4326) %>%
+        mutate(presence=factor(T, levels=c("TRUE", "FALSE")))
+      ntrain <- pres.train %>% 
+        nrow() %>%
+        ifelse(. < 200, 200, .)
+      ntest <- pres.test %>% 
+        nrow() %>%
+        ifelse(. < 200, 200, .)
       cat(spec, st, ntrain, ntest, "\n")
       trn <- dt[train==T][1:ntrain] %>% 
-        sf::st_as_sf(x=., crs=4326, wkt="geometry")
+        sf::st_as_sf(x=., crs=4326) %>%
+        cbind(data.frame(sf::st_coordinates(.$geometry[1:nrow(.)])) %>% 
+                set_names(c("lon", "lat"))) %>%
+        mutate(presence=factor(F, levels=c("TRUE", "FALSE"))) %>%
+        select(names(pres.train))
+      trn <- do.call(what="rbind", args=list(trn, pres.train))
       tst <- dt[train==F][1:ntest] %>% 
-        sf::st_as_sf(x=., crs=4326, wkt="geometry")
+        sf::st_as_sf(x=., crs=4326) %>%
+        cbind(data.frame(sf::st_coordinates(.$geometry[1:nrow(.)])) %>% 
+                set_names(c("lon", "lat"))) %>%
+        mutate(presence=factor(F, levels=c("TRUE", "FALSE"))) %>%
+        select(names(pres.test))
+      tst <- do.call(what="rbind", args=list(tst, pres.test))
+      
       list(train=trn, test=tst)
     }, paste0(st, "_", spec, ".rds"),
     "artifacts/train_test_pseudo_abs_updated")
   }
 })
+
+```
+
+
+### Pre-Processing IPP Model Covariates
+
+```{r ipp-model, results='hide'}
+
+# Ensure counter-clockwise direction
+is.ccw <- function(p) {
+  tryCatch({owin(poly=p); T}, error=function(e) F)
+}
+
+# Check that all polygons were traversed in the right direction
+ensure.ccw <- function(polygon.list) {
+  lapply(polygon.list, function(p) {
+    # Check the first polygon (outer boundary)
+    if (!is.ccw(p)) {
+      p$x <- rev(p$x)
+      p$y <- rev(p$y)
+    }
+    p
+  })
+}
+
+# Function to convert polygon to required list format
+convert.to.list.format <- function(sf.object) {
+  polygons.list <- lapply(1:nrow(sf.object), function(i) {
+    sfc <- st_geometry(sf.object[i,])
+    if (class(sfc)[[1]] == "sfc_MULTIPOLYGON") {
+      sfc <- st_cast(sfc, "POLYGON")
+    }
+    lapply(sfc, function(poly) {
+      list(x = st_coordinates(poly)[,1], 
+           y = st_coordinates(poly)[,2])
+    })
+  })
+  
+  # If the object has only one row, we unlist one level to adhere 
+  # to the described format for `ppp` objects
+  if (length(polygons.list) == 1) {
+    polygons.list <- polygons.list[[1]]
+  }
+  
+  # Ensure counter-clockwise
+  polygons.list <- ensure.ccw(polygons.list)
+
+  return(polygons.list)
+}
+
+prep.ipp.data <- function(data, st, spec, 
+                          r.list, just.presence=F) {
+  # Filter Raster List
+  r <- r.list[[st]]
+  
+  # filter by state & species
+  ipp.df <- data %>% 
+    filter(state == st & common.name == spec) %>%
+    # select location point
+    select(c("lon", "lat", "presence")) %>% 
+    # Get the unique points, since we are not accounting 
+    # for the temporal nature of the data
+    unique() 
+    
+  # Get the first layer, set it to either NA or TRUE
+  r.poly <- terra::project(x=r[[1]], 
+                           y=st_crs(4326, parameters=T)$Wkt) %>% 
+    lapp(function(z) ifelse(is.na(z), NA, T)) %>%
+    terra::as.polygons() %>%
+    # Convert to polygon
+    st_as_sf()
+  
+  # Convert polygon to list
+  r.poly.list <- convert.to.list.format(r.poly)
+  
+  # Get indices of points that are within the polygon
+  valid.pts <- sapply(st_intersects(ipp.df, r.poly), function(x) length(x) > 0)
+  
+  # Filter out invalid points
+  ipp.df <- filter(ipp.df, valid.pts)
+  
+  # Subset df by presence
+  ipp.presence <- filter(ipp.df, presence == T)
+  ipp.dummies <- filter(ipp.df, presence == F)
+  
+  # Convert the data to a ppp objects
+  locations <- spatstat.geom::ppp(ipp.presence$lon, 
+                                  ipp.presence$lat, 
+                                  poly=r.poly.list) 
+  
+  if (just.presence) return(locations)
+  
+  dummy.locs <- spatstat.geom::ppp(ipp.dummies$lon, 
+                                   ipp.dummies$lat, 
+                                   poly=r.poly.list) 
+  
+  # Create Quadscheme
+  Q <- spatstat.geom::quadscheme(locations, dummy.locs)
+}
+
+# Save training/testing spatstat data
+purrr::walk(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  cat("Prepping final data for", spec, "in", st, "\n")
+  # Get raster
+  r <- r.list[[st]]
+  data <- file.path("artifacts/train_test_pseudo_abs_updated",
+                    paste0(st, "_", spec, ".rds")) %>% readRDS()
+  train.data <- data$train
+  test.data <- data$test
+  cat("\tGetting `spatstat.geom::ppp` object with training points...\n")
+  Q <- get.object(
+    prep.ipp.data(train.data, st, spec, r.list),
+    paste0(st, "_", spec, "_Q.rds"),
+    file.path("artifacts", "train_spatstat_Q_2")
+  )
+  cat("\tGetting `spatstat.geom::ppp` object with testing points...\n")
+  Q.test <- get.object(
+    prep.ipp.data(test.data, st, spec, r.list),
+    paste0(st, "_", spec, "_Q.rds"),
+    file.path("artifacts", "test_spatstat_Q_2")
+  )
+})
+
 
 ```

@@ -1,0 +1,434 @@
+---
+title: 'SDM Benchmark Study Part 7: Fitting and Testing Inhomogeneous Poisson Process Models with Updated Test Data'
+author: "Benton Tripp"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+    df_print: paged
+  
+---
+
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
+```
+
+## Setup
+
+```{r setup-2, results='hide'}
+
+library(sf)
+library(terra)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(purrr)
+library(caret)
+library(spatstat)
+library(tidyr)
+
+# Set seed for splitting and modeling
+set.seed(19)
+
+# Load the dataset saved in part 2 of the study 
+df <- readRDS("artifacts/final_data/final_data.rds") %>% setDT()
+
+# Define some global variables that will be referenced throughout the modeling 
+states <- sort(unique(df$state))
+species <- sort(unique(df$common.name))
+spec.state <- expand.grid(species=species, 
+                          state=states, 
+                          stringsAsFactors=F)
+
+# Get model or other object from cache if it has been saved before
+get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=saveRDS, ...) {
+  f.path <- file.path(obj.path, file.name)
+  if (!dir.exists(obj.path)) {
+    dir.create(obj.path)
+  }
+  # Object cache check
+  if (file.exists(f.path)) {
+    obj <- read.func(f.path)
+  } else {
+    save.func(obj, f.path, ...)
+  }
+  obj
+}
+
+```
+
+## IPP Models
+
+### Load Variable Importance
+
+```{r varimp}
+# Load variable importance from fitted LASSO models
+lasso.model.path="artifacts/models/lasso_3_fs"
+
+# Define min/max scaling function for rasters
+min.max.scale <- function(x, na.rm=T) {
+  min.x <- min(x, na.rm=na.rm)
+  max.x <- max(x, na.rm=na.rm)
+  (x - min.x) / (max.x - min.x)
+}
+
+get.var.imp <- function(st, spec, dir="artifacts/models/lasso_3_fs") {
+  files <- list.files(dir) %>%
+    .[grepl(paste(tolower(gsub(" ", "_", spec)), st, sep="_"), .)] %>%
+    file.path(dir, .)
+  if (length(files) == 0) return(
+    tibble(
+      common.name=character(0),
+      state=character(0),
+      variable=character(0),
+      importance=numeric(0),
+      wt=numeric(0),
+      weighted.imp=numeric(0)
+    )
+  )
+  var.imp <- purrr::map_df(files, ~{
+    fit <- readRDS(.x)
+    coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
+      as.matrix() %>%
+      as.data.frame()
+    # Remove the intercept
+    coef.df <- coef.df[-1, , drop = F]
+    # Create a data frame of variable importance
+    var.importance <- tibble(
+      common.name = spec,
+      state = st,
+      variable = rownames(coef.df),
+      importance = abs(coef.df[,1])
+    ) %>%
+      # Rank variables by importance
+      arrange(state, common.name, -importance, variable) %>%
+      # Only look at variables where imp. > 0
+      filter(importance > 0)
+  }) %>%
+    mutate(n=n()) %>%
+    group_by(common.name, state, variable, n, .drop=F) %>%
+    summarize(importance=median(importance), 
+              wt=n()) %>%
+    ungroup() %>%
+    mutate(wt=wt/n) %>%
+    select(-n) %>%
+    mutate(weighted.imp=min.max.scale(wt*importance)) %>%
+    arrange(-weighted.imp, variable) 
+}
+
+var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  get.var.imp(st, spec)
+})
+
+var.imp
+
+```
+
+
+```{r ipp-model, results='hide'}
+
+optimize.threshold <- function(roc.obj) {
+  # Calculate Youden's J statistic for each threshold
+  j.values <- roc.obj$fobs + (1 - roc.obj$ftheo) - 1
+  # Find the threshold that maximizes the J statistic
+  optimal.threshold <- roc.obj$p[which.max(j.values)]
+  return(optimal.threshold)
+}
+
+purrr::walk(1:nrow(spec.state), function(i) {
+  covariates.keep <- 50
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  glm.results.path <- file.path("artifacts/test_results/ipp_glm_mpl_2",
+                                paste0(spec, "_", st, "_ipp_glm_mpl_2.rds"))
+  if (!file.exists(glm.results.path)) {
+    cat("Fitting IPP model for", spec, "in", st, "\n")
+    
+    cat("\tGetting pre-processed `spatstat.geom::ppp` object (train)...\n")
+    Q <- readRDS(file.path("artifacts", "train_spatstat_Q_2",
+                           paste0(st, "_", spec, "_Q.rds")))
+    cat("\tGetting `spatstat.geom::ppp` object (test)...\n")
+    Q.test <- readRDS(file.path("artifacts", "test_spatstat_Q_2",
+                                paste0(st, "_", spec, "_Q.rds")))
+    
+    converged <- F
+    no.pred.error <- F
+    roc.obj <- NULL
+    while (!converged | !no.pred.error | is.null(roc.obj)) {
+      # Set path
+      glm.path <- file.path("artifacts/models/ipp_glm_mpl_2", 
+                            paste0(spec, "_", st, "_", covariates.keep,
+                                   "_ipp_glm_mpl_2.rds"))
+      if (covariates.keep > 0) {
+        # Select covariates based on feature importance
+        cat("\tFetching variable importance with `covariates.keep` set to", 
+            covariates.keep, "\n")
+        fs.df <- var.imp %>% 
+          filter(state == st & common.name == spec) %>%
+          mutate(var1 = purrr::map_chr(variable, 
+                                       ~ stringr::str_split(.x, "\\:")[[1]][1]),
+                 var2 = purrr::map_chr(variable, ~ {
+                   split_result <- stringr::str_split(.x, "\\:")[[1]]
+                   if(length(split_result) > 1) split_result[2] else NA_character_
+                 })) %>%
+          mutate(variable = ifelse(is.na(var2), 
+                                   var1, 
+                                   paste(var1, var2, sep = ":"))) %>%
+          # Keep only pre-determined # of variables/interactions
+          head(covariates.keep)
+        covariates.keep <- nrow(fs.df) # in case there are fewer available
+        
+        if (nrow(fs.df) > 0) {
+          covariates <- c(fs.df$var1, fs.df$var2) %>% 
+            unique() %>% 
+            sort()
+        } else {
+          cat("\tThere are no specified covariates for", spec, st, "\n")
+        }
+        
+        # Load/compute filtered & pre-processed rasters
+        covariates <- covariates %>%
+          set_names() %>%
+          purrr::map(function(.x) {
+            file <- file.path("artifacts/spatstat_imgs", 
+                              paste0(st, "_", .x, ".rds"))
+            readRDS(file)
+          })
+        
+        # Create formula
+        .f <- paste(fs.df$variable, collapse=" + ") %>% 
+          paste("~", .) %>% 
+          as.formula()
+        # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
+        # * gcontrol=list() for additional glm/gam parameters
+        
+        # GLM Model
+        cat("\tFitting GLM Model using the Method of Maximum",
+            "PseudoLikelihood...\n")
+        fit.glm <- tryCatch({
+          ppm(Q=Q, trend=.f, covariates=covariates, 
+              rbord=.05, method="mpl") %>%
+            get.object(
+              obj=.,
+              file.name=paste0(spec, "_", st, "_", covariates.keep,
+                               "_ipp_glm_mpl_2.rds"), 
+              obj.path="artifacts/models/ipp_glm_mpl_2")}, 
+          error=function(e) NULL)
+        if (is.null(fit.glm)) {
+          if (covariates.keep > 15) {
+            covariates.keep <- covariates.keep - 5
+          } else {
+            covariates.keep <- covariates.keep - 1
+          }
+          if (covariates.keep < 0) stop("\tNo trend identified.\n")
+          warning("\tThere was an error fitting the model. Trying a",
+                  "different number of covariates\n")
+          next
+        }
+        converged <- fit.glm$internal$glmfit$converged
+      } else {
+        cat("\tFitting GLM Model using the Method of Maximum",
+            "PseudoLikelihood with no trend...\n")
+        fit.glm <- ppm(Q=Q, rbord=.05, method="mpl") %>%
+          get.object(
+            obj=.,
+            file.name=paste0(spec, "_", st, "_", covariates.keep,
+                             "_ipp_glm_mpl_2.rds"), 
+            obj.path="artifacts/models/ipp_glm_mpl_2")
+        converged <- T
+      }
+      # Check for errors when predicting
+      options(show.error.messages = F)
+      no.pred.error <- suppressWarnings(
+        tryCatch(
+          expr={predict.ppm(fit.glm, se=T); T}, 
+          error=function(e) {F}
+        )
+      )
+      options(show.error.messages = T)
+      # Compute the ROC curve, check for errors
+      cat("\tGetting ROC...\n")
+      roc.obj <- tryCatch(expr={spatstat.explore::roc(fit.glm)}, 
+                          error=function(e) {NULL})
+      if (!converged | !no.pred.error | is.null(roc.obj)) {
+        warning("\tThe model converged or there was an error",
+                "for covariates.keep ==", covariates.keep, "\n")
+        
+        file.remove(glm.path)
+        if (covariates.keep > 15) {
+          covariates.keep <- covariates.keep - 5
+        } else {
+          covariates.keep <- covariates.keep - 1
+        }
+        if (covariates.keep < 0) stop("\tNo trend identified.\n")
+      }
+    }
+    
+    glm.results <- get.object(
+      obj={
+        locations.test <- data.table::rbindlist(
+          list(
+            data.table(x=Q.test$data$x, y=Q.test$data$y, obs=T), 
+            data.table(x=Q.test$dummy$x, y=Q.test$dummy$y, obs=F)
+          )
+        ) 
+        if (covariates.keep > 0) {
+          covariates.rasters <- names(covariates) %>%
+            set_names() %>%
+            purrr::map(function(x) {
+              r <- terra::rast(covariates[[x]])
+              set.crs(r, st_crs(4326, parameters=T)$Wkt)
+              names(r) <- x
+              r
+            })
+          purrr::walk2(names(covariates), covariates.rasters, function(n, r) {
+            locations.test[, (n) := 
+                             terra::extract(r, cbind(locations.test$x, 
+                                                     locations.test$y))]
+          })
+        }
+        
+        glm.pred <- spatstat.model::predict.ppm(
+          fit.glm, 
+          locations=locations.test[, .(x,y)],
+          type="trend", se=T)
+        glm.ci <- spatstat.model::predict.ppm(
+          fit.glm, 
+          locations=locations.test[, .(x,y)],
+          type="trend", interval="c")
+        glm.test <- cbind(
+          locations.test,
+          data.table(
+            est=glm.pred$estimate,
+            se=glm.pred$se,
+            lo=glm.ci[1:length(glm.pred$estimate)],
+            hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
+        )
+        glm.test[, `:=` (
+          p.obs = 1 - dpois(0, est), # probability > 0
+          p.obs.lo = 1 - dpois(0, lo),
+          p.obs.hi = 1 - dpois(0, hi)
+        )]
+        
+        all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
+        glm.count.pred <- tryCatch(spatstat.model::predict.ppm(fit.glm, 
+                                                               type="count", se=T),
+                           error=function(e) NULL)
+        glm.pi <- tryCatch(spatstat.model::predict.ppm(fit.glm, type="count", 
+                                                       se=T, interval="p"),
+                           error=function(e) NULL)
+        
+        optimal.threshold <- optimize.threshold(roc.obj)
+        list(
+          test=glm.test,
+          all.preds=all.predictions,
+          count=glm.count.pred,
+          pi=glm.pi,
+          roc=roc.obj,
+          thresh=optimal.threshold
+        )
+      },
+      file.name=paste0(spec, "_", st, "_ipp_glm_mpl_2.rds"),
+      obj.path="artifacts/test_results/ipp_glm_mpl_2"
+    )
+    cat("\tFinished IPP model for", spec, "in", st, "\n")
+  }
+  gc()
+})
+
+
+```
+
+
+```{r examine-mel-results}
+
+get.acc <- function(results.path, thresh) {
+  test <- readRDS(results.path)$test
+  df <- test[, .(pred=as.factor(ifelse(p.obs > thresh, T, F)), obs=as.factor(obs))]
+  
+  cm <- confusionMatrix(df$pred, df$obs, positive = "TRUE", mode="everything")
+}
+
+ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  glm.base.path <- "artifacts/models/ipp_glm_mpl_2"
+  # Regular expression pattern to match the filename
+  pattern <- paste0("^", spec, "_", st, "_([0-9]{1,2})_ipp_glm_mpl_2\\.rds$")
+  glm.path <- list.files(path = glm.base.path, pattern = pattern, full.names = T)
+  num.of.covariates <- as.numeric(regmatches(glm.path, regexpr("[0-9]{1,2}", glm.path)))
+  results.path <- file.path("artifacts/test_results/ipp_glm_mpl_2",
+                        paste0(spec, "_", st, "_ipp_glm_mpl_2.rds"))
+  thresh <- 1-readRDS(results.path)$thresh
+  cm <- get.acc(results.path, thresh)
+  tibble(
+    common.name=spec,
+    state=st,
+    covariate.count=num.of.covariates,
+    optimal.threshold=thresh,
+    Fpred.Fref=cm$table[1,1],
+    Fpred.Tref=cm$table[1,2],
+    Tpred.Fref=cm$table[2,1],
+    Tpred.Tref=cm$table[2,2],
+    glm.path=glm.path,
+    results=results.path
+  ) %>%
+    cbind(as.list(c(cm$overall, cm$byClass)) %>% as_tibble())
+})
+
+ipp.models
+
+```
+
+```{r model-acc}
+summary(ipp.models)
+```
+
+
+```{r box-plots-1, fig.width=4, fig.height=5}
+
+# Assuming your dataframe is named `ipp.models`
+# Reshape the data to long format
+long.data <- ipp.models %>%
+  select(common.name, Accuracy:`Balanced Accuracy`) %>%
+  gather(key = "Metric", value = "Value", -common.name)
+
+# Overall box-plot representation
+ggplot(long.data, aes(x = Metric, y = Value)) +
+  geom_boxplot(fill = "white", outlier.shape = NA) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.background = element_rect(fill = "lightgray"),
+        plot.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  coord_flip()
+
+```
+
+```{r box-plot-2, fig.width=8, fig.height=20}
+
+# Box plot for each species
+ggplot(long.data, aes(x = Metric, y = Value)) +
+  geom_boxplot(fill = "white", outlier.shape = NA) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.background = element_rect(fill = "lightgray"),
+        plot.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  coord_flip() +
+  facet_wrap(~ common.name, scales = "free_y", ncol = 2)
+
+```
+
+
+
