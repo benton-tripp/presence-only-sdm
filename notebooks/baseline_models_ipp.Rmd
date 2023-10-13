@@ -46,11 +46,6 @@ spec.state <- expand.grid(species=species,
                           state=states, 
                           stringsAsFactors=F)
 
-```
-
-For computational efficiency, models are cached. This section uses the function defined below to retrieve the model from cache if it exists or save it to the cache if it doesn't. This approach speeds up the modeling process, especially when iterating and fine-tuning various models, by avoiding retraining on the same dataset unless necessary.
-
-```{r get-object-func}
 
 # Get model or other object from cache if it has been saved before
 get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=saveRDS, ...) {
