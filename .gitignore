@@ -16,6 +16,7 @@ artifacts/models/lasso_3_fs/*
 artifacts/pa_probs/*
 artifacts/pa_prob_results/*
 artifacts/plots/*
+artifacts/bioclim_suitable_plots/*
 !artifacts/plots/all_rasters_html.rds
 spatstat.model/*
 spatstat.model

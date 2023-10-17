@@ -16,10 +16,49 @@ output:
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 ```
 
+## Overview
+
+This part of the study shows my first iteration of fitting the IPP models using the data
+pre-processed in prior parts of the study. Because it is mostly just large bodies of code for the 
+main portion, I will just give a rough outline here of the steps that are taken. Then, I will go 
+into greater detail discussing the results.
+
+### IPP Model Process Outline
+
+- Load libraries
+- Read in observation and raster data from [part 2](https://benton-tripp.github.io/posts/2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html) and [part 3](https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html) of the study
+- Establish utility functions and variables
+- Load variable importance (obtained from fitted LASSO models in [part 3](https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html) of the study)
+- Iterate over each state/species pair
+  * Define the base number of maximum covariates and covariate interactions to keep (50)
+  * Load pre-processed train/test observation data (`spatstat.geom::quadscheme` objects cached in 
+    [part 3](https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html) of the study)
+  * Load the corresponding pixel images (`spatstat.geom::im` objects, also cached in 
+    [part 3](https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html)) for each of the covariates up to the maximum allowed number
+  * Using the training data and pixel images, fit an IPP (GLM) Model using the Method of 
+    Maximum Pseudo-Likelihood (`spatstat.model::ppm`)
+  * Check for issues (model does not converge, prediction error, etc.);
+    - If there is an issue, reduce the number of maximum allowed covariates
+      and re-fit the model
+    - Repeat this process until there are either no problems or else there
+      are no more available covariates (in which case fit a model with no trend)
+  * Compute the Receiver Operating Characteristic curve for the fitted point process 
+    model (using `spatstat.model::roc.ppm`)
+  * Generate predictions with standard errors and a confidence interval for the 
+    test data
+  * Using the estimates and C.I. values, estimate probabilities 
+    (i.e., using `1 - dpois(0, estimate)`)
+  * Generate predictions for the entire region
+  * Estimate prediction intervals with standard errors
+  * Find the optimal threshold using Youden's J statistic (i.e., find the threshold 
+    that maximizes the J statistic)
+  * Generate model accuracy metrics using the test predictions/actuals
+
 ## Setup
 
 ```{r setup-2, results='hide'}
 
+# Load libraries
 library(sf)
 library(terra)
 library(ggplot2)
@@ -64,9 +103,6 @@ get.object <- function(obj, file.name, obj.path, read.func=readRDS, save.func=sa
 
 ```
 
-
-## IPP Models
-
 ### Load Variable Importance
 
 ```{r varimp}
@@ -99,6 +135,7 @@ var.imp <- species %>% purrr::map_df(function(spec) {
 
 ```
 
+## Fit IPP Models
 
 ```{r ipp-model, results='hide'}
 
@@ -110,7 +147,9 @@ optimize.threshold <- function(roc.obj) {
   return(optimal.threshold)
 }
 
+# Iterate over each state/species pair
 purrr::walk(1:nrow(spec.state), function(i) {
+  # Define the base number of maximum covariates to keep
   covariates.keep <- 50
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
@@ -119,6 +158,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
   if (!file.exists(glm.results.path)) {
     cat("Fitting IPP model for", spec, "in", st, "\n")
     
+    # Load observation data
     cat("\tGetting pre-processed `spatstat.geom::ppp` object (train)...\n")
     Q <- readRDS(file.path("artifacts", "train_spatstat_Q",
                            paste(st, "_", spec, "_Q.rds")))
@@ -314,6 +354,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
 
 ```
 
+### Generate Accuracy Metrics using Test Data
 
 ```{r examine-mel-results}
 
@@ -340,32 +381,55 @@ ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
     common.name=spec,
     state=st,
     covariate.count=num.of.covariates,
-    optimal.threshold=thresh,
-    Fpred.Fref=cm$table[1,1],
-    Fpred.Tref=cm$table[1,2],
-    Tpred.Fref=cm$table[2,1],
-    Tpred.Tref=cm$table[2,2],
-    glm.path=glm.path,
-    results=results.path
+    optimal.threshold=thresh # ,
+    # Fpred.Fref=cm$table[1,1],
+    # Fpred.Tref=cm$table[1,2],
+    # Tpred.Fref=cm$table[2,1],
+    # Tpred.Tref=cm$table[2,2],
+    # glm.path=glm.path,
+    # results=results.path
   ) %>%
     cbind(as.list(c(cm$overall, cm$byClass)) %>% as_tibble())
-})
-
-ipp.models
+}) %>%
+  select(common.name:Accuracy,Sensitivity,Specificity,F1)
 
 ```
+
+## Results
+
+```{r model-acc-tab}
+
+DT::datatable(
+  ipp.models,
+  filter='none',
+  selection='none',
+  rownames=F,
+  options=list(
+    scrollX=T,
+    scrollY=T,
+    paging=F,
+    searching=F,
+    orderMulti=T,
+    info=F,
+    lengthChange = F
+  )) %>%
+  DT::formatStyle(columns=names(ipp.models), 
+                  `font-size`="13px") %>%
+  DT::formatSignif(4:ncol(ipp.models), digits=2)
+
+```
+
+### Overall Metric Summaries
 
 ```{r model-acc}
-summary(ipp.models)
+select(ipp.models, Accuracy:F1) %>% summary()
 ```
 
+```{r box-plots-1, fig.width=4, fig.height=4}
 
-```{r box-plots-1, fig.width=4, fig.height=5}
-
-# Assuming your dataframe is named `ipp.models`
 # Reshape the data to long format
 long.data <- ipp.models %>%
-  select(common.name, Accuracy:`Balanced Accuracy`) %>%
+  select(common.name, Accuracy:F1) %>%
   gather(key = "Metric", value = "Value", -common.name)
 
 # Overall box-plot representation
@@ -381,7 +445,9 @@ ggplot(long.data, aes(x = Metric, y = Value)) +
 
 ```
 
-```{r box-plot-2, fig.width=8, fig.height=20}
+### Summaries by Species
+
+```{r box-plot-2, fig.width=8, fig.height=16}
 
 # Box plot for each species
 ggplot(long.data, aes(x = Metric, y = Value)) +
@@ -397,5 +463,52 @@ ggplot(long.data, aes(x = Metric, y = Value)) +
 
 ```
 
+### Summaries by State
 
+```{r box-plot-3, fig.width=8, fig.height=8}
+
+# Reshape the data to long format
+long.data.state <- ipp.models %>%
+  select(state, Accuracy:F1) %>%
+  gather(key = "Metric", value = "Value", -state)
+
+# Box plot for each species
+ggplot(long.data.state, aes(x = Metric, y = Value)) +
+  geom_boxplot(fill = "white", outlier.shape = NA) +
+  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.background = element_rect(fill = "lightgray"),
+        plot.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  coord_flip() +
+  facet_wrap(~ state, scales = "free_y", ncol = 2)
+
+```
+
+### Discussion
+
+To put it frankly, the apparent results of the models given the test data
+are not good. On average, accuracy is ~47% and the F1 score is ~0.57. 
+Perhaps most noticeable in the results is that the Sensitivity and Specificity are consistently very polarized, averaging ~0.85 and ~0.16 respectively. This means that the models are consistently worse at
+identifying the positive class (bird observations) correctly.
+
+Given this information when typically evaluating a predictive model,
+sensitivity and specificity metrics like these might suggest that 
+the training data is imbalanced. I.e., there are many more examples 
+of one class than the other. Models trained on imbalanced data can 
+often show high sensitivity but low specificity because they learn 
+to predict the majority class more frequently. However, given that 
+the data used for the negative values in these models is pseudo-absence 
+data that was specifically sampled in balanced sample sizes, this 
+cannot be the case. But the problem still most-likely lies with
+the pseudo-absence data. If a model is not correctly distinguishing
+between the observation/absence points, it might mean that the 
+pseudo-absence points do not accurately represent the 
+regions where a particular bird is less likely to be observed.
+
+As a next step, I will be re-evaluating the pseudo-absence selection
+process and making some improvements. From there, I will re-fit
+the IPP models, and proceed with the study using a (hopefully) more
+accurate representation of the observation/absence data.
 

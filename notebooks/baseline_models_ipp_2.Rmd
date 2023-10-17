@@ -217,20 +217,6 @@ bioclim.list <- purrr::map(1:nrow(spec.state), function(i) {
   )
 })
 
-
-# Example
-plot(purrr::detect(bioclim.list, ~.x$state == "VT" & 
-             .x$species == "Wild Turkey")$bioclim, 
-     main = "BIOCLIM Suitability for Wild Turkeys in Vermont")
-```
-
-```{r bioclim-ex-2}
-# Example
-qnt.5.wtvt <- quantile(values(purrr::detect(bioclim.list, ~.x$state == "VT" & 
-                         .x$species == "Wild Turkey")$bioclim), .5, na.rm=T)
-plot(purrr::detect(bioclim.list, ~.x$state == "VT" & 
-             .x$species == "Wild Turkey")$bioclim < qnt.5.wtvt, 
-     main = "BIOCLIM Suitable sample regions for Wild Turkeys in Vermont")
 ```
 
 
@@ -278,15 +264,67 @@ purrr::walk(1:nrow(spec.state), function(i) {
   qnt.5 <- quantile(values(bioclim.list[[idx]]$bioclim), .5, na.rm=T)
   bioclim.list[[idx]]$qnt.5 <<- qnt.5
   bioclim.list[[idx]]$final.pseudo.absence.region <<-
-    bioclim.list[[idx]]$bioclim <= qnt.5 & pa.region == 1
+    bioclim.list[[idx]]$bioclim <= qnt.5 & terra::lapp(pa.region, function(.x) {
+    ifelse(is.na(.x), 0, 1)}) == 1
 })
    
-
-plot(purrr::detect(bioclim.list, ~.x$state == "VT" & 
-             .x$species == "Wild Turkey")$final.pseudo.absence.region, 
-     main = "Final Suitable sample regions for Wild Turkeys in Vermont") 
-
 ```
+
+
+```{r bioclim-ex-plts}
+
+# Function to plot a raster with ggplot
+plot.raster.gg <- function(r, fill, scale.c=T) {
+  df <- terra::as.data.frame(r, xy = T)
+  p <- ggplot(df, aes(x = x, y = y, fill = !!sym(fill))) + 
+    geom_raster() +
+    coord_cartesian()
+  if (scale.c) p <- p + scale_fill_viridis_c()
+  p
+}
+
+# Create plots for each combination
+plots.list <- purrr::map(bioclim.list, function(entry) {
+  get.object({
+    list(
+    plot.raster.gg(entry$bioclim, "sum") + 
+      labs(title = paste0("BIOCLIM Suitability for\n", entry$species, " in ",
+                          entry$state),
+           fill="BIOCLIM Sum"),
+    plot.raster.gg(entry$bioclim < entry$qnt.5, "sum", F) + 
+      labs(title = paste0("BIOCLIM Suitable sample regions for\n", entry$species, 
+                          " in ", entry$state),
+           fill="BIOCLIM Suitable\nPseudo-absence Region"),
+    plot.raster.gg(entry$final.pseudo.absence.region, "sum", F) + 
+      labs(title = paste0("Final Suitable sampleregions for\n", entry$species, 
+                          " in ", entry$state),
+           fill="Suitable Sampling\nRegions")
+  ) %>% ggpubr::ggarrange(plotlist = ., ncol = 3)
+  },
+  paste0(entry$species, "_", entry$st, ".rds"),
+  "artifacts/bioclim_suitable_plots")
+})
+
+# Arrange the plots
+all.plots <- get.object({
+  ap <- ggpubr::ggarrange(plotlist=plots.list, ncol=1)
+  # Create a temporary file
+  tmpfile <- tempfile(fileext = ".svg")
+  # Save the ggplot to this file
+  ggsave(filename = tmpfile, ap, width = 50, height=50)
+  # Use img() function from htmltools to display it within a div
+  img.src <- paste0("data:image/svg+xml;base64,", base64enc::base64encode(tmpfile))
+  file.remove(tmpfile)
+  img.src
+},
+paste0("combined_svg.rds"),
+"artifacts/bioclim_suitable_plots")
+
+ htmltools::div(
+   style="overflow:auto; padding:5px;", 
+   htmltools::tags$img(src=all.plots))
+```
+
 
 ### Sampling Pseudo-Absences and Comparing Totals
 
