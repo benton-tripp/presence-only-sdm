@@ -16,10 +16,54 @@ output:
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 ```
 
+## Overview
+
+This part of the study presents a revised approach to selecting pseudo-absence points,
+addressing some of the challenges encountered in part 5. An outline of the work done is
+presented below:
+
+1. Setup (load data, train/test splits)
+2. BIOCLIM (by species, state)
+  a. For each raster, output a binary raster that is either (1) for binary 
+     rasters, equal to the mode of the raster, or (2) for continuous numeric
+     rasters, less than the 10th percentile or greater than the 90th percentile
+  b. Get the sum of all of the rasters
+  c. Identify suitable pseudo-absence sampling regions as (1) points where the
+     BIOCLIM sum is less than the median BIOCLIM sum, and (2) points that are
+     at least 5 kilometers away from an observation point
+3. Sample Pseudo-Absence Points from suitable regions
+  a. Sample the same number of points as observations, except with a minimum of 
+     200 points
+  b. Resample (without replacement) 10 times if possible. In some cases when
+     species are more widely distributed in a smaller region, there aren't 
+     enough points available; In these cases, resample the maximum allowed times
+  c. Split into training/test sets
+4. Re-Fit LASSO Models with Updated Pseudo-Absence Points
+  a. Iterate through each pseudo-absence resampling and training set fit LASSO 
+     models for each (each with the same presence training set)
+  b. Identify variable importance (use all models, sort by importance)
+  c. Predict the probabilities of each resampled point; Select those points 
+     that are most likely to be absence points and save those as the final
+     pseudo-absence dataset for modeling (select from training and test sets,
+     corresponding to the number of training/test presence points)
+5. Using the updated datasets, complete pre-processing for IPP models (i.e.,
+   set up `spatstat` data objects)
+
 ## Setup
+
+Setup is pretty standard now for each part of the study; for more in-depth details, 
+refer to prior phases of the study.
 
 ```{r setup-2, results='hide'}
 
+# Source jquery
+htmltools::tags$head(
+  htmltools::tags$script(
+    src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"
+  )
+)
+
+# Load libraries
 library(sf)
 library(terra)
 library(ggplot2)
@@ -115,9 +159,6 @@ r.list <- states %>%
 
 ```
 
-
-## Updated Pseudo-Absence Selection Process
-
 ### Split into Training/Test Sets
 
 As was done in Part 2 of the study, the data is split into a training set and a test set. The data is stratified based on latitude, longitude, species, and state to ensure that the distribution of these variables is consistent between the train and test sets. This stratification helps maintain representative samples and mitigates potential biases.
@@ -159,7 +200,15 @@ df.test <- df[-train.test$index,]
 
 ```
 
+## Updated Pseudo-Absence Selection Process
+
 ### BIOCLIM
+
+This section outlines a method for assessing suitable habitats for the bird species
+using the rasters. For each species and state, it extracts values from the raster
+layersat locations where the species has been observed. Based on these observed values,
+a suitability mask is created using either mode (for binary layers) or percentile-based
+thresholds (for continuous layers).
 
 ```{r bioclim}
                          
@@ -219,6 +268,14 @@ bioclim.list <- purrr::map(1:nrow(spec.state), function(i) {
 
 ```
 
+### Combine BIOCLIM with Masked Sampling Regions
+
+This section is focused on integrating the BIOCLIM suitability layers with pre-defined
+sampling masks (used in the prior pseudo-absence selection process). For each species
+and state, it applies a 5-kilometer resolution mask to restrict areas from which
+pseudo-absence points can be sampled. The combined suitability mask is then further
+refined by using the median BIOCLIM value to delineate regions suitable for
+pseudo-absence point selection.
 
 ```{r mask-rasters, results="hide"}
 
@@ -270,6 +327,13 @@ purrr::walk(1:nrow(spec.state), function(i) {
    
 ```
 
+### Visualize Suitable Sampling Regions
+
+Below, visualizations of the regions deemed suitable for pseudo-absence point sampling
+are generated. Multiple plots are generated for each species-state combination, illustrating the original "Sum BIOCLIM" suitability, suitable sampling regions based 
+on BIOCLIM regions under the threshold (median), and the final sampling regions (same
+as the previous, but with 5 kilometer masks removing areas around actual observation
+points).
 
 ```{r bioclim-ex-plts}
 
@@ -283,52 +347,123 @@ plot.raster.gg <- function(r, fill, scale.c=T) {
   p
 }
 
-# Create plots for each combination
-plots.list <- purrr::map(bioclim.list, function(entry) {
-  get.object({
-    list(
-    plot.raster.gg(entry$bioclim, "sum") + 
-      labs(title = paste0("BIOCLIM Suitability for\n", entry$species, " in ",
-                          entry$state),
-           fill="BIOCLIM Sum"),
-    plot.raster.gg(entry$bioclim < entry$qnt.5, "sum", F) + 
-      labs(title = paste0("BIOCLIM Suitable sample regions for\n", entry$species, 
-                          " in ", entry$state),
-           fill="BIOCLIM Suitable\nPseudo-absence Region"),
-    plot.raster.gg(entry$final.pseudo.absence.region, "sum", F) + 
-      labs(title = paste0("Final Suitable sampleregions for\n", entry$species, 
-                          " in ", entry$state),
-           fill="Suitable Sampling\nRegions")
-  ) %>% ggpubr::ggarrange(plotlist = ., ncol = 3)
-  },
-  paste0(entry$species, "_", entry$st, ".rds"),
-  "artifacts/bioclim_suitable_plots")
-})
-
-# Arrange the plots
-all.plots <- get.object({
-  ap <- ggpubr::ggarrange(plotlist=plots.list, ncol=1)
+plot.to.svg <- function(p, width, height) {
   # Create a temporary file
   tmpfile <- tempfile(fileext = ".svg")
   # Save the ggplot to this file
-  ggsave(filename = tmpfile, ap, width = 50, height=50)
+  ggsave(filename = tmpfile, p, width=width, height=height)
   # Use img() function from htmltools to display it within a div
   img.src <- paste0("data:image/svg+xml;base64,", base64enc::base64encode(tmpfile))
   file.remove(tmpfile)
   img.src
-},
-paste0("combined_svg.rds"),
-"artifacts/bioclim_suitable_plots")
+}
 
- htmltools::div(
-   style="overflow:auto; padding:5px;", 
-   htmltools::tags$img(src=all.plots))
+# Create plots for each combination
+plots.list <- purrr::map(1:nrow(spec.state), function(i) {
+  st <- spec.state[i,]$state
+  spec <- spec.state[i,]$species
+  r <- bioclim.list[[i]]$bioclim
+  qnt.5 <- bioclim.list[[i]]$qnt.5
+  fpar <- bioclim.list[[i]]$final.pseudo.absence.region
+  width <- case_when(st == "VT"~5,
+                     st == "NC"~16,
+                     st == "CO"~12,
+                     st == "OR"~8,
+                     T~8)
+  height <- case_when(st == "VT"~7,
+                     st == "NC"~8,
+                     st == "CO"~9,
+                     st == "OR"~8,
+                     T~8)
+  p1 <- (plot.raster.gg(r, "sum") + 
+    labs(title = paste0("BIOCLIM Suitability for\n", spec, " in ", st),
+         fill="BIOCLIM Sum")) %>%
+    plot.to.svg(p=., width=width, height=height) %>%
+    get.object(obj=., 
+               paste0(spec, "_", st, "_1.rds"),
+               "artifacts/bioclim_suitable_plots")
+  
+  p2 <- (plot.raster.gg(r < qnt.5, "sum", F) + 
+    labs(title = paste0("BIOCLIM Suitable sample regions for\n", 
+                        spec, " in ", st),
+         fill="BIOCLIM Suitable\nPseudo-absence Region")) %>%
+    plot.to.svg(p=., width=width, height=height) %>%
+    get.object(obj=.,paste0(spec, "_", st, "_2.rds"),
+               "artifacts/bioclim_suitable_plots")
+  
+  p3 <- (plot.raster.gg(fpar, "sum", F) + 
+    labs(title = paste0("Final Suitable sampleregions for\n", 
+                        spec, " in ", st),
+         fill="Suitable Sampling\nRegions")) %>%
+    plot.to.svg(p=., width=width, height=height) %>%
+    get.object(obj=., paste0(spec, "_", st, "_3.rds"),
+               "artifacts/bioclim_suitable_plots")
+  plots <- htmltools::tags$div(
+    id=paste0(st, "_", gsub(" ", "-", spec), "_bioclim_plots"),
+    style=paste0("padding:5px; overflow:auto; width:100%;", 
+                 "min-height:1400px; ", 
+                 ifelse(i==1, "", "display:none;")),
+    htmltools::tags$div(
+      style="margin:5px;",
+      htmltools::tags$img(src=p1)
+    ),
+    htmltools::tags$div(
+      style="margin:5px;",
+      htmltools::tags$img(src=p2)
+    ),
+    htmltools::tags$div(
+      style="margin:5px;",
+      htmltools::tags$img(src=p3)
+    )
+  )
+})
+
+htmltools::div(
+  htmltools::tags$script(
+    '$(document).ready(function(){
+        $("#state_selector").change(function(){
+          var selectedState = $(this).val();
+          var selectedSpecies = $("#species_selector").val();
+          // Hide all raster plots
+          $("[id$=_bioclim_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedSpecies + "_bioclim_plots").show();
+        });
+        $("#species_selector").change(function(){
+          var selectedState = $("#state_selector").val();
+          var selectedSpecies = $(this).val();
+          // Hide all raster plots
+          $("[id$=_bioclim_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedSpecies + "_bioclim_plots").show();
+        });
+      });'
+  ),
+  htmltools::tags$div(
+    style="display:flex; flex-direction:row;",
+    htmltools::tags$div(
+      style="margin-right:5px;",
+      htmltools::tags$select(id='state_selector',
+                             style="font-size:17px;",
+                             lapply(states, function(s) {
+                               htmltools::tags$option(value=s, s)
+                             }))
+    ),
+    htmltools::tags$div(
+      htmltools::tags$select(id='species_selector',
+                             style="font-size:17px;",
+                             lapply(species, function(s) {
+                               htmltools::tags$option(value=gsub(" ", "-", s), s)
+                             }))
+    )
+  ),
+  plots.list
+)
 ```
 
+### Sampling (and Re-Sampling) Pseudo-Absences 
 
-### Sampling Pseudo-Absences and Comparing Totals
-
-This section identifies areas outside the buffers as potential zones for pseudo-absences. To ensure an accurate representation, a random sampling mechanism is implemented. For each bird species in a state, an equivalent number of pseudo-absence points (or a pre-defined minimum threshold), based on observed data are generated. The result is a set of coordinates representing regions where the bird species have not been observed. 
+This section focuses on the extraction of pseudo-absence points from regions identified as suitable for each bird species in distinct states. A multiple-resampling technique is employed to ensure robustness in the sample. Points are randomly selected without replacement from the non-masked areas of the suitability raster, with a minimum threshold of 200 points and up to 10 resampling iterations. These points are subsequently partitioned into training and test sets to facilitate model evaluation.
 
 ```{r select-pa, results="hide"}
 
@@ -444,6 +579,13 @@ resampled.pa <- states %>%
 
 ```
 
+### Combine Presence/Pseudo-Absence Data
+
+Each sample of pseudo-absence points should be concatenated with the corresponding
+presence data (i.e., training/test set, by species and state). The result is up to
+20 datasets (10 training, 10 test) for each species/state combination. Note that
+the presence data is NOT resampled, and is thus recycled for each set of
+corresponding pseudo-absence data.
 
 ```{r get-rast-vals, results='hide'}
 
@@ -502,7 +644,10 @@ dfs <- states %>%
   })
 ```
 
+### Post-Processing Checks
 
+To confirm that the number of presence/absence points in each of the created 
+datasets is approximately correct, create a table of all of the counts.
 
 ```{r compare-tots}
 
@@ -529,24 +674,33 @@ purrr::map_df(1:nrow(spec.state), function(i) {
 
 ```
 
+## Updated LASSO Models
+
 ### Identify "Redundant" Rasters
 
-As previously stated, many of the features are redundant. In particular, the "engineered" features were meant to improve upon the original features, and reduce multi-collinearity. Based on the original results of the feature selection process, it was shown that the new variables weren't always necessarily "better". Below is the list of raster layers that were determined should be removed from each of the rasters in order to minimize multi-collinearity and maximize model performance. 
+As previously stated, many of the features are redundant. In particular, the
+"engineered" features were meant to improve upon the original features, and reduce
+multi-collinearity. Based on the original results of the feature selection process, it
+was shown that the new variables weren't always necessarily "better". Below is the list
+of raster layers that were determined should be removed from each of the rasters in
+order to minimize multi-collinearity and maximize model performance. 
 
 ```{r remove-redundant-features}
 
 # Define "redundant" rasters/features
 redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity",
-                 "developed_medium_intensity", "developed_high_intensity", "hay_pasture",
-                 "cultivated_crops", "wetlands", "forest", "lon.lat.interaction", 
-                 "waterbody", "urban_imperviousness", "tmax", "tmin", "dem", "Fall_NDVI",
-                 "Spring_NDVI", "Summer_NDVI", "Winter_NDVI", "lat.sqrd", "lon.sqrd")
+                 "developed_medium_intensity", "developed_high_intensity",
+                 "hay_pasture", "cultivated_crops", "wetlands", "forest",
+                 "lon.lat.interaction", "waterbody", "urban_imperviousness", "tmax",
+                 "tmin", "dem", "Fall_NDVI", "Spring_NDVI", "Summer_NDVI",
+                 "Winter_NDVI", "lat.sqrd", "lon.sqrd")
 
 ```
 
-### Re-Fit LASSO Models with All Features
+### Re-Fit LASSO Models with Updated Pseudo-Absence Points
 
-As was done in part 2, a GLM model is fit for each of the species/state subsets using the training data, but this time with the refined raster subset.
+As was done in part 2, a GLM model is fit for each of the species/state subsets using the training data, but this time with the refined raster subset and repeated for
+each iteration of sampled pseudo-absence data.
 
 ```{r glm-feature-selection}
 
@@ -649,6 +803,11 @@ species %>%
     
 ```
     
+### Get Updated Variable Importance
+
+Select the most important variables of each model, by species/state (combine the
+results of each of the models fit for each species/state if there are multiple).
+    
 ```{r get-top-vars}
     
 # Define min/max scaling function for rasters
@@ -711,6 +870,10 @@ var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
 var.imp
 
 ```
+
+### Select Final Pseudo-Absence Points Using Model Predictions
+
+**TODO: Description Here**
 
 ```{r pa-prob}
 
@@ -841,8 +1004,9 @@ purrr::walk(1:nrow(spec.state), function(i) {
 
 ```
 
-
 ### Pre-Processing IPP Model Covariates
+
+**TODO: Description Here**
 
 ```{r ipp-model, results='hide'}
 
@@ -962,6 +1126,5 @@ purrr::walk(1:nrow(spec.state), function(i) {
     file.path("artifacts", "test_spatstat_Q_2")
   )
 })
-
 
 ```
