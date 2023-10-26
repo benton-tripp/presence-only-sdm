@@ -12,6 +12,152 @@ output:
   
 ---
 
+<style>
+.tocify-extend-page {
+  height: 0 !important;
+}
+.post_navi {
+  display: flex
+}
+
+.post_navi-label {
+  font-size: 0.8em;
+  opacity: 0.5
+}
+
+.post_navi .post_navi-item {
+  padding: 0 2.2em;
+  width: 50%;
+  position: relative;
+  color: inherit !important
+}
+
+.post_navi .nav_prev {
+  text-align: left
+}
+
+.post_navi .nav_next {
+  text-align: right
+}
+
+.post_navi .nav_prev .post_navi-arrow {
+  left: 0
+}
+
+.post_navi .nav_next .post_navi-arrow {
+  right: 0
+}
+
+.post_navi .post_navi-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2.5em;
+  opacity: 0.3
+}
+
+footer .wrapper {
+  max-width: -webkit-calc(800px - (30px*2));
+  max-width: calc(800px - (30px*2));
+  margin-right: auto;
+  margin-left: auto;
+  padding-right: 30px;
+  padding-left: 30px
+}
+
+@media screen and (max-width:800px) {
+  footer .wrapper {
+    max-width: -webkit-calc(800px - (30px));
+    max-width: calc(800px - (30px));
+    padding-right: 15px;
+    padding-left: 15px
+  }
+}
+
+footer .wrapper:after,
+.footer-col-wrapper:after {
+  content: "";
+  display: table;
+  clear: both
+}
+
+.svg-icon {
+  width: 26px;
+  height: 16px;
+  display: inline-block;
+  fill: #828282;
+  padding-right: 5px;
+  vertical-align: text-top
+}
+
+.social-media-list li+li {
+  padding-top: 5px
+}
+
+.site-footer {
+  border-top: 1px solid #e8e8e8;
+  padding: 30px 0
+}
+
+.footer-heading {
+  font-size: 18px;
+  margin-bottom: 15px
+}
+
+.contact-list,
+.social-media-list {
+  list-style: none;
+  margin-left: 0;
+  width: 155px;
+}
+
+.footer-col-wrapper {
+  font-size: 15px;
+  color: #828282;
+  margin-left: -15px
+}
+
+.footer-col {
+  float: left;
+  margin-bottom: 15px;
+  padding-left: 15px
+}
+
+.footer-col-1 {
+  width: 30%;
+}
+
+.footer-col-2 {
+  width: 25%;
+}
+
+.footer-col-3 {
+  width: 45%;
+}
+
+@media screen and (max-width:800px) {
+
+  .footer-col-1,
+  .footer-col-2 {
+    width: -webkit-calc(50% - (30px/2));
+    width: calc(50% - (30px/2))
+  }
+
+  .footer-col-3 {
+    width: -webkit-calc(100% - (30px/2));
+    width: calc(100% - (30px/2))
+  }
+}
+
+@media screen and (max-width:600px) {
+  .footer-col {
+    float: none;
+    width: -webkit-calc(100% - (30px/2));
+    width: calc(100% - (30px/2))
+  }
+}
+</style>
+
 ```{r setup, include=F, warning=F, message=F}
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 ```
@@ -135,14 +281,47 @@ var.imp
 
 ```{r ipp-model, results='hide'}
 
-optimize.threshold <- function(roc.obj) {
-  # Calculate Youden's J statistic for each threshold
-  j.values <- roc.obj$fobs + (1 - roc.obj$ftheo) - 1
-  # Find the threshold that maximizes the J statistic
-  optimal.threshold <- roc.obj$p[which.max(j.values)]
-  return(optimal.threshold)
+get.f1 <- function(locations.df, thresh=0.5, method="F1") {
+  metrics <- locations.df[, .(pred=factor(ifelse(p.obs > thresh, T, F), 
+                               levels=c("FALSE", "TRUE")), 
+          obs=factor(obs, levels=c("FALSE", "TRUE")))] %>% 
+    confusionMatrix(reference=.$pred, data=.$obs, 
+                    positive = "TRUE", 
+                    mode="everything") %>%
+    as.list() %>%
+    .[["byClass"]] %>%
+    as.list()
+  if (method == "F1") {
+    return(metrics$F1)
+  } else if (method == "SS") {
+    # Penalize heavily if either is near zero or NA
+    if (is.na(metrics$Sensitivity) || is.na(metrics$Specificity)) {
+      return(-1e6) 
+    } else if (metrics$Sensitivity < .05 || metrics$Specificity < .05) {
+      return(-1e6) 
+    }
+    
+    # Combine Specificity and Sensitivity (e.g., geometric mean)
+    combined.metric = sqrt(metrics$Sensitivity * metrics$Specificity)
+    return(combined.metric)
+  }
 }
 
+optimize.f1 <- function(locations.df) {
+  objective.fn <- function(thresh) {
+    # Negative because we want to maximize
+    -get.f1(locations.df=locations.df, thresh=thresh, method="SS")  
+  }
+  opt.result <- optimize(objective.fn, lower=0.05, upper=0.95)
+  return(opt.result$minimum)  # Return the optimal threshold
+}
+
+get.acc <- function(test, thresh) {
+  df <- test[, .(pred=as.factor(ifelse(p.obs > thresh, T, F)), obs=as.factor(obs))]
+  cm <- confusionMatrix(df$pred, df$obs, positive = "TRUE", mode="everything")
+}
+
+# 9, 26, 27, 32
 purrr::walk(1:nrow(spec.state), function(i) {
   covariates.keep <- 50
   spec <- spec.state[i,]$species
@@ -161,8 +340,10 @@ purrr::walk(1:nrow(spec.state), function(i) {
     
     converged <- F
     no.pred.error <- F
-    roc.obj <- NULL
-    while (!converged | !no.pred.error | is.null(roc.obj)) {
+    # roc.obj <- NULL
+    spec.sens.check <- F
+    alternate.formula <- F
+    while (!converged | !no.pred.error | !spec.sens.check) {
       # Set path
       glm.path <- file.path("artifacts/models/ipp_glm_mpl_2", 
                             paste0(spec, "_", st, "_", covariates.keep,
@@ -184,38 +365,59 @@ purrr::walk(1:nrow(spec.state), function(i) {
                                    paste(var1, var2, sep = ":"))) %>%
           # Keep only pre-determined # of variables/interactions
           head(covariates.keep)
-        covariates.keep <- nrow(fs.df) # in case there are fewer available
         
         if (nrow(fs.df) > 0) {
           covariates <- c(fs.df$var1, fs.df$var2) %>% 
             unique() %>% 
             sort()
+          
+          # Load/compute filtered & pre-processed rasters
+          covariates <- covariates %>%
+            set_names() %>%
+            purrr::map(function(.x) {
+              file <- file.path("artifacts/spatstat_imgs", 
+                                paste0(st, "_", .x, ".rds"))
+              readRDS(file)
+            })
+          
+          # Create formula
+          if (alternate.formula) {
+            if (length(covariates) < covariates.keep) {
+              covariates.keep <- length(covariates) # in case there are fewer available
+            } else if (length(covariates) > covariates.keep) {
+              covariates <- covariates[1:covariates.keep]
+            }
+            
+            # No interactions
+            .f <- paste(names(covariates), collapse = " + ") %>% 
+              paste("~", .) %>% 
+              as.formula()
+          } else {
+            if (nrow(fs.df) < covariates.keep) {
+              covariates.keep <- nrow(fs.df) # in case there are fewer available
+            }
+            # With interactions
+            .f <- paste(fs.df$variable, collapse=" + ") %>% 
+              paste("~", .) %>% 
+              as.formula()
+          }
+          # Make sure glm.path is right
+          glm.path <- file.path("artifacts/models/ipp_glm_mpl_2", 
+                            paste0(spec, "_", st, "_", covariates.keep,
+                                   "_ipp_glm_mpl_2.rds"))
+          
         } else {
           cat("\tThere are no specified covariates for", spec, st, "\n")
         }
         
-        # Load/compute filtered & pre-processed rasters
-        covariates <- covariates %>%
-          set_names() %>%
-          purrr::map(function(.x) {
-            file <- file.path("artifacts/spatstat_imgs", 
-                              paste0(st, "_", .x, ".rds"))
-            readRDS(file)
-          })
-        
-        # Create formula
-        .f <- paste(fs.df$variable, collapse=" + ") %>% 
-          paste("~", .) %>% 
-          as.formula()
         # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
-        # * gcontrol=list() for additional glm/gam parameters
         
         # GLM Model
         cat("\tFitting GLM Model using the Method of Maximum",
             "PseudoLikelihood...\n")
         fit.glm <- tryCatch({
           ppm(Q=Q, trend=.f, covariates=covariates, 
-              rbord=.05, method="mpl") %>%
+              rbord=.05, method="mpl", emend=T) %>%
             get.object(
               obj=.,
               file.name=paste0(spec, "_", st, "_", covariates.keep,
@@ -228,23 +430,29 @@ purrr::walk(1:nrow(spec.state), function(i) {
           } else {
             covariates.keep <- covariates.keep - 1
           }
-          if (covariates.keep < 0) stop("\tNo trend identified.\n")
-          warning("\tThere was an error fitting the model. Trying a",
-                  "different number of covariates\n")
+          if (covariates.keep < 3 & !alternate.formula) {
+            cat("\tNo trend identified. Removing interactions...\n")
+            alternate.formula <- T
+            covariates.keep <- 50
+          }  else if (covariates.keep < 1 & alternate.formula) {
+            cat("\tNo trend identified. Removing covariates...\n")
+          } else if (covariates.keep < 0 & alternate.formula) {
+            stop("\tUnable to successfully fit a model given the data.\n")
+          } 
           next
         }
         converged <- fit.glm$internal$glmfit$converged
       } else {
         cat("\tFitting GLM Model using the Method of Maximum",
             "PseudoLikelihood with no trend...\n")
-        fit.glm <- ppm(Q=Q, rbord=.05, method="mpl") %>%
+        fit.glm <- ppm(Q=Q, rbord=.05, method="mpl", emend=T) %>%
           get.object(
             obj=.,
             file.name=paste0(spec, "_", st, "_", covariates.keep,
                              "_ipp_glm_mpl_2.rds"), 
             obj.path="artifacts/models/ipp_glm_mpl_2")
         converged <- T
-      }
+      } 
       # Check for errors when predicting
       options(show.error.messages = F)
       no.pred.error <- suppressWarnings(
@@ -254,12 +462,8 @@ purrr::walk(1:nrow(spec.state), function(i) {
         )
       )
       options(show.error.messages = T)
-      # Compute the ROC curve, check for errors
-      cat("\tGetting ROC...\n")
-      roc.obj <- tryCatch(expr={spatstat.explore::roc(fit.glm)}, 
-                          error=function(e) {NULL})
-      if (!converged | !no.pred.error | is.null(roc.obj)) {
-        warning("\tThe model converged or there was an error",
+      if (!converged | !no.pred.error) {
+        cat("\tThe model converged or there was an error",
                 "for covariates.keep ==", covariates.keep, "\n")
         
         file.remove(glm.path)
@@ -268,7 +472,97 @@ purrr::walk(1:nrow(spec.state), function(i) {
         } else {
           covariates.keep <- covariates.keep - 1
         }
-        if (covariates.keep < 0) stop("\tNo trend identified.\n")
+        if (covariates.keep < 3 & !alternate.formula) {
+          cat("\tNo trend identified. Removing interactions...\n")
+          alternate.formula <- T
+          covariates.keep <- 50
+        }  else if (covariates.keep < 1 & alternate.formula) {
+          cat("\tNo trend identified. Removing covariates...\n")
+        } else if (covariates.keep < 0 & alternate.formula) {
+          stop("\tUnable to successfully fit a model given the data.\n")
+        } 
+        next
+      } else {
+        locations.train <- data.table::rbindlist(
+          list(
+            data.table(x=Q$data$x, y=Q$data$y, obs=T), 
+            data.table(x=Q$dummy$x, y=Q$dummy$y, obs=F)
+          )
+        ) 
+        if (covariates.keep > 0) {
+          covariates.rasters <- names(covariates) %>%
+            set_names() %>%
+            purrr::map(function(x) {
+              r <- terra::rast(covariates[[x]])
+              set.crs(r, st_crs(4326, parameters=T)$Wkt)
+              names(r) <- x
+              r
+            })
+          purrr::walk2(names(covariates), covariates.rasters, function(n, r) {
+            locations.train[, (n) := 
+                             terra::extract(r, cbind(locations.train$x, 
+                                                     locations.train$y))]
+          })
+        }
+        glm.pred <- spatstat.model::predict.ppm(
+          fit.glm, 
+          locations=locations.train[, .(x,y)],
+          type="trend", se=T)
+        # Intensity
+        inten <- predict(fit.glm)
+        pixarea <- with(inten, xstep * ystep)
+        glm.train <- cbind(
+          locations.train,
+          data.table(
+            est=glm.pred$estimate,
+            se=glm.pred$se,
+            p.obs = glm.pred$estimate*pixarea)
+        )
+        optimal.threshold <- optimize.f1(glm.train)
+        cm <- get.acc(glm.train, optimal.threshold)
+        acc <- tibble(
+          common.name=spec,
+          state=st,
+          covariate.count=covariates.keep,
+          optimal.threshold=optimal.threshold 
+        ) %>%
+          cbind(as.list(c(cm$overall, cm$byClass)) %>% 
+                  as_tibble()) %>%
+        select(common.name:Accuracy, Sensitivity, Specificity, F1)
+        cat("Train Results:\n Species:", spec, "\n",
+            "State:", st, "\n",
+            "Covariates:", covariates.keep, "\n",
+            "Optimal Threshold:", optimal.threshold, "\n",
+            "Accuracy:", acc$Accuracy, "\n",
+            "F1:", acc$F1, "\n",
+            "Sensitivity (TP Rate):", acc$Sensitivity, "\n",
+            "Specificity (TN Rate):", acc$Specificity, "\n")
+        if ((acc$Sensitivity == 1 & acc$Specificity == 0) | 
+             (acc$Sensitivity == 0 & acc$Specificity == 1)) {
+          cat("\tThe sensitivity/specificity is a 0/1 pair",
+              "for covariates.keep ==", covariates.keep, "\n")
+          spec.sens.check <- F
+          file.remove(glm.path)
+          if (covariates.keep > 15) {
+            covariates.keep <- covariates.keep - 5
+          } else {
+            covariates.keep <- covariates.keep - 1
+          }
+          if (covariates.keep < 3 & !alternate.formula) {
+            cat("\tNo trend identified. Removing interactions...\n")
+            alternate.formula <- T
+            covariates.keep <- 50
+          }  else if (covariates.keep == 0 & alternate.formula) {
+            cat("\tNo trend identified. Removing covariates...\n")
+          } else if (covariates.keep < 0 & alternate.formula) {
+            cat("\tNo other meaningful options to check, 
+                   assuming the model has no trend;\n")
+            spec.sens.check <- T
+          } 
+          next
+        } else {
+          spec.sens.check <- T
+        }
       }
     }
     
@@ -295,7 +589,6 @@ purrr::walk(1:nrow(spec.state), function(i) {
                                                      locations.test$y))]
           })
         }
-        
         glm.pred <- spatstat.model::predict.ppm(
           fit.glm, 
           locations=locations.test[, .(x,y)],
@@ -312,12 +605,22 @@ purrr::walk(1:nrow(spec.state), function(i) {
             lo=glm.ci[1:length(glm.pred$estimate)],
             hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
         )
-        glm.test[, `:=` (
-          p.obs = 1 - dpois(0, est), # probability > 0
-          p.obs.lo = 1 - dpois(0, lo),
-          p.obs.hi = 1 - dpois(0, hi)
-        )]
         
+        glm.test[, `:=` (
+          p.obs = est * pixarea, # probability > 0
+          p.obs.lo = est * lo,
+          p.obs.hi = est * hi
+        )]
+        cm <- get.acc(glm.test, optimal.threshold)
+        test.acc <- tibble(
+          common.name=spec,
+          state=st,
+          covariate.count=covariates.keep,
+          optimal.threshold=optimal.threshold 
+        ) %>%
+          cbind(as.list(c(cm$overall, cm$byClass)) %>% 
+                  as_tibble()) %>%
+          select(common.name:Accuracy, Sensitivity, Specificity, F1)
         all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
         glm.count.pred <- tryCatch(spatstat.model::predict.ppm(fit.glm, 
                                                                type="count", se=T),
@@ -325,15 +628,15 @@ purrr::walk(1:nrow(spec.state), function(i) {
         glm.pi <- tryCatch(spatstat.model::predict.ppm(fit.glm, type="count", 
                                                        se=T, interval="p"),
                            error=function(e) NULL)
-        
-        optimal.threshold <- optimize.threshold(roc.obj)
         list(
           test=glm.test,
+          train=glm.train,
           all.preds=all.predictions,
           count=glm.count.pred,
           pi=glm.pi,
-          roc=roc.obj,
-          thresh=optimal.threshold
+          thresh=optimal.threshold,
+          train.accuracy=acc,
+          test.accuracy=test.acc
         )
       },
       file.name=paste0(spec, "_", st, "_ipp_glm_mpl_2.rds"),
@@ -344,46 +647,23 @@ purrr::walk(1:nrow(spec.state), function(i) {
   gc()
 })
 
-
 ```
 
 
 ```{r examine-mel-results}
 
-get.acc <- function(results.path, thresh) {
-  test <- readRDS(results.path)$test
-  df <- test[, .(pred=as.factor(ifelse(p.obs > thresh, T, F)), obs=as.factor(obs))]
-  
-  cm <- confusionMatrix(df$pred, df$obs, positive = "TRUE", mode="everything")
-}
-
 ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
   st <- spec.state[i,]$state
-  glm.base.path <- "artifacts/models/ipp_glm_mpl_2"
-  # Regular expression pattern to match the filename
-  pattern <- paste0("^", spec, "_", st, "_([0-9]{1,2})_ipp_glm_mpl_2\\.rds$")
-  glm.path <- list.files(path = glm.base.path, pattern = pattern, full.names = T)
-  num.of.covariates <- as.numeric(regmatches(glm.path, regexpr("[0-9]{1,2}", glm.path)))
   results.path <- file.path("artifacts/test_results/ipp_glm_mpl_2",
                         paste0(spec, "_", st, "_ipp_glm_mpl_2.rds"))
-  thresh <- 1-readRDS(results.path)$thresh
-  cm <- get.acc(results.path, thresh)
-  tibble(
-    common.name=spec,
-    state=st,
-    covariate.count=num.of.covariates,
-    optimal.threshold=thresh,
-    Fpred.Fref=cm$table[1,1],
-    Fpred.Tref=cm$table[1,2],
-    Tpred.Fref=cm$table[2,1],
-    Tpred.Tref=cm$table[2,2],
-    glm.path=glm.path,
-    results=results.path
-  ) %>%
-    cbind(as.list(c(cm$overall, cm$byClass)) %>% as_tibble())
+  readRDS(results.path)$test.accuracy
 })
-
+ipp.models %>% 
+  filter(Sensitivity == 0 | Specificity == 0) %>%
+  select(common.name, state, optimal.threshold,
+         Sensitivity, Specificity) %>%
+  print(n=32)
 ipp.models
 
 ```
@@ -398,7 +678,7 @@ summary(ipp.models)
 # Assuming your dataframe is named `ipp.models`
 # Reshape the data to long format
 long.data <- ipp.models %>%
-  select(common.name, Accuracy:`Balanced Accuracy`) %>%
+  select(common.name, Accuracy:F1) %>%
   gather(key = "Metric", value = "Value", -common.name)
 
 # Overall box-plot representation
@@ -430,5 +710,7 @@ ggplot(long.data, aes(x = Metric, y = Value)) +
 
 ```
 
+
+<br style="margin:0; height:0; padding:0;">
 
 

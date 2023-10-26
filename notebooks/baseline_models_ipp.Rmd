@@ -47,7 +47,6 @@ into greater detail discussing the results.
   * Generate predictions with standard errors and a confidence interval for the 
     test data
   * Using the estimates and C.I. values, estimate probabilities 
-    (i.e., using `1 - dpois(0, estimate)`)
   * Generate predictions for the entire region
   * Estimate prediction intervals with standard errors
   * Find the optimal threshold using Youden's J statistic (i.e., find the threshold 
@@ -156,126 +155,152 @@ purrr::walk(1:nrow(spec.state), function(i) {
   glm.results.path <- file.path("artifacts/test_results/ipp_glm_mpl",
                                 paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
   if (!file.exists(glm.results.path)) {
-    cat("Fitting IPP model for", spec, "in", st, "\n")
+    cat("Getting IPP model for", spec, "in", st, "\n")
     
     # Load observation data
-    cat("\tGetting pre-processed `spatstat.geom::ppp` object (train)...\n")
+    cat("\tGetting pre-processed quadrature obj. (train)\n")
     Q <- readRDS(file.path("artifacts", "train_spatstat_Q",
                            paste(st, "_", spec, "_Q.rds")))
-    cat("\tGetting `spatstat.geom::ppp` object (test)...\n")
+    cat("\tGetting quadrature obj. (test)\n")
     Q.test <- readRDS(file.path("artifacts", "test_spatstat_Q",
                                 paste(st, "_", spec, "_Q.rds")))
     
-    converged <- F
-    no.pred.error <- F
-    roc.obj <- NULL
-    while (!converged | !no.pred.error | is.null(roc.obj)) {
-      # Set path
-      glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
-                            paste0(spec, "_", st, "_", covariates.keep,
-                                   "_ipp_glm_mpl.rds"))
+    glm.base.path <- "artifacts/models/ipp_glm_mpl"
+    # Regular expression pattern to match the filename
+    pattern <- paste0("^", spec, "_", st, "_([0-9]{1,2})_ipp_glm_mpl\\.rds$")
+    glm.path <- list.files(path = glm.base.path, pattern = pattern, full.names = T)
+    if (file.exists(glm.path)) {
+      fit.glm <- readRDS(glm.path)
+      roc.obj <- spatstat.explore::roc(fit.glm)
+      covariates.keep <- as.numeric(regmatches(glm.path, 
+                                               regexpr("[0-9]{1,2}", 
+                                                       glm.path)))
       if (covariates.keep > 0) {
-        # Select covariates based on feature importance
-        cat("\tFetching variable importance with `covariates.keep` set to", 
-            covariates.keep, "\n")
-        fs.df <- var.imp %>% 
-          filter(state == st & common.name == spec) %>%
-          mutate(var1 = purrr::map_chr(variable, 
-                                       ~ stringr::str_split(.x, "\\:")[[1]][1]),
-                 var2 = purrr::map_chr(variable, ~ {
-                   split_result <- stringr::str_split(.x, "\\:")[[1]]
-                   if(length(split_result) > 1) split_result[2] else NA_character_
-                 })) %>%
-          mutate(variable = ifelse(is.na(var2), 
-                                   var1, 
-                                   paste(var1, var2, sep = ":"))) %>%
-          # Keep only pre-determined # of variables/interactions
-          head(covariates.keep)
-        covariates.keep <- nrow(fs.df) # in case there are fewer available
-        
-        if (nrow(fs.df) > 0) {
-          covariates <- c(fs.df$var1, fs.df$var2) %>% 
-            unique() %>% 
-            sort()
+        covariates <- coef(fit.glm) %>% names() %>% .[-1] %>%
+        stringr::str_split(., pattern="\\:") %>% unlist() %>%
+        unique() %>% sort() %>% 
+        set_names() %>%
+        purrr::map(function(.x) {
+          file <- file.path("artifacts/spatstat_imgs", 
+                            paste0(st, "_", .x, ".rds"))
+          readRDS(file)
+        })
+      } else {
+        covariates <- c()
+      }
+      
+    } else {
+      converged <- F
+      no.pred.error <- F
+      roc.obj <- NULL
+      while (!converged | !no.pred.error | is.null(roc.obj)) {
+        # Set path
+        glm.path <- file.path("artifacts/models/ipp_glm_mpl", 
+                              paste0(spec, "_", st, "_", covariates.keep,
+                                     "_ipp_glm_mpl.rds"))
+        if (covariates.keep > 0) {
+          # Select covariates based on feature importance
+          cat("\tFetching variable importance with `covariates.keep` set to", 
+              covariates.keep, "\n")
+          fs.df <- var.imp %>% 
+            filter(state == st & common.name == spec) %>%
+            mutate(var1 = purrr::map_chr(variable, 
+                                         ~ stringr::str_split(.x, "\\:")[[1]][1]),
+                   var2 = purrr::map_chr(variable, ~ {
+                     split_result <- stringr::str_split(.x, "\\:")[[1]]
+                     if(length(split_result) > 1) split_result[2] else NA_character_
+                   })) %>%
+            mutate(variable = ifelse(is.na(var2), 
+                                     var1, 
+                                     paste(var1, var2, sep = ":"))) %>%
+            # Keep only pre-determined # of variables/interactions
+            head(covariates.keep)
+          covariates.keep <- nrow(fs.df) # in case there are fewer available
+          
+          if (nrow(fs.df) > 0) {
+            covariates <- c(fs.df$var1, fs.df$var2) %>% 
+              unique() %>% 
+              sort()
+          } else {
+            cat("\tThere are no specified covariates for", spec, st, "\n")
+          }
+          
+          # Load/compute filtered & pre-processed rasters
+          covariates <- covariates %>%
+            set_names() %>%
+            purrr::map(function(.x) {
+              file <- file.path("artifacts/spatstat_imgs", 
+                                paste0(st, "_", .x, ".rds"))
+              readRDS(file)
+            })
+          
+          # Create formula
+          .f <- paste(fs.df$variable, collapse=" + ") %>% 
+            paste("~", .) %>% 
+            as.formula()
+          # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
+          # * gcontrol=list() for additional glm/gam parameters
+          
+          # GLM Model
+          cat("\tFitting GLM Model using the Method of Maximum",
+              "PseudoLikelihood...\n")
+          fit.glm <- tryCatch({
+            ppm(Q=Q, trend=.f, covariates=covariates, 
+                rbord=.05, method="mpl") %>%
+              get.object(
+                obj=.,
+                file.name=paste0(spec, "_", st, "_", covariates.keep,
+                                 "_ipp_glm_mpl.rds"), 
+                obj.path="artifacts/models/ipp_glm_mpl")}, 
+            error=function(e) NULL)
+          if (is.null(fit.glm)) {
+            if (covariates.keep > 15) {
+              covariates.keep <- covariates.keep - 5
+            } else {
+              covariates.keep <- covariates.keep - 1
+            }
+            if (covariates.keep < 0) stop("\tNo trend identified.\n")
+            warning("\tThere was an error fitting the model. Trying a",
+                    "different number of covariates\n")
+            next
+          }
+          converged <- fit.glm$internal$glmfit$converged
         } else {
-          cat("\tThere are no specified covariates for", spec, st, "\n")
-        }
-        
-        # Load/compute filtered & pre-processed rasters
-        covariates <- covariates %>%
-          set_names() %>%
-          purrr::map(function(.x) {
-            file <- file.path("artifacts/spatstat_imgs", 
-                              paste0(st, "_", .x, ".rds"))
-            readRDS(file)
-          })
-        
-        # Create formula
-        .f <- paste(fs.df$variable, collapse=" + ") %>% 
-          paste("~", .) %>% 
-          as.formula()
-        # Fit the IPP model, using the Method of Maximum PseudoLikelihood (MPL)
-        # * gcontrol=list() for additional glm/gam parameters
-        
-        # GLM Model
-        cat("\tFitting GLM Model using the Method of Maximum",
-            "PseudoLikelihood...\n")
-        fit.glm <- tryCatch({
-          ppm(Q=Q, trend=.f, covariates=covariates, 
-              rbord=.05, method="mpl") %>%
+          cat("\tFitting GLM Model using the Method of Maximum",
+              "PseudoLikelihood with no trend...\n")
+          fit.glm <- ppm(Q=Q, rbord=.05, method="mpl") %>%
             get.object(
               obj=.,
               file.name=paste0(spec, "_", st, "_", covariates.keep,
                                "_ipp_glm_mpl.rds"), 
-              obj.path="artifacts/models/ipp_glm_mpl")}, 
-          error=function(e) NULL)
-        if (is.null(fit.glm)) {
+              obj.path="artifacts/models/ipp_glm_mpl")
+          converged <- T
+        }
+        # Check for errors when predicting
+        options(show.error.messages = F)
+        no.pred.error <- suppressWarnings(
+          tryCatch(
+            expr={predict.ppm(fit.glm, se=T); T}, 
+            error=function(e) {F}
+          )
+        )
+        options(show.error.messages = T)
+        # Compute the ROC curve, check for errors
+        cat("\tGetting ROC...\n")
+        roc.obj <- tryCatch(expr={spatstat.explore::roc(fit.glm)}, 
+                            error=function(e) {NULL})
+        if (!converged | !no.pred.error | is.null(roc.obj)) {
+          warning("\tThe model converged or there was an error",
+                  "for covariates.keep ==", covariates.keep, "\n")
+          
+          file.remove(glm.path)
           if (covariates.keep > 15) {
             covariates.keep <- covariates.keep - 5
           } else {
             covariates.keep <- covariates.keep - 1
           }
           if (covariates.keep < 0) stop("\tNo trend identified.\n")
-          warning("\tThere was an error fitting the model. Trying a",
-                  "different number of covariates\n")
-          next
         }
-        converged <- fit.glm$internal$glmfit$converged
-      } else {
-        cat("\tFitting GLM Model using the Method of Maximum",
-            "PseudoLikelihood with no trend...\n")
-        fit.glm <- ppm(Q=Q, rbord=.05, method="mpl") %>%
-          get.object(
-            obj=.,
-            file.name=paste0(spec, "_", st, "_", covariates.keep,
-                             "_ipp_glm_mpl.rds"), 
-            obj.path="artifacts/models/ipp_glm_mpl")
-        converged <- T
-      }
-      # Check for errors when predicting
-      options(show.error.messages = F)
-      no.pred.error <- suppressWarnings(
-        tryCatch(
-          expr={predict.ppm(fit.glm, se=T); T}, 
-          error=function(e) {F}
-        )
-      )
-      options(show.error.messages = T)
-      # Compute the ROC curve, check for errors
-      cat("\tGetting ROC...\n")
-      roc.obj <- tryCatch(expr={spatstat.explore::roc(fit.glm)}, 
-                          error=function(e) {NULL})
-      if (!converged | !no.pred.error | is.null(roc.obj)) {
-        warning("\tThe model converged or there was an error",
-                "for covariates.keep ==", covariates.keep, "\n")
-        
-        file.remove(glm.path)
-        if (covariates.keep > 15) {
-          covariates.keep <- covariates.keep - 5
-        } else {
-          covariates.keep <- covariates.keep - 1
-        }
-        if (covariates.keep < 0) stop("\tNo trend identified.\n")
       }
     }
     
@@ -311,6 +336,9 @@ purrr::walk(1:nrow(spec.state), function(i) {
           fit.glm, 
           locations=locations.test[, .(x,y)],
           type="trend", interval="c")
+        # Intensity
+        inten <- predict(fit.glm)
+        pixarea <- with(inten, xstep * ystep)
         glm.test <- cbind(
           locations.test,
           data.table(
@@ -320,15 +348,15 @@ purrr::walk(1:nrow(spec.state), function(i) {
             hi=glm.ci[(length(glm.pred$estimate) + 1):length(glm.ci)])
         )
         glm.test[, `:=` (
-          p.obs = 1 - dpois(0, est), # probability > 0
-          p.obs.lo = 1 - dpois(0, lo),
-          p.obs.hi = 1 - dpois(0, hi)
+          p.obs = est * pixarea, 
+          p.obs.lo = lo * pixarea,
+          p.obs.hi = hi * pixarea
         )]
         
         all.predictions <- response.ppm(fit.glm)$window %>% as.matrix()
         glm.count.pred <- tryCatch(spatstat.model::predict.ppm(fit.glm, 
                                                                type="count", se=T),
-                           error=function(e) NULL)
+                                   error=function(e) NULL)
         glm.pi <- tryCatch(spatstat.model::predict.ppm(fit.glm, type="count", 
                                                        se=T, interval="p"),
                            error=function(e) NULL)
@@ -374,7 +402,7 @@ ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
   glm.path <- list.files(path = glm.base.path, pattern = pattern, full.names = T)
   num.of.covariates <- as.numeric(regmatches(glm.path, regexpr("[0-9]{1,2}", glm.path)))
   results.path <- file.path("artifacts/test_results/ipp_glm_mpl",
-                        paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
+                            paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
   thresh <- 1-readRDS(results.path)$thresh
   cm <- get.acc(results.path, thresh)
   tibble(
@@ -489,8 +517,8 @@ ggplot(long.data.state, aes(x = Metric, y = Value)) +
 ### Discussion
 
 To put it frankly, the apparent results of the models given the test data
-are not good. On average, accuracy is ~47% and the F1 score is ~0.57. 
-Perhaps most noticeable in the results is that the Sensitivity and Specificity are consistently very polarized, averaging ~0.85 and ~0.16 respectively. This means that the models are consistently worse at
+are not good. On average, accuracy is ~65% and the F1 score is ~0.29. 
+Perhaps most noticeable in the results is that the Sensitivity and Specificity are consistently very polarized, averaging ~0.97 and ~0.16 respectively. This means that the models are consistently worse at
 identifying the positive class (bird observations) correctly.
 
 Given this information when typically evaluating a predictive model,

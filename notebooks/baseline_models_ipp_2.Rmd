@@ -11,6 +11,151 @@ output:
     df_print: paged
   
 ---
+<style>
+.tocify-extend-page {
+  height: 0 !important;
+}
+.post_navi {
+  display: flex
+}
+
+.post_navi-label {
+  font-size: 0.8em;
+  opacity: 0.5
+}
+
+.post_navi .post_navi-item {
+  padding: 0 2.2em;
+  width: 50%;
+  position: relative;
+  color: inherit !important
+}
+
+.post_navi .nav_prev {
+  text-align: left
+}
+
+.post_navi .nav_next {
+  text-align: right
+}
+
+.post_navi .nav_prev .post_navi-arrow {
+  left: 0
+}
+
+.post_navi .nav_next .post_navi-arrow {
+  right: 0
+}
+
+.post_navi .post_navi-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2.5em;
+  opacity: 0.3
+}
+
+footer .wrapper {
+  max-width: -webkit-calc(800px - (30px*2));
+  max-width: calc(800px - (30px*2));
+  margin-right: auto;
+  margin-left: auto;
+  padding-right: 30px;
+  padding-left: 30px
+}
+
+@media screen and (max-width:800px) {
+  footer .wrapper {
+    max-width: -webkit-calc(800px - (30px));
+    max-width: calc(800px - (30px));
+    padding-right: 15px;
+    padding-left: 15px
+  }
+}
+
+footer .wrapper:after,
+.footer-col-wrapper:after {
+  content: "";
+  display: table;
+  clear: both
+}
+
+.svg-icon {
+  width: 26px;
+  height: 16px;
+  display: inline-block;
+  fill: #828282;
+  padding-right: 5px;
+  vertical-align: text-top
+}
+
+.social-media-list li+li {
+  padding-top: 5px
+}
+
+.site-footer {
+  border-top: 1px solid #e8e8e8;
+  padding: 30px 0
+}
+
+.footer-heading {
+  font-size: 18px;
+  margin-bottom: 15px
+}
+
+.contact-list,
+.social-media-list {
+  list-style: none;
+  margin-left: 0;
+  width: 155px;
+}
+
+.footer-col-wrapper {
+  font-size: 15px;
+  color: #828282;
+  margin-left: -15px
+}
+
+.footer-col {
+  float: left;
+  margin-bottom: 15px;
+  padding-left: 15px
+}
+
+.footer-col-1 {
+  width: 30%;
+}
+
+.footer-col-2 {
+  width: 25%;
+}
+
+.footer-col-3 {
+  width: 45%;
+}
+
+@media screen and (max-width:800px) {
+
+  .footer-col-1,
+  .footer-col-2 {
+    width: -webkit-calc(50% - (30px/2));
+    width: calc(50% - (30px/2))
+  }
+
+  .footer-col-3 {
+    width: -webkit-calc(100% - (30px/2));
+    width: calc(100% - (30px/2))
+  }
+}
+
+@media screen and (max-width:600px) {
+  .footer-col {
+    float: none;
+    width: -webkit-calc(100% - (30px/2));
+    width: calc(100% - (30px/2))
+  }
+}
+</style>
 
 ```{r setup, include=F, warning=F, message=F}
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
@@ -685,7 +830,7 @@ was shown that the new variables weren't always necessarily "better". Below is t
 of raster layers that were determined should be removed from each of the rasters in
 order to minimize multi-collinearity and maximize model performance. 
 
-```{r remove-redundant-features}
+```{r remove-redundant-features, results='hide'}
 
 # Define "redundant" rasters/features
 redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity",
@@ -702,7 +847,7 @@ redund.feat <- c("open_water", "developed_open_space", "developed_low_intensity"
 As was done in part 2, a GLM model is fit for each of the species/state subsets using the training data, but this time with the refined raster subset and repeated for
 each iteration of sampled pseudo-absence data.
 
-```{r glm-feature-selection}
+```{r glm-feature-selection, results='hide'}
 
 # Load variable importance from fitted LASSO models
 lasso.model.path="artifacts/models/lasso_3_fs"
@@ -873,9 +1018,12 @@ var.imp
 
 ### Select Final Pseudo-Absence Points Using Model Predictions
 
-**TODO: Description Here**
+Finally, the pseudo-absence points will be finalized by using the model(s) for each 
+state/species to estimate the probability each of the original points are actually
+absence points. The results are sorted, and the most likely points are selected as the
+final pseudo-absence points. This is done for both the training and the test sets.
 
-```{r pa-prob}
+```{r pa-prob, results='hide'}
 
 preds.abs.df <- function(df.list, tot, spec, st, files, .train=T, verbose=F) {
   preds <- purrr::map(1:tot, function(i) {
@@ -959,7 +1107,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
 ```
 
 
-```{r}
+```{r, results='hide'}
 
 purrr::walk(1:nrow(spec.state), function(i) {
   spec <- spec.state[i,]$species
@@ -976,7 +1124,7 @@ purrr::walk(1:nrow(spec.state), function(i) {
         mutate(presence=factor(T, levels=c("TRUE", "FALSE")))
       ntrain <- pres.train %>% 
         nrow() %>%
-        ifelse(. < 200, 200, .)
+        ifelse(. < 500, 500, .)
       ntest <- pres.test %>% 
         nrow() %>%
         ifelse(. < 200, 200, .)
@@ -1004,9 +1152,11 @@ purrr::walk(1:nrow(spec.state), function(i) {
 
 ```
 
-### Pre-Processing IPP Model Covariates
+## Pre-Processing IPP Model Covariates
 
-**TODO: Description Here**
+Finally, as was done previously, the updated data are preprocessed and saved to
+`spatstat.geom::quadscheme` objects so that updated IPP models can be fit using
+the resampled data.
 
 ```{r ipp-model, results='hide'}
 
@@ -1128,3 +1278,6 @@ purrr::walk(1:nrow(spec.state), function(i) {
 })
 
 ```
+
+<br style="margin:0; height:0; padding:0;">
+
