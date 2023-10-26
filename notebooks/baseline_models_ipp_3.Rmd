@@ -650,6 +650,8 @@ purrr::walk(1:nrow(spec.state), function(i) {
 ```
 
 
+## Results
+
 ```{r examine-mel-results}
 
 ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
@@ -659,57 +661,162 @@ ipp.models <- purrr::map_df(1:nrow(spec.state), function(i) {
                         paste0(spec, "_", st, "_ipp_glm_mpl_2.rds"))
   readRDS(results.path)$test.accuracy
 })
-ipp.models %>% 
-  filter(Sensitivity == 0 | Specificity == 0) %>%
-  select(common.name, state, optimal.threshold,
-         Sensitivity, Specificity) %>%
-  print(n=32)
-ipp.models
+
+DT::datatable(
+  ipp.models,
+  filter='none',
+  selection='none',
+  rownames=F,
+  options=list(
+    scrollX=T,
+    scrollY=T,
+    paging=F,
+    searching=F,
+    orderMulti=T,
+    info=F,
+    lengthChange = F
+  )) %>%
+  DT::formatStyle(columns=names(ipp.models), 
+                  `font-size`="13px") %>%
+  DT::formatSignif(4:ncol(ipp.models), digits=2)
 
 ```
+
+### Load Original Model Results (from Part 5)
+
+```{r prior-data}
+
+ipp.models.old <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  glm.base.path <- "artifacts/models/ipp_glm_mpl"
+  # Regular expression pattern to match the filename
+  pattern <- paste0("^", spec, "_", st, "_([0-9]{1,2})_ipp_glm_mpl\\.rds$")
+  glm.path <- list.files(path = glm.base.path, pattern = pattern, full.names = T)
+  num.of.covariates <- as.numeric(regmatches(glm.path, regexpr("[0-9]{1,2}", glm.path)))
+  results.path <- file.path("artifacts/test_results/ipp_glm_mpl",
+                            paste0(spec, "_", st, "_ipp_glm_mpl.rds"))
+  res <- readRDS(results.path)
+  thresh <- 1-res$thresh
+  cm <- get.acc(res$test, thresh)
+  tibble(
+    common.name=spec,
+    state=st,
+    covariate.count=num.of.covariates,
+    optimal.threshold=thresh 
+  ) %>%
+    cbind(as.list(c(cm$overall, cm$byClass)) %>% as_tibble())
+}) %>%
+  select(common.name:Accuracy,Sensitivity,Specificity,F1)
+
+```
+
+### Overall Metric Summaries
 
 ```{r model-acc}
 summary(ipp.models)
 ```
 
-
 ```{r box-plots-1, fig.width=4, fig.height=5}
 
-# Assuming your dataframe is named `ipp.models`
 # Reshape the data to long format
 long.data <- ipp.models %>%
   select(common.name, Accuracy:F1) %>%
   gather(key = "Metric", value = "Value", -common.name)
 
-# Overall box-plot representation
-ggplot(long.data, aes(x = Metric, y = Value)) +
-  geom_boxplot(fill = "white", outlier.shape = NA) +
-  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.background = element_rect(fill = "lightgray"),
-        plot.background = element_rect(fill = "white"),
-        legend.position = "none") +
-  coord_flip()
+long.data.old <- ipp.models.old %>%
+  select(common.name, Accuracy:F1) %>%
+  gather(key = "Metric", value = "Value", -common.name)
+
+# Combine the old and new data frames, adding an identifier column
+long.data$new.old <- "Updated Models"
+long.data.old$new.old <- "Original Models"
+combined.long <- rbind(long.data, long.data.old)
+
+ggplot(combined.long, 
+         aes(x = Metric, y = Value, fill = new.old)) +
+    geom_boxplot(outlier.shape = NA) +
+    stat_summary(aes(group = new.old), fun = mean, fill="darkred",
+                 geom = "point", shape = 21, size = 2, color = "black",
+                 position = position_dodge(width = 0.75),) +
+    scale_fill_manual(values = c("lightblue", "gold"),
+                      name = "Model Status",
+                      labels = c("Original Models", "Updated Models")) +
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_rect(fill = "lightgray"),
+          plot.background = element_rect(fill = "white")) + 
+    coord_flip() +
+    facet_wrap(~Metric, ncol=1, scales="free_y")
+
 
 ```
 
-```{r box-plot-2, fig.width=8, fig.height=20}
+### Summaries by Species
 
-# Box plot for each species
-ggplot(long.data, aes(x = Metric, y = Value)) +
-  geom_boxplot(fill = "white", outlier.shape = NA) +
-  stat_summary(fun = mean, geom = "point", shape = 23, size = 2, color = "red") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.background = element_rect(fill = "lightgray"),
-        plot.background = element_rect(fill = "white"),
-        legend.position = "none") +
-  coord_flip() +
-  facet_wrap(~ common.name, scales = "free_y", ncol = 2)
+```{r box-plot-2, fig.width=8, fig.height=28}
+
+ggplot(combined.long, 
+         aes(x = Metric, y = Value, fill = new.old)) +
+    geom_boxplot(outlier.shape = NA) +
+    stat_summary(aes(group = new.old), fun = mean, fill="darkred",
+                 geom = "point", shape = 21, size = 2, color = "black",
+                 position = position_dodge(width = 0.75),) +
+    scale_fill_manual(values = c("lightblue", "gold"),
+                      name = "Model Status",
+                      labels = c("Original Models", "Updated Models")) +
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_rect(fill = "lightgray"),
+          plot.background = element_rect(fill = "white")) + 
+    coord_flip() +
+    facet_wrap(~common.name + Metric, ncol=2, scales="free_y")
 
 ```
 
+
+### Summaries by State
+
+```{r box-plot-3, fig.width=8, fig.height=21}
+
+# Reshape the data to long format
+long.data <- ipp.models %>%
+  select(state, Accuracy:F1) %>%
+  gather(key = "Metric", value = "Value", -state)
+
+long.data.old <- ipp.models.old %>%
+  select(state, Accuracy:F1) %>%
+  gather(key = "Metric", value = "Value", -state)
+
+# Combine the old and new data frames, adding an identifier column
+long.data$new.old <- "Updated Models"
+long.data.old$new.old <- "Original Models"
+combined.long <- rbind(long.data, long.data.old)
+
+# Box plots for each state
+ggplot(combined.long, 
+         aes(x = Metric, y = Value, fill = new.old)) +
+    geom_boxplot(outlier.shape = NA) +
+    stat_summary(aes(group = new.old), fun = mean, fill="darkred",
+                 geom = "point", shape = 21, size = 2, color = "black",
+                 position = position_dodge(width = 0.75),) +
+    scale_fill_manual(values = c("lightblue", "gold"),
+                      name = "Model Status",
+                      labels = c("Original Models", "Updated Models")) +
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_rect(fill = "lightgray"),
+          plot.background = element_rect(fill = "white")) + 
+    coord_flip() +
+    facet_wrap(~state + Metric, ncol=2, scales="free_y")
+
+```
 
 <br style="margin:0; height:0; padding:0;">
 
