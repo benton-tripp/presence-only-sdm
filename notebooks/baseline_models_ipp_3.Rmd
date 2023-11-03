@@ -162,6 +162,54 @@ footer .wrapper:after,
 knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 ```
 
+## Overview
+
+In 
+[part 5](https://benton-tripp.github.io/posts/2023-10-13-sdm-benchmark-study-part-5-fitting-and-testing-ipp-models.html) of the study, a first attempt was made to fit IPP
+models to the data. Although the models are meant to serve as a baseline, the models had
+very poor performance. In an attempt to improve the results, several changes were made
+to the pseudo-absence selection process (see 
+[part 6](https://benton-tripp.github.io/posts/2023-10-18-sdm-benchmark-study-part-6-resampling-pseudoabsence-points.html)
+of the study). In this part of the study, the updated data will be used to re-fit the
+models. In addition, a few changes have been made to the model-fitting process. Those
+changes are highlighted in the outline below.
+
+As in some of the prior parts, there will not be a detailed description for section
+and block of code. Rather, the outline will lay things out at a high-level, and at the
+end of this part of the study there will be a summarization and discussion of the
+results.
+
+### IPP Model Process Outline (With Updates)
+
+*Steps refined from [part 5](https://benton-tripp.github.io/posts/2023-10-13-sdm-benchmark-study-part-5-fitting-and-testing-ipp-models.html) are highlighted in bold.*
+
+- Load libraries
+- Read in observation and raster data from [part 2](https://benton-tripp.github.io/posts/2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html) and [part 3](https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html) of the study
+- Establish utility functions and variables
+- **Load variable importance (obtained from fitted LASSO models in [part 6](https://benton-tripp.github.io/posts/2023-10-18-sdm-benchmark-study-part-6-resampling-pseudoabsence-points.html) of the study)**
+- Iterate over each state/species pair
+  * Define the base number of maximum covariates and covariate interactions to keep (50)
+  * **Load pre-processed train/test observation data (`spatstat.geom::quadscheme` objects cached in [part 6](https://benton-tripp.github.io/posts/2023-10-18-sdm-benchmark-study-part-6-resampling-pseudoabsence-points.html) of the study)**
+  * Load the corresponding pixel images (`spatstat.geom::im` objects, cached in 
+    [part 3](https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html)) for each of the covariates that align with those
+    in the variable importance data, up to the maximum allowed number
+  * Using the training data and pixel images, fit an IPP (GLM) Model using the Method of
+    Maximum Pseudo-Likelihood (`spatstat.model::ppm`) 
+  * Check for issues: Model does not converge, Prediction error, **or Specificity and Sensitivity are a 0/1 pair (i.e., Specificity is 0 and Sensitivity is 1, or vice versa) when probabilities are generated from the training data and the optimal threshold (see below)**
+    - If there is an issue, reduce the number of maximum allowed covariates
+      and re-fit the model
+    - Repeat this process until there are either no problems or else there
+      are no more available covariates
+    - **If there are still problems, restart the process using the same covariates but with no interactions. If the issues still persist, use a model with no covariates**
+  * Generate predictions with standard errors and a confidence interval for the 
+    test data
+  * Using the estimates and C.I. values, estimate probabilities 
+  * Generate predictions for the entire region
+  * Estimate prediction intervals with standard errors
+  * **Find the optimal threshold by maximizing the Specificity and Sensitivity, and ensuring neither is equal to zero**
+  * Generate model accuracy metrics using the test predictions/actuals
+- Visualize results (using the test data), and **compare with the metrics of the prior models that were fit in [part 5](https://benton-tripp.github.io/posts/2023-10-13-sdm-benchmark-study-part-5-fitting-and-testing-ipp-models.html)**
+
 ## Setup
 
 ```{r setup-2, results='hide'}
@@ -713,10 +761,6 @@ ipp.models.old <- purrr::map_df(1:nrow(spec.state), function(i) {
 
 ### Overall Metric Summaries
 
-```{r model-acc}
-summary(ipp.models)
-```
-
 ```{r box-plots-1, fig.width=4, fig.height=5}
 
 # Reshape the data to long format
@@ -739,7 +783,7 @@ ggplot(combined.long,
     stat_summary(aes(group = new.old), fun = mean, fill="darkred",
                  geom = "point", shape = 21, size = 2, color = "black",
                  position = position_dodge(width = 0.75),) +
-    scale_fill_manual(values = c("lightblue", "gold"),
+    scale_fill_manual(values = c("#FF9999", "#00659F"),
                       name = "Model Status",
                       labels = c("Original Models", "Updated Models")) +
     theme_minimal(base_size = 12) +
@@ -754,6 +798,18 @@ ggplot(combined.long,
 
 ```
 
+#### Original Models
+```{r model-acc-old}
+summary(ipp.models.old)
+```
+
+
+#### Updated Models 
+
+```{r model-acc}
+summary(ipp.models)
+```
+
 ### Summaries by Species
 
 ```{r box-plot-2, fig.width=8, fig.height=28}
@@ -764,7 +820,7 @@ ggplot(combined.long,
     stat_summary(aes(group = new.old), fun = mean, fill="darkred",
                  geom = "point", shape = 21, size = 2, color = "black",
                  position = position_dodge(width = 0.75),) +
-    scale_fill_manual(values = c("lightblue", "gold"),
+    scale_fill_manual(values = c("#FF9999", "#00659F"),
                       name = "Model Status",
                       labels = c("Original Models", "Updated Models")) +
     theme_minimal(base_size = 12) +
@@ -804,7 +860,7 @@ ggplot(combined.long,
     stat_summary(aes(group = new.old), fun = mean, fill="darkred",
                  geom = "point", shape = 21, size = 2, color = "black",
                  position = position_dodge(width = 0.75),) +
-    scale_fill_manual(values = c("lightblue", "gold"),
+    scale_fill_manual(values = c("#FF9999", "#00659F"),
                       name = "Model Status",
                       labels = c("Original Models", "Updated Models")) +
     theme_minimal(base_size = 12) +
@@ -817,6 +873,10 @@ ggplot(combined.long,
     facet_wrap(~state + Metric, ncol=2, scales="free_y")
 
 ```
+
+### Discussion
+
+The revised models, following adjustments from [part 5](https://benton-tripp.github.io/posts/2023-10-13-sdm-benchmark-study-part-5-fitting-and-testing-ipp-models.html), exhibit improved performance with average accuracy elevating to ~90% and F1 score to ~0.85. Unlike before, Sensitivity and Specificity metrics are no longer polarized, indicating better identification of the positive class. This progress suggests that modifications to the pseudo-absence selection and model-fitting processes have positively impacted the model's predictive accuracy. Further refinements, especially concerning pseudo-absence data, may continue to enhance the model's performance in distinguishing between observation/absence points, fostering a more accurate representation for future analysis.
 
 <br style="margin:0; height:0; padding:0;">
 
