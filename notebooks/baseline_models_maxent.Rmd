@@ -164,8 +164,19 @@ knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
 ## Overview
 
+This part of the project fits a additional "baseline" models using the MaxEnt
+algorithm, as described in [Part 4](https://benton-tripp.github.io/posts/2023-10-05-sdm-benchmark-study-part-4-baseline-species-distribution-models.html) 
+of the study. Because an effective process for fitting the models was set up in parts 5-7, a detailed outline is mostly unnecessary 
+at this point. Similarly, there will not be a detailed description for each section 
+and block of code. The primary write-up will be in the summarization and discussion of
+the results at the end of this post.
 
 ## Setup
+
+Moving forward, many of the functions/code that have been used in prior parts of the 
+study will not be re-written out. Rather, they will be sourced. The scripts being
+sourced from external sources outside of this notebook can be found in the 
+[Github repository](https://github.com/benton-tripp/presence-only-sdm/tree/86674646f9ff4411984c576228d3ddc2f1b5d3cd/R) used for this project.
 
 ```{r setup-2, results='hide'}
 
@@ -181,163 +192,23 @@ library(purrr)
 library(caret)
 library(predicts)
 
-# Set seed for splitting and modeling
+# Set seed 
 set.seed(19)
 
-# Load the dataset saved in part 2 of the study 
-df <- readRDS("artifacts/final_data/final_data.rds") %>% setDT()
-
-# Define some global variables that will be referenced throughout the modeling 
-states <- sort(unique(df$state))
-species <- sort(unique(df$common.name))
-spec.state <- expand.grid(species=species, 
-                          state=states, 
-                          stringsAsFactors=F)
-
-# Rasters
-rasters <- states %>% 
-  set_names() %>%
-  purrr::map(~{
-   r <- rast(file.path("artifacts/preprocessed_rasters_updated",
-                             paste0(.x, ".tif")))
-   r <- names(r) %>%
-      set_names() %>%
-      purrr::map(~terra::project(r[[.x]], 
-                                 crs(paste0("EPSG:", 4326)))) %>%
-      rast()
-  })
-
-# Get model or other object from cache if it has been saved before
-get.object <- function(obj, file.name, obj.path, read.func=readRDS, 
-                       save.func=saveRDS, ...) {
-  f.path <- file.path(obj.path, file.name)
-  if (!dir.exists(obj.path)) {
-    dir.create(obj.path)
-  }
-  # Object cache check
-  if (file.exists(f.path)) {
-    obj <- read.func(f.path)
-  } else {
-    save.func(obj, f.path, ...)
-  }
-  obj
-}
+# Load pre-processed data
+source("R/load_preprocessed_data.R")
+# Load other utility function
+source("R/get_objects.R")
+# Load Variable Importance
+source("R/load_variable_importance.R")
+# Load model accuracy function
+source("R/model_accuracy.R")
 
 ```
-
 
 ## MaxEnt Models
 
-### Load Variable Importance
-
-```{r varimp}
-# Load variable importance from fitted LASSO models
-lasso.model.path="artifacts/models/lasso_3_fs"
-
-# Define min/max scaling function for rasters
-min.max.scale <- function(x, na.rm=T) {
-  min.x <- min(x, na.rm=na.rm)
-  max.x <- max(x, na.rm=na.rm)
-  (x - min.x) / (max.x - min.x)
-}
-
-get.var.imp <- function(st, spec, dir="artifacts/models/lasso_3_fs") {
-  files <- list.files(dir) %>%
-    .[grepl(paste(tolower(gsub(" ", "_", spec)), st, sep="_"), .)] %>%
-    file.path(dir, .)
-  if (length(files) == 0) return(
-    tibble(
-      common.name=character(0),
-      state=character(0),
-      variable=character(0),
-      importance=numeric(0),
-      wt=numeric(0),
-      weighted.imp=numeric(0)
-    )
-  )
-  var.imp <- purrr::map_df(files, ~{
-    fit <- readRDS(.x)
-    coef.df <- coef(fit$finalModel, s = fit$bestTune$lambda) %>%
-      as.matrix() %>%
-      as.data.frame()
-    # Remove the intercept
-    coef.df <- coef.df[-1, , drop = F]
-    # Create a data frame of variable importance
-    var.importance <- tibble(
-      common.name = spec,
-      state = st,
-      variable = rownames(coef.df),
-      importance = abs(coef.df[,1])
-    ) %>%
-      # Rank variables by importance
-      arrange(state, common.name, -importance, variable) %>%
-      # Only look at variables where imp. > 0
-      filter(importance > 0)
-  }) %>%
-    mutate(n=n()) %>%
-    group_by(common.name, state, variable, n, .drop=F) %>%
-    summarize(importance=median(importance), 
-              wt=n()) %>%
-    ungroup() %>%
-    mutate(wt=wt/n) %>%
-    dplyr::select(-n) %>%
-    mutate(weighted.imp=min.max.scale(wt*importance)) %>%
-    arrange(-weighted.imp, variable) 
-}
-
-var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
-  spec <- spec.state[i,]$species
-  st <- spec.state[i,]$state
-  get.var.imp(st, spec)
-})
-
-var.imp
-
-```
-
-
-```{r ipp-model, results='hide'}
-
-get.f1 <- function(locations.df, thresh=0.5, method="F1") {
-  metrics <- locations.df[, .(pred=factor(ifelse(p.obs > thresh, T, F), 
-                               levels=c("FALSE", "TRUE")), 
-          obs=factor(obs, levels=c("FALSE", "TRUE")))] %>% 
-    confusionMatrix(reference=.$pred, data=.$obs, 
-                    positive = "TRUE", 
-                    mode="everything") %>%
-    as.list() %>%
-    .[["byClass"]] %>%
-    as.list()
-  if (method == "F1") {
-    return(metrics$F1)
-  } else if (method == "SS") {
-    # Penalize heavily if either is near zero or NA
-    if (is.na(metrics$Sensitivity) || is.na(metrics$Specificity)) {
-      return(-1e6) 
-    } else if (metrics$Sensitivity < .05 || metrics$Specificity < .05) {
-      return(-1e6) 
-    }
-    
-    # Combine Specificity and Sensitivity (e.g., geometric mean)
-    combined.metric = sqrt(metrics$Sensitivity * metrics$Specificity)
-    return(combined.metric)
-  }
-}
-
-optimize.f1 <- function(locations.df) {
-  objective.fn <- function(thresh) {
-    # Negative because we want to maximize
-    -get.f1(locations.df=locations.df, thresh=thresh, method="SS")  
-  }
-  opt.result <- optimize(objective.fn, lower=0.05, upper=0.95)
-  return(opt.result$minimum)  # Return the optimal threshold
-}
-
-get.acc <- function(test, thresh) {
-  df <- test[, .(pred=as.factor(ifelse(p.obs > thresh, T, F)), obs=as.factor(obs))]
-  cm <- confusionMatrix(df$pred, df$obs, positive = "TRUE", mode="everything")
-}
-
+```{r me-model, results='hide'}
 
 purrr::walk(1:nrow(spec.state), function(i) {
   covariates.keep <- 50
@@ -678,6 +549,15 @@ ggplot(combined.long,
 
 ### Discussion
 
+Comparing the MaxEnt and IPP model metrics of the fitted models on the
+test data provides the following insights:
+
+- Accuracy: The MaxEnt models generally exhibit high accuracy across most species and states, with several instances of perfect scores (1.00) particularly for Sanderling in Vermont. IPP models have varying accuracy, with a few instances comparable to MaxEnt but also showing lower values, especially for the Belted Kingfisher and Wild Turkey in North Carolina and Vermont.
+- F1 Score: MaxEnt models demonstrate consistently high F1 scores, with the lowest being 0.735 for the Sandhill Crane in North Carolina. In contrast, IPP models show a wider range of F1 scores, with notable gaps (NA) where the model failed to predict certain species presence, such as for Sanderling in Colorado and Vermont.
+- Specificity: Both model types generally exhibit high specificity, with many scores above 0.95. MaxEnt models achieve perfect specificity (1.00) for Sanderling in multiple states. IPP models have a few instances of lower specificity, particularly for Cedar Waxwing and Downy Woodpecker in Vermont.
+- Sensitivity: MaxEnt models show strong sensitivity, with many values above 0.90. However, there are notable exceptions, such as the lower sensitivity for Belted Kingfisher in Vermont. IPP models have a broader range of sensitivity, with some species like Sanderling in North Carolina and Vermont, and Sandhill Crane in Vermont showing very low sensitivity, indicating a significant number of false negatives.
+
+Overall, MaxEnt models seem to provide more consistent and reliable performance across all metrics, with particular strengths in specificity and sensitivity. IPP models, while effective in some cases, display a more variable performance and are notably less consistent in sensitivity.
 
 <br style="margin:0; height:0; padding:0;">
 
