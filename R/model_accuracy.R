@@ -35,6 +35,8 @@ optimize.f1 <- function(locations.df) {
 }
 
 get.acc <- function(test, thresh) {
-  df <- test[, .(pred=as.factor(ifelse(p.obs > thresh, T, F)), obs=as.factor(obs))]
+  df <- test[, .(pred=factor(ifelse(p.obs > thresh, T, F),
+                             levels=c(F,T)), 
+                 obs=factor(obs, levels=c(F,T)))]
   cm <- confusionMatrix(df$pred, df$obs, positive = "TRUE", mode="everything")
 }

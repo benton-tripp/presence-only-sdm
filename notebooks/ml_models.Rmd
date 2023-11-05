@@ -1,0 +1,359 @@
+---
+title: 'SDM Benchmark Study Part 9: Fitting and Testing Common ML Models'
+author: "Benton Tripp"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+    df_print: paged
+  
+---
+
+<style>
+.tocify-extend-page {
+  height: 0 !important;
+}
+.post_navi {
+  display: flex
+}
+
+.post_navi-label {
+  font-size: 0.8em;
+  opacity: 0.5
+}
+
+.post_navi .post_navi-item {
+  padding: 0 2.2em;
+  width: 50%;
+  position: relative;
+  color: inherit !important
+}
+
+.post_navi .nav_prev {
+  text-align: left
+}
+
+.post_navi .nav_next {
+  text-align: right
+}
+
+.post_navi .nav_prev .post_navi-arrow {
+  left: 0
+}
+
+.post_navi .nav_next .post_navi-arrow {
+  right: 0
+}
+
+.post_navi .post_navi-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2.5em;
+  opacity: 0.3
+}
+
+footer .wrapper {
+  max-width: -webkit-calc(800px - (30px*2));
+  max-width: calc(800px - (30px*2));
+  margin-right: auto;
+  margin-left: auto;
+  padding-right: 30px;
+  padding-left: 30px
+}
+
+@media screen and (max-width:800px) {
+  footer .wrapper {
+    max-width: -webkit-calc(800px - (30px));
+    max-width: calc(800px - (30px));
+    padding-right: 15px;
+    padding-left: 15px
+  }
+}
+
+footer .wrapper:after,
+.footer-col-wrapper:after {
+  content: "";
+  display: table;
+  clear: both
+}
+
+.svg-icon {
+  width: 26px;
+  height: 16px;
+  display: inline-block;
+  fill: #828282;
+  padding-right: 5px;
+  vertical-align: text-top
+}
+
+.social-media-list li+li {
+  padding-top: 5px
+}
+
+.site-footer {
+  border-top: 1px solid #e8e8e8;
+  padding: 30px 0
+}
+
+.footer-heading {
+  font-size: 18px;
+  margin-bottom: 15px
+}
+
+.contact-list,
+.social-media-list {
+  list-style: none;
+  margin-left: 0;
+  width: 155px;
+}
+
+.footer-col-wrapper {
+  font-size: 15px;
+  color: #828282;
+  margin-left: -15px
+}
+
+.footer-col {
+  float: left;
+  margin-bottom: 15px;
+  padding-left: 15px
+}
+
+.footer-col-1 {
+  width: 30%;
+}
+
+.footer-col-2 {
+  width: 25%;
+}
+
+.footer-col-3 {
+  width: 45%;
+}
+
+@media screen and (max-width:800px) {
+
+  .footer-col-1,
+  .footer-col-2 {
+    width: -webkit-calc(50% - (30px/2));
+    width: calc(50% - (30px/2))
+  }
+
+  .footer-col-3 {
+    width: -webkit-calc(100% - (30px/2));
+    width: calc(100% - (30px/2))
+  }
+}
+
+@media screen and (max-width:600px) {
+  .footer-col {
+    float: none;
+    width: -webkit-calc(100% - (30px/2));
+    width: calc(100% - (30px/2))
+  }
+}
+</style>
+
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
+```
+
+## Overview
+
+## Setup
+
+```{r setup-2, results='hide'}
+
+# Load libraries
+library(sf)
+library(terra)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(readr)
+library(data.table)
+library(knitr)
+library(purrr)
+library(caret)
+
+# Set seed 
+set.seed(19)
+
+# Load pre-processed data
+source("R/load_preprocessed_data.R")
+# Load other utility function
+source("R/get_objects.R")
+# Load Variable Importance
+source("R/load_variable_importance.R")
+# Load model accuracy function
+source("R/model_accuracy.R")
+
+```
+
+```{r setup-3}
+
+# Get data into normal data frame format (not `spatstat`)
+data <- states %>%
+  set_names() %>%
+  purrr::map(function(st) {
+  # Get raster by state
+  r <- rasters[[st]]
+  species %>% 
+    set_names() %>%
+    purrr::map(function(spec) {
+      # Load `spatstat` quad data
+      Q <- readRDS(file.path("artifacts", "train_spatstat_Q_2",
+                             paste0(st, "_", spec, "_Q.rds")))
+      Q.test <- readRDS(file.path("artifacts", "test_spatstat_Q_2",
+                                  paste0(st, "_", spec, "_Q.rds")))
+      # Load presence/absence data
+      pres.train <- data.table(
+        x=Q$data$x, 
+        y=Q$data$y,
+        presence=factor(T, levels=c(F,T), 
+                        labels=c("Absence", "Presence")))
+      abs.train <- data.table(
+        x=Q$dummy$x, 
+        y=Q$dummy$y, 
+        presence=factor(F, levels=c(F,T),
+                        labels=c("Absence", "Presence")))
+      pres.test <- data.table(
+        x=Q.test$data$x, 
+        y=Q.test$data$y,
+        presence=factor(T, levels=c(F,T),
+                        labels=c("Absence", "Presence")))
+      abs.test <- data.table(
+        x=Q.test$dummy$x, 
+        y=Q.test$dummy$y,
+        presence=factor(F, levels=c(F,T),
+                        labels=c("Absence", "Presence")))
+      purrr::walk(names(r), function(n) {
+        pres.train[, (n) := terra::extract(r[[n]], 
+                                           cbind(pres.train$x,
+                                                 pres.train$y))]
+        abs.train[, (n) := terra::extract(r[[n]], 
+                                          cbind(abs.train$x,
+                                                abs.train$y))]
+        pres.test[, (n) := terra::extract(r[[n]], 
+                                          cbind(pres.test$x,
+                                                pres.test$y))]
+        abs.test[, (n) := terra::extract(r[[n]], 
+                                         cbind(abs.test$x,
+                                               abs.test$y))]
+      })
+      list(
+        train=data.table::rbindlist(l=list(pres.train, abs.train)),
+        test=data.table::rbindlist(l=list(pres.test, abs.test))
+      )
+    })
+  })
+
+```
+
+## ML Models
+
+```{r ml-setup, results='hide'}
+
+# Fit with/without Cross-Validation
+control <- trainControl(method="none", 
+                        classProbs = T)
+control.cv <- trainControl(method="cv", 
+                        number=5, 
+                        classProbs = T)
+
+```
+
+### Logistic Regression
+
+```{r train-lr, results='hide'}
+
+purrr:walk(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i, ]$species
+  st <- spec.state[i, ]$state
+  d <- data[[st]][[spec]][[1]]
+  features <- var.imp.data[[st]][[spec]]
+  covariates.keep <- 50
+  # Create formula
+  .f <- paste(features$variable[1:covariates.keep], collapse=" + ") %>% 
+    paste("presence ~", .) %>% 
+    as.formula()
+  
+  fit <- train(.f, data = d, 
+               method = "glm", 
+               family = "binomial",
+               trControl = control, 
+               metric = "Accuracy")
+  pred <- predict(fit, d, type="prob")$Presence
+  train.results <- cbind(
+    d, data.table(obs = ifelse(d$presence == "Presence", T, F),
+                  p.obs = pred))
+  optimal.threshold <- optimize.f1(train.results)
+  cm <- get.acc(train.results, optimal.threshold)
+  acc <- tibble(
+    common.name=spec,
+    state=st,
+    covariate.count=covariates.keep,
+    optimal.threshold=optimal.threshold 
+  ) %>%
+    cbind(as.list(c(cm$overall, cm$byClass)) %>% 
+            as_tibble()) %>%
+    select(common.name:Accuracy, Sensitivity, Specificity, F1)
+  cat("Train Results:\n Species:", spec, "\n",
+      "State:", st, "\n",
+      "Covariates:", covariates.keep, "\n",
+      "Optimal Threshold:", optimal.threshold, "\n",
+      "Accuracy:", acc$Accuracy, "\n",
+      "F1:", acc$F1, "\n",
+      "Sensitivity (TP Rate):", acc$Sensitivity, "\n",
+      "Specificity (TN Rate):", acc$Specificity, "\n")
+})
+
+
+```
+
+### Decision Tree
+
+```{r train-dt results='hide'}
+
+fit <- train(x = df %>% dplyr::select(-presence), 
+                 y = df$presence, 
+                 method = "tree",
+                 trControl = train.control, 
+                 tuneGrid = train.grid,
+                 metric = "Accuracy")
+
+```
+
+### K-Nearest Neighbors
+
+```{r train-knn results='hide'}
+
+```
+
+### Random Forest
+
+```{r train-rf results='hide'}
+
+fit <- train(x = df %>% dplyr::select(-presence), 
+             y = df$presence, 
+             method = "ranger",
+             trControl = train.control, 
+             tuneGrid = train.grid,
+             metric = "Accuracy")
+
+```
+
+### XGBoost
+
+```{r train-xgb results='hide'}
+
+```
+
+### Results
+
+
+

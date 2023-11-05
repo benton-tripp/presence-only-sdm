@@ -57,3 +57,27 @@ var.imp <- purrr::map_df(1:nrow(spec.state), function(i) {
   st <- spec.state[i,]$state
   get.var.imp(st, spec)
 })
+
+var.imp.data <- states %>%
+  set_names %>%
+  purrr::map(function(st) {
+    species %>%
+      set_names() %>%
+      purrr::map(function(spec) {
+        fs.df <- var.imp %>% 
+          filter(state == st & common.name == spec) %>%
+          mutate(var1 = purrr::map_chr(
+            variable,  ~ stringr::str_split(.x, "\\:")[[1]][1]),
+            var2 = purrr::map_chr(variable, ~ {
+              split.result <- stringr::str_split(.x, "\\:")[[1]]
+              if (length(split.result) > 1) {
+                split.result[2]
+              } else {
+                NA_character_
+              }
+            })) %>%
+          mutate(variable = ifelse(is.na(var2), 
+                                   var1, 
+                                   paste(var1, var2, sep = ":"))) 
+      })
+  })
