@@ -246,8 +246,10 @@ data <- states %>%
                                                abs.test$y))]
       })
       list(
-        train=data.table::rbindlist(l=list(pres.train, abs.train)),
-        test=data.table::rbindlist(l=list(pres.test, abs.test))
+        train=data.table::rbindlist(l=list(pres.train, abs.train)) %>%
+          na.omit(),
+        test=data.table::rbindlist(l=list(pres.test, abs.test)) %>%
+          na.omit()
       )
     })
   })
@@ -258,12 +260,139 @@ data <- states %>%
 
 ```{r ml-setup, results='hide'}
 
-# Fit with/without Cross-Validation
-control <- trainControl(method="none", 
-                        classProbs = T)
-control.cv <- trainControl(method="cv", 
+control <- trainControl(method="cv", 
                         number=5, 
                         classProbs = T)
+
+train.test <- function(model.type, fname, spec.state, data, var.imp.data, 
+                       control, tune.grid=NULL, cov.keep=50) {
+  purrr::walk(1:nrow(spec.state), function(i) {
+    spec <- spec.state[i, ]$species
+    st <- spec.state[i, ]$state
+    fit.path <- file.path(paste0("artifacts/models/", fname),
+                          paste0(spec, "_", st, "_", fname, ".rds"))
+    results.path <- file.path(paste0("artifacts/test_results/", fname),
+                              paste0(spec, "_", st, "_", fname, ".rds"))
+    if (!file.exists(results.path)) {
+      d <- data[[st]][[spec]]$train
+      features <- var.imp.data[[st]][[spec]]
+      cov.kepp <- covariates.keep
+      spec.sens.check <- F
+      while (!spec.sens.check) {
+        # Create formula
+        feats <- features$variable[1:covariates.keep] %>%
+          purrr::keep(~!is.na(.x))
+        covariates.keep <- length(feats)
+        # Create formula
+        .f <- feats %>%
+          paste(., collapse=" + ") %>% 
+          paste("presence ~", .) %>% 
+          as.formula()
+        # Generalized for different model types
+        if (model.type == "logistic regression") {
+          fit <- train(.f, data = d, 
+                       method = "glm", 
+                       family = "binomial",
+                       trControl = control, 
+                       metric = "Accuracy")
+        } else if (model.type %in% c("tree", "knn", "random forest", "xgboost")) {
+          .method <- case_when(model.type == "tree" ~ "rpart",
+                               model.type %in% c("knn") ~ model.type,
+                               model.type == "random forest" ~ "ranger",
+                               model.type == "xgboost" ~ "xgbTree"
+                               T ~ "tree")
+          fit <- train(.f, data=d, 
+                 method = .method,
+                 trControl = control, 
+                 tuneGrid = tune.grid,
+                 metric = "Accuracy")
+        } else {
+          stop("Invalid model type")
+        }
+        # Cache model object
+        get.object(
+          obj=fit,
+          file.name=paste0(spec, "_", st, "_", fname, ".rds"), 
+          obj.path=paste0("artifacts/models/", fname)) %>%
+          suppressWarnings()
+        
+        pred <- predict(fit, d, type="prob")$Presence
+        train.results <- cbind(
+          d, data.table(obs = ifelse(d$presence == "Presence", T, F),
+                        p.obs = pred))
+        optimal.threshold <- optimize.f1(train.results)
+        cm <- get.acc(train.results, optimal.threshold)
+        acc <- tibble(
+          common.name=spec,
+          state=st,
+          covariate.count=covariates.keep,
+          optimal.threshold=optimal.threshold 
+        ) %>%
+          cbind(as.list(c(cm$overall, cm$byClass)) %>% 
+                  as_tibble()) %>%
+          select(common.name:Accuracy, Sensitivity, Specificity, F1)
+        cat("Train Results:\n Species:", spec, "\n",
+            "State:", st, "\n",
+            "Covariates:", covariates.keep, "\n",
+            "Optimal Threshold:", optimal.threshold, "\n",
+            "Accuracy:", acc$Accuracy, "\n",
+            "F1:", acc$F1, "\n",
+            "Sensitivity (TP Rate):", acc$Sensitivity, "\n",
+            "Specificity (TN Rate):", acc$Specificity, "\n")
+        if ((acc$Sensitivity == 1 & acc$Specificity == 0) | 
+            (acc$Sensitivity == 0 & acc$Specificity == 1)) {
+          cat("\tThe sensitivity/specificity is a 0/1 pair",
+              "for covariates.keep ==", covariates.keep, "\n")
+          spec.sens.check <- F
+          file.remove(glm.path)
+          covariates.keep <- covariates.keep - 1
+          if (covariates.keep < 1) {
+            stop("\tUnable to successfully fit a model given the data.\n")
+          } 
+          next
+        } else {
+          spec.sens.check <- T
+        }
+      }
+      
+      results <- get.object(
+        {
+          d.test <- data[[st]][[spec]]$test
+          pred.test <- predict(fit, d.test, type="prob")
+          test.results <- cbind(d.test, 
+                                data.table(obs = ifelse(
+                                  d.test$presence == "Presence", T, F),
+                                  p.obs = pred.test$Presence))
+          cm <- get.acc(test.results, optimal.threshold)
+          test.acc <- tibble(
+            common.name=spec,
+            state=st,
+            covariate.count=covariates.keep,
+            optimal.threshold=optimal.threshold 
+          ) %>%
+            cbind(as.list(c(cm$overall, cm$byClass)) %>% 
+                    as_tibble()) %>%
+            select(common.name:Accuracy, Sensitivity, Specificity, F1)
+          all.predictions <- rasters[[st]] %>% 
+            as.data.table() %>%
+            predict(fit, ., type="prob") %>%
+            .$Presence
+          list(
+            test=test.results,
+            train=train.results,
+            all.preds=all.predictions,
+            thresh=optimal.threshold,
+            train.accuracy=acc,
+            test.accuracy=test.acc
+          )
+        },
+        file.name=paste0(spec, "_", st, "_", fname, ".rds"),
+        obj.path=paste0("artifacts/test_results/", fname)
+      )
+      cat("\tFinished model for", spec, "in", st, "\n")
+    }
+  })
+}
 
 ```
 
@@ -271,85 +400,84 @@ control.cv <- trainControl(method="cv",
 
 ```{r train-lr, results='hide'}
 
-purrr:walk(1:nrow(spec.state), function(i) {
-  spec <- spec.state[i, ]$species
-  st <- spec.state[i, ]$state
-  d <- data[[st]][[spec]][[1]]
-  features <- var.imp.data[[st]][[spec]]
-  covariates.keep <- 50
-  # Create formula
-  .f <- paste(features$variable[1:covariates.keep], collapse=" + ") %>% 
-    paste("presence ~", .) %>% 
-    as.formula()
-  
-  fit <- train(.f, data = d, 
-               method = "glm", 
-               family = "binomial",
-               trControl = control, 
-               metric = "Accuracy")
-  pred <- predict(fit, d, type="prob")$Presence
-  train.results <- cbind(
-    d, data.table(obs = ifelse(d$presence == "Presence", T, F),
-                  p.obs = pred))
-  optimal.threshold <- optimize.f1(train.results)
-  cm <- get.acc(train.results, optimal.threshold)
-  acc <- tibble(
-    common.name=spec,
-    state=st,
-    covariate.count=covariates.keep,
-    optimal.threshold=optimal.threshold 
-  ) %>%
-    cbind(as.list(c(cm$overall, cm$byClass)) %>% 
-            as_tibble()) %>%
-    select(common.name:Accuracy, Sensitivity, Specificity, F1)
-  cat("Train Results:\n Species:", spec, "\n",
-      "State:", st, "\n",
-      "Covariates:", covariates.keep, "\n",
-      "Optimal Threshold:", optimal.threshold, "\n",
-      "Accuracy:", acc$Accuracy, "\n",
-      "F1:", acc$F1, "\n",
-      "Sensitivity (TP Rate):", acc$Sensitivity, "\n",
-      "Specificity (TN Rate):", acc$Specificity, "\n")
-})
-
+train.test(model.type="logistic regression", 
+           fname="logreg", 
+           spec.state, 
+           data, 
+           var.imp.data,
+           control, 
+           cov.keep=50)
 
 ```
 
-### Decision Tree
+### Classification Tree
 
-```{r train-dt results='hide'}
+```{r train-dt, results='hide'}
 
-fit <- train(x = df %>% dplyr::select(-presence), 
-                 y = df$presence, 
-                 method = "tree",
-                 trControl = train.control, 
-                 tuneGrid = train.grid,
-                 metric = "Accuracy")
+train.test(model.type="tree", 
+           fname="tree", 
+           spec.state, 
+           data, 
+           var.imp.data,
+           control, 
+           tune.grid=data.frame(cp=seq(0, 0.1, by = 0.01)),
+           cov.keep=50)
 
 ```
 
 ### K-Nearest Neighbors
 
-```{r train-knn results='hide'}
+```{r train-knn, results='hide'}
+
+train.test(model.type="knn", 
+           fname="knn", 
+           spec.state, 
+           data, 
+           var.imp.data,
+           control, 
+           tune.grid=data.frame(k=1:10),
+           cov.keep=50)
 
 ```
 
 ### Random Forest
 
-```{r train-rf results='hide'}
+```{r train-rf, results='hide'}
 
-fit <- train(x = df %>% dplyr::select(-presence), 
-             y = df$presence, 
-             method = "ranger",
-             trControl = train.control, 
-             tuneGrid = train.grid,
-             metric = "Accuracy")
+train.test(model.type="random forest", 
+           fname="randomforest", 
+           spec.state, 
+           data, 
+           var.imp.data,
+           control, 
+           tune.grid=expand.grid(
+             splitrule=c("extratrees", "gini"),
+             mtry=c(1,5,10),
+             min.node.size=c(1,5,10)
+           ),
+           cov.keep=50)
 
 ```
 
 ### XGBoost
 
-```{r train-xgb results='hide'}
+```{r train-xgb, results='hide'}
+
+train.test(model.type="xgboost", 
+           fname="xgboost", 
+           spec.state, 
+           data, 
+           var.imp.data,
+           control, 
+           tune.grid=expand.grid(
+             nrounds = c(100, 300),
+             eta = c(0.01, 0.1),
+             max_depth = c(3, 6, 9),
+             colsample_bytree = c(0.5, 1),
+             min_child_weight = c(1, 5),
+             subsample = c(0.5, 1)
+           ),
+           cov.keep=50)
 
 ```
 

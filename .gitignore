@@ -20,6 +20,10 @@ artifacts/bioclim_suitable_plots/*
 !artifacts/plots/all_rasters_html.rds
 spatstat.model/*
 spatstat.model
+artifacts/test_results
+artifacts/test_results/*
+artifacts/models
+artifacts/models/*
 
 # History files
 .Rhistory
