@@ -276,7 +276,7 @@ train.test <- function(model.type, fname, spec.state, data, var.imp.data,
     if (!file.exists(results.path)) {
       d <- data[[st]][[spec]]$train
       features <- var.imp.data[[st]][[spec]]
-      cov.kepp <- covariates.keep
+      covariates.keep <- cov.keep
       spec.sens.check <- F
       while (!spec.sens.check) {
         # Create formula
@@ -299,7 +299,7 @@ train.test <- function(model.type, fname, spec.state, data, var.imp.data,
           .method <- case_when(model.type == "tree" ~ "rpart",
                                model.type %in% c("knn") ~ model.type,
                                model.type == "random forest" ~ "ranger",
-                               model.type == "xgboost" ~ "xgbTree"
+                               model.type == "xgboost" ~ "xgbTree",
                                T ~ "tree")
           fit <- train(.f, data=d, 
                  method = .method,
@@ -472,16 +472,100 @@ train.test(model.type="xgboost",
            tune.grid=expand.grid(
              nrounds = c(100, 300),
              eta = c(0.01, 0.1),
+             gamma = c(0, 0.25, 0.5, 1),
              max_depth = c(3, 6, 9),
              colsample_bytree = c(0.5, 1),
              min_child_weight = c(1, 5),
              subsample = c(0.5, 1)
            ),
-           cov.keep=50)
+           cov.keep=50) 
 
 ```
 
 ### Results
+
+```{r get-results}
+
+models <- purrr::map_df(c("logreg", "knn", "tree", "randomforest"), function(m) {
+  m.type <- case_when(m == "logreg" ~ "logistic regression",
+                      m == "knn" ~ "knn",
+                      m == "tree" ~ "classification tree",
+                      m == "randomforest" ~ "random forest",
+                      m == "xgboost" ~ "xgboost",
+                      T ~ "")
+  purrr::map_df(1:nrow(spec.state), function(i) {
+    spec <- spec.state[i,]$species
+    st <- spec.state[i,]$state
+    results.path <- file.path(paste0("artifacts/test_results/", m),
+                              paste0(spec, "_", st, "_", m, ".rds"))
+    readRDS(results.path)$test.accuracy
+  }) %>% mutate(model.type=m.type)
+})
+
+
+reshape.data <- function(data, metric) {
+  # Ensure that the metric is one of the expected columns
+  if (!metric %in% c("Accuracy", "Sensitivity", 
+                     "Specificity", "F1")) {
+    stop("Invalid metric specified.")
+  }
+
+  # Reshape the data
+  data %>%
+    select(common.name, state, model.type, !!sym(metric)) %>%
+    mutate(model.type = tolower(gsub(" ", ".", model.type))) %>%
+    tidyr::pivot_wider(names_from = model.type, 
+                       values_from = !!sym(metric),
+                names_glue = "{model.type}.{tolower(metric)}")
+}
+
+metrics <- c("Accuracy", "Sensitivity", "Specificity", "F1") %>%
+  set_names() %>%
+  purrr::map(~{
+    d <- reshape.data(models, .x)
+    DT::datatable(
+      d,
+      filter='none',
+      selection='none',
+      rownames=F,
+      options=list(
+        scrollX=T,
+        scrollY="600px",
+        paging=F,
+        searching=F,
+        orderMulti=T,
+        info=F,
+        lengthChange = F
+      )) %>%
+      DT::formatStyle(columns=names(d), 
+                      `font-size`="13px") %>%
+      DT::formatSignif(3:ncol(d), digits=2) %>%
+      DT::renderDT() %>%
+      htmltools::div(id=paste0(.x, "_datatable"))
+  })
+
+htmltools::div(
+  htmltools::tags$script(
+    '$(document).ready(function(){
+        $("#metric_selector").change(function(){
+          var selectedMetric = $(this).val();
+          // Hide datatbles
+          $("[id$=_datatable]").hide();
+          // Show the selected datatable
+          $("#" + selectedMetric + "_datatable").show();
+        });
+      });'
+  ),
+  htmltools::tags$select(id='metric_selector',
+                         lapply(names(metrics), function(met) {
+                           htmltools::tags$option(value=met, met)
+                         })), metrics)
+
+```
+
+
+
+
 
 
 
