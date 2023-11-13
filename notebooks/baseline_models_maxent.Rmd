@@ -164,7 +164,7 @@ knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
 ## Overview
 
-This part of the project fits a additional "baseline" models using the MaxEnt
+This part of the project fits additional "baseline" models using the MaxEnt
 algorithm, as described in [Part 4](https://benton-tripp.github.io/posts/2023-10-05-sdm-benchmark-study-part-4-baseline-species-distribution-models.html) 
 of the study. Because an effective process for fitting the models was set up in parts 5-7, a detailed outline is mostly unnecessary 
 at this point. Similarly, there will not be a detailed description for each section 

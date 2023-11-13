@@ -470,12 +470,12 @@ train.test(model.type="xgboost",
            var.imp.data,
            control, 
            tune.grid=expand.grid(
-             nrounds = c(100, 300),
-             eta = c(0.01, 0.1),
-             gamma = c(0, 0.25, 0.5, 1),
+             nrounds = 300,
+             eta = 0.1,
+             gamma = c(0, 0.25, 0.5),
              max_depth = c(3, 6, 9),
              colsample_bytree = c(0.5, 1),
-             min_child_weight = c(1, 5),
+             min_child_weight = 1,
              subsample = c(0.5, 1)
            ),
            cov.keep=50) 
@@ -486,13 +486,18 @@ train.test(model.type="xgboost",
 
 ```{r get-results}
 
-models <- purrr::map_df(c("logreg", "knn", "tree", "randomforest"), function(m) {
-  m.type <- case_when(m == "logreg" ~ "logistic regression",
-                      m == "knn" ~ "knn",
-                      m == "tree" ~ "classification tree",
-                      m == "randomforest" ~ "random forest",
-                      m == "xgboost" ~ "xgboost",
-                      T ~ "")
+model.scores <- purrr::map_df(c("ipp_glm_mpl_2", "maxent", 
+                          "logreg", "knn", "tree", 
+                          "randomforest", "xgboost"), function(m) {
+                            m.type <- case_when(
+                              m == "ipp_glm_mpl_2" ~ "ipp",
+                              m == "maxent" ~ "maxent",
+                              m == "logreg" ~ "logistic regression",
+                              m == "knn" ~ "knn",
+                              m == "tree" ~ "classification tree",
+                              m == "randomforest" ~ "random forest",
+                              m == "xgboost" ~ "xgboost",
+                              T ~ "")
   purrr::map_df(1:nrow(spec.state), function(i) {
     spec <- spec.state[i,]$species
     st <- spec.state[i,]$state
@@ -509,20 +514,24 @@ reshape.data <- function(data, metric) {
                      "Specificity", "F1")) {
     stop("Invalid metric specified.")
   }
-
   # Reshape the data
   data %>%
     select(common.name, state, model.type, !!sym(metric)) %>%
     mutate(model.type = tolower(gsub(" ", ".", model.type))) %>%
     tidyr::pivot_wider(names_from = model.type, 
                        values_from = !!sym(metric),
-                names_glue = "{model.type}.{tolower(metric)}")
+                names_sep=".",
+                names_prefix=paste0(tolower(metric), "."))
 }
 
 metrics <- c("Accuracy", "Sensitivity", "Specificity", "F1") %>%
   set_names() %>%
+  purrr::map(~reshape.data(model.scores, .x))
+
+dt.metrics <- c("Accuracy", "Sensitivity", "Specificity", "F1") %>%
+  set_names() %>%
   purrr::map(~{
-    d <- reshape.data(models, .x)
+    d <- metrics[[.x]]
     DT::datatable(
       d,
       filter='none',
@@ -539,9 +548,10 @@ metrics <- c("Accuracy", "Sensitivity", "Specificity", "F1") %>%
       )) %>%
       DT::formatStyle(columns=names(d), 
                       `font-size`="13px") %>%
-      DT::formatSignif(3:ncol(d), digits=2) %>%
-      DT::renderDT() %>%
-      htmltools::div(id=paste0(.x, "_datatable"))
+      DT::formatSignif(3:ncol(d), digits=4) %>%
+      htmltools::div(id=paste0(.x, "_datatable"), 
+                     style=ifelse(.x=="Accuracy", "", 
+                                  "display:hidden; height:0;"), .)
   })
 
 htmltools::div(
@@ -550,20 +560,25 @@ htmltools::div(
         $("#metric_selector").change(function(){
           var selectedMetric = $(this).val();
           // Hide datatbles
-          $("[id$=_datatable]").hide();
+          $("[id$=_datatable]").css({"visibility": "hidden", "height": "0"});
           // Show the selected datatable
-          $("#" + selectedMetric + "_datatable").show();
+          $("#" + selectedMetric + "_datatable").css({"visibility": "visible",
+                                                      "height": "auto"});
+          console.log("#" + selectedMetric + "_datatable");
         });
       });'
   ),
   htmltools::tags$select(id='metric_selector',
-                         lapply(names(metrics), function(met) {
+                         lapply(names(dt.metrics), function(met) {
                            htmltools::tags$option(value=met, met)
-                         })), metrics)
+                         })), dt.metrics)
 
 ```
 
+```{r metrics-summary}
 
+
+```
 
 
 
