@@ -164,6 +164,15 @@ knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
 ## Overview
 
+Part 9 of the study presents a detailed analysis of common machine learning models in Species
+Distribution Modeling (SDM), focusing on logistic regression, KNN, classification tree, random
+forest, and XGBoost models. Following fitting the models, comparisons of these models against
+the "traditional" IPP and MaxEnt models will be made. The evaluation involves examining their
+performance through statistical tests, including ANOVA and Kruskal-Wallis, followed by
+non-parametric pairwise comparisons and effect size assessments. This comprehensive analysis 
+aims to highlight the strengths and limitations of each model, providing insights that could
+influence model selection in future research endeavors in this field.
+
 ## Setup
 
 ```{r setup-2, results='hide'}
@@ -256,7 +265,7 @@ data <- states %>%
 
 ```
 
-## ML Models
+## Model Fitting
 
 ```{r ml-setup, results='hide'}
 
@@ -482,7 +491,7 @@ train.test(model.type="xgboost",
 
 ```
 
-### Results
+## Results
 
 ```{r get-results}
 
@@ -551,7 +560,7 @@ dt.metrics <- c("Accuracy", "Sensitivity", "Specificity", "F1") %>%
       DT::formatSignif(3:ncol(d), digits=4) %>%
       htmltools::div(id=paste0(.x, "_datatable"), 
                      style=ifelse(.x=="Accuracy", "", 
-                                  "display:hidden; height:0;"), .)
+                                  "visibility:hidden; height:0;"), .)
   })
 
 htmltools::div(
@@ -560,11 +569,10 @@ htmltools::div(
         $("#metric_selector").change(function(){
           var selectedMetric = $(this).val();
           // Hide datatbles
-          $("[id$=_datatable]").css({"visibility": "hidden", "height": "0"});
+          $("[id$=_datatable]").css({"visibility": "hidden", "height": 0});
           // Show the selected datatable
           $("#" + selectedMetric + "_datatable").css({"visibility": "visible",
                                                       "height": "auto"});
-          console.log("#" + selectedMetric + "_datatable");
         });
       });'
   ),
@@ -575,12 +583,282 @@ htmltools::div(
 
 ```
 
-```{r metrics-summary}
+### Overall Performance by Model Type
 
+```{r metrics-summary, fig.width=10, fig.height=8}
+
+model.scores %>% setDT()
+model.scores[, `:=` (
+    model.type = factor(model.type,
+                        levels=unique(model.scores$model.type)),
+    common.name = factor(common.name,
+                         levels=unique(model.scores$common.name)),
+    state = factor(state, 
+                   levels=unique(model.scores$state))
+  )]
+
+plt.data <- model.scores %>%
+  melt(.,
+       id.vars = c("common.name", "state", "model.type"), 
+       measure.vars = c("Accuracy", "Sensitivity", 
+                        "Specificity", "F1"),
+       variable.name = "metric", 
+       value.name = "metric.value")
+
+ggplot(plt.data, 
+         aes(x = metric, y = metric.value, fill = model.type)) +
+    geom_boxplot(outlier.shape = "o") +
+    stat_summary(aes(group = model.type), fun = mean, fill="darkred",
+                 geom = "point", shape = 21, size = 2, color = "black",
+                 position = position_dodge(width = 0.75)) +
+    scale_fill_brewer(palette = "Dark2") + 
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_rect(fill = "gray"),
+          plot.background = element_rect(fill = "white"),
+          strip.placement = "inside") + 
+    coord_flip() +
+    facet_wrap(~metric, ncol=2, scales="free",
+               strip.position="top")
 
 ```
 
+### Performance by Model, State
 
+```{r metrics-states, fig.width=10, fig.height=30}
 
+ggplot(plt.data, 
+         aes(x = metric, y = metric.value, fill = model.type)) +
+    geom_boxplot(outlier.shape = "o") +
+    stat_summary(aes(group = model.type), fun = mean, fill="darkred",
+                 geom = "point", shape = 21, size = 2, color = "black",
+                 position = position_dodge(width = 0.75)) +
+    scale_fill_brewer(palette = "Dark2") + 
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_rect(fill = "gray"),
+          plot.background = element_rect(fill = "white"),
+          strip.placement = "inside") + 
+    coord_flip() +
+    facet_wrap(~metric + state, ncol=2, scales="free",
+               strip.position="top")
+
+```
+
+### Performance by Model, Species
+
+```{r metrics-species, fig.width=10, fig.height=40}
+
+ggplot(plt.data, 
+         aes(x = metric, y = metric.value, fill = model.type)) +
+    geom_boxplot(outlier.shape = "o") +
+    stat_summary(aes(group = model.type), fun = mean, fill="darkred",
+                 geom = "point", shape = 21, size = 2, color = "black",
+                 position = position_dodge(width = 0.75)) +
+    scale_fill_brewer(palette = "Dark2") + 
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_blank(),
+          axis.title = element_blank(),
+          panel.background = element_rect(fill = "gray"),
+          plot.background = element_rect(fill = "white"),
+          strip.placement = "inside") + 
+    coord_flip() +
+    facet_wrap(~metric + common.name, ncol=2, scales="free",
+               strip.position="top")
+
+```
+
+### Discussion
+
+Overall, the random forest model exhibits the highest average accuracy (94.64%) among all the
+models, which indicates its robustness in predicting species distribution across various
+datasets. This model also demonstrates high sensitivity (96.69%), suggesting its effectiveness
+in correctly identifying true positives. In contrast, the ipp model shows the lowest overall
+accuracy (89.53%), coupled with significantly lower sensitivity (69.92%), indicating a 
+tendency to miss true positive cases. Notably, there are several instances of perfect accuracy
+(100%). However, these appear to occur more frequently for bird species exhibiting a more
+defined distribution (e.g., primarily coastal birds), in smaller sample areas.
+
+A more granular analysis reveals variability in model performance across different bird 
+species and states. One notable difference that appears to occur frequently is the more 
+broadly distributed species, such as the Downy Woopecker, appear to have poorer 
+performance when using thebaseline models, while the ML models performed significantly better.
+
+In summary, while some models like random forest and KNN generally outperform others in 
+terms of accuracy and sensitivity, the effectiveness of each model can vary considerably
+depending on the bird species and the geographical context. Selecting the most
+suitable model for a given SDM task requires careful consideration of the specific
+characteristics of the dataset. 
+
+## Model Performance Comparisons
+
+The analysis of model accuracies initially uses Analysis of Variance (ANOVA), aimed at 
+identifying significant differences across accuracy by model type. However, as shown later, 
+the Shapiro-Wilk test indicates non-normality in ANOVA residuals, necessitating a shift to
+non-parametric methods. These methods, including the Kruskal-Wallis test and subsequent Dunn’s
+post-hoc tests, offer a more suitable approach for this data set. This part of the study is
+crucial for evaluating the performance differences among models, clearly identifying those with
+statistically significant variations in accuracy.
+
+```{r anova-acc}
+
+anova.res <- aov(Accuracy ~ model.type, data = model.scores)
+summary.aov(anova.res) 
+
+```
+
+### Confirming ANOVA Assumptions
+
+The Shapiro-Wilk test can be used to confirm whether the residuals of an ANOVA model are
+normally distributed. The null hypothesis is that the data is normally distributed.
+If $p < alpha = 0.05$, then the null hypothesis is rejected, and it can be concluded that the
+residuals of the ANOVA are not normally distributed
+
+```{r normality-anova-residuals}
+shapiro.test(residuals(anova.res))
+```
+
+### Non-Parametric Alternative to ANOVA
+
+The Kruskal-Wallis Rank Sum Test is a non-parametric alternative to one-way ANOVA. 
+It's used to compare more than two groups and does not assume a normal distribution.
+The null hypothesis for this test is that all groups have the same median, with a
+threshold of 0.05.
+
+```{r kruskal-wallis}
+kruskal.test(Accuracy ~ model.type, data = model.scores)
+```
+
+The Kruskal-Wallis Chi-squared value (the test statistic for the Kruskal-Wallis test) is 
+26.037. This is analogous to the F-statistic in ANOVA but based on ranks rather than means.
+The Degrees of Freedom (df) is 6, which corresponds to the number of groups (model types)
+minus one. It's an important parameter in determining the statistical significance.
+The p-value is 0.0002191. This indicates the probability of obtaining test results at least 
+as extreme as the ones observed, under the assumption that the null hypothesis is true.
+Because the p-value is much less than the threshold of 0.05, the null hypothesis of the Kruskal-Wallis test is rejected. In other words, there is statistically significant evidence 
+to suggest that at least one model type has a different median accuracy compared to the others.
+
+### Non-Parametric Pairwise Comparisons
+
+To identify which specific model types differ from each other, conduct post-hoc 
+pairwise comparisons using the non-parametric Dunn's test.
+    
+```{r dunn}
+
+# Dunn's test for pairwise comparisons
+dunn.res <- dunn.test::dunn.test(model.scores$Accuracy, 
+                                 model.scores$model.type, 
+                                 method="bonferroni")
+
+```
+Each cell in the table represents the comparison between the model types in the
+corresponding row and column. For instance, the first cell under "ipp" compares the
+Classification Tree models with IPP. The values in each cell are the test statistic for 
+Dunn's test. These values indicate the degree of difference between the pair of groups. 
+The p-values are given below each test statistic. These indicate the probability of observing 
+a test statistic as extreme as, or more extreme than, the one observed, assuming the null
+hypothesis of no difference is true.
+
+#### Significant Differences
+
+Comparisons with a p-value less than 0.05/2 (adjusted for the Bonferroni correction) are
+considered statistically significant. For example, the comparison between KNN and IPP shows
+a p-value of 0.0025, which is significant. This suggests that there is a statistically
+significant difference in the accuracy between these two model types.
+
+#### No Significant Differences
+
+Comparisons with a p-value greater than 0.05/2 are not considered statistically significant. 
+For instance, the comparison between MaxEnt and IPP shows a p-value of 0.4646, which is not
+significant.
+
+### Effect Size 
+
+To understand the magnitude of differences, not just the statistical significance, calculate
+Cliff's Delta for each pair of model types. Cliff's Delta represents the difference between
+the probability that a case randomly chosen from group 1 (i.e., model-type 1) has a higher
+score than a randomly chosen subject from group 2, and the inverse. It's often called a 
+"success rate difference".
+    
+```{r effectsize}
+
+pairs <- expand.grid(
+  treatment=unique(model.scores$model.type),
+  control=unique(model.scores$model.type)
+) %>% 
+  filter(treatment != control)
+
+eff.size <- purrr::map_df(1:nrow(pairs), ~{
+  treatment <- pairs[.x,]$treatment
+  control <- pairs[.x,]$control
+  t.acc <- model.scores$Accuracy[model.scores$model.type == treatment]
+  c.acc <- model.scores$Accuracy[model.scores$model.type == control]
+  cd <- effsize::cliff.delta(t.acc, c.acc)
+  data.table(
+    treatment=treatment,
+    control=control,
+    delta=cd$estimate,
+    lower=cd$conf.int[[1]],
+    upper=cd$conf.int[[2]],
+    variance=cd$var,
+    magnitude=cd$magnitude
+  )
+})
+
+eff.size
+
+```
+```{r effsize-matrix}
+eff.m <- reshape2::acast(eff.size, treatment ~ control, value.var='delta', margins=F)
+corrplot::corrplot(eff.m, diag = F)
+```
+
+Below are those pairwise comparisons deemed significant by Dunn's test, and their corresponding
+effect size results (Cliff's Delta, Lower/Upper 95% C.I., etc.).
+
+```{r effsize-pairwise-sig}
+
+get.trtmnt <- function(comp) {
+  stringr::str_split(comp, " - ")[[1]][[1]]
+}
+
+get.cntrl <- function(comp) {
+  stringr::str_split(comp, " - ")[[1]][[2]]
+}
+
+sig.efsz <- data.table(
+  comp=dunn.res$comparisons,
+  p.adj=dunn.res$P.adjusted
+) %>%
+  .[, .(treatment=sapply(comp, get.trtmnt), 
+        control=sapply(comp, get.cntrl),
+        p.adj)] %>%
+  eff.size[., on=.(treatment, control)] %>%
+  .[p.adj <= 0.05]
+
+sig.efsz
+```
+
+## Conclusion
+
+The primary purpose, besides a general testing of methodologies for Species Distribution
+Modeling, was to identify which -- if any -- "ML" models might perform better in SDM problems
+than more commonly used models such as MaxEnt or IPP. Although it is impossible to confirm
+whether one choice of model is always -- or even frequently -- better performing than another,
+this experiment did show significant evidence that some models are more likely to perform
+better than others. Specifically, KNN, Logistic Regression, Random Forest, and XGBoost models
+all performed significantly better (in terms of accuracy) than that of the IPP models in
+this experiment.
+
+Again, this experiment was not exhaustive. Although an effort was made to include a variety
+of bird species found in different environments and locations, 8 species of a single animal
+in just 4 US states is most certainly not conclusive evidence of these results. However,
+it does show that the tendency for researchers or scientists to just go with what has always
+been done before (e.g., an IPP or MaxEnt model for SDM), might not always be the best option.
 
 
