@@ -24,6 +24,7 @@ artifacts/test_results
 artifacts/test_results/*
 artifacts/models
 artifacts/models/*
+artifacts/summary_img.RData
 
 # History files
 .Rhistory

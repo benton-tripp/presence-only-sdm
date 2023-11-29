@@ -164,16 +164,19 @@ knitr::opts_chunk$set(echo = T, message=F, warning=F, cache=F, root.dir="..")
 
 ## Overview
 
-Part 9 of the study presents a detailed analysis of common machine learning models in Species
-Distribution Modeling (SDM), focusing on logistic regression, KNN, classification tree, random
-forest, and XGBoost models. Following fitting the models, comparisons of these models against
-the "traditional" IPP and MaxEnt models will be made. The evaluation involves examining their
-performance through statistical tests, including ANOVA and Kruskal-Wallis, followed by
-non-parametric pairwise comparisons and effect size assessments. This comprehensive analysis 
-aims to highlight the strengths and limitations of each model, providing insights that could
-influence model selection in future research endeavors in this field.
+Part 9 of the study focuses on common machine learning models, focusing on logistic regression,
+KNN, classification tree, random forest, and XGBoost models. Following fitting the models,
+comparisons of these models against the "traditional" IPP and MaxEnt models will be made. The
+evaluation involves examining their performance through statistical tests, including ANOVA and
+Kruskal-Wallis, followed by non-parametric pairwise comparisons and effect size assessments. This
+comprehensive analysis aims to highlight the strengths and limitations of each model, providing
+insights that could influence model selection in future research endeavors in this field.
 
 ## Setup
+
+The setup is essentially the same as the prior few phases of the study. For the sake of 
+brevity, much of the code has not been included in this particular section, but can still be
+found within the [project Github repo](https://github.com/benton-tripp/presence-only-sdm/tree/main/R).
 
 ```{r setup-2, results='hide'}
 
@@ -266,6 +269,12 @@ data <- states %>%
 ```
 
 ## Model Fitting
+
+In a similar manner to how the IPP and MaxEnt models were trained in the prior parts of the
+study, each of the model types are iteratively fit over the different species and states.
+5-fold cross-validation is used to help mitigate overfitting. The model and test results are 
+saved after adjusting for optimal thresholds and handling cases of extreme sensitivity or
+specificity.
 
 ```{r ml-setup, results='hide'}
 
@@ -678,16 +687,17 @@ ggplot(plt.data,
 Overall, the random forest model exhibits the highest average accuracy (94.64%) among all the
 models, which indicates its robustness in predicting species distribution across various
 datasets. This model also demonstrates high sensitivity (96.69%), suggesting its effectiveness
-in correctly identifying true positives. In contrast, the ipp model shows the lowest overall
+in correctly identifying true positives. In contrast, the IPP model shows the lowest overall
 accuracy (89.53%), coupled with significantly lower sensitivity (69.92%), indicating a 
-tendency to miss true positive cases. Notably, there are several instances of perfect accuracy
-(100%). However, these appear to occur more frequently for bird species exhibiting a more
-defined distribution (e.g., primarily coastal birds), in smaller sample areas.
+tendency to miss true positive cases. 
 
 A more granular analysis reveals variability in model performance across different bird 
-species and states. One notable difference that appears to occur frequently is the more 
-broadly distributed species, such as the Downy Woopecker, appear to have poorer 
-performance when using thebaseline models, while the ML models performed significantly better.
+species and states. Notably, there are several instances of perfect accuracy
+(100%). These appear to occur more frequently for bird species exhibiting a more
+defined distribution (e.g., primarily coastal birds), in smaller sample areas. Conversely, 
+it appears that the models fit for more broadly distributed species, (such as the Downy
+Woodpecker), tend to have poorer performance when using the baseline models, while the ML 
+models performed significantly better.
 
 In summary, while some models like random forest and KNN generally outperform others in 
 terms of accuracy and sensitivity, the effectiveness of each model can vary considerably
@@ -697,7 +707,7 @@ characteristics of the dataset.
 
 ## Model Performance Comparisons
 
-The analysis of model accuracies initially uses Analysis of Variance (ANOVA), aimed at 
+The analysis of model accuracy below initially uses Analysis of Variance (ANOVA), aimed at 
 identifying significant differences across accuracy by model type. However, as shown later, 
 the Shapiro-Wilk test indicates non-normality in ANOVA residuals, necessitating a shift to
 non-parametric methods. These methods, including the Kruskal-Wallis test and subsequent Dunn’s
@@ -740,7 +750,8 @@ The Degrees of Freedom (df) is 6, which corresponds to the number of groups (mod
 minus one. It's an important parameter in determining the statistical significance.
 The p-value is 0.0002191. This indicates the probability of obtaining test results at least 
 as extreme as the ones observed, under the assumption that the null hypothesis is true.
-Because the p-value is much less than the threshold of 0.05, the null hypothesis of the Kruskal-Wallis test is rejected. In other words, there is statistically significant evidence 
+Because the p-value is much less than the threshold of 0.05, the null hypothesis of the
+Kruskal-Wallis test is rejected. In other words, there is statistically significant evidence 
 to suggest that at least one model type has a different median accuracy compared to the others.
 
 ### Non-Parametric Pairwise Comparisons
@@ -780,10 +791,11 @@ significant.
 ### Effect Size 
 
 To understand the magnitude of differences, not just the statistical significance, calculate
-Cliff's Delta for each pair of model types. Cliff's Delta represents the difference between
-the probability that a case randomly chosen from group 1 (i.e., model-type 1) has a higher
-score than a randomly chosen subject from group 2, and the inverse. It's often called a 
-"success rate difference".
+Cliff's Delta for each pair of model types. This metric quantifies the difference in the
+likelihood that a randomly selected case from one group (model-type 1) scores higher than a
+randomly chosen case from another group (model-type 2), and vice versa. Essentially, Cliff's 
+Delta is a measure of the 'success rate difference' between two groups, providing insight into
+the practical significance of their performance disparity.
     
 ```{r effectsize}
 
@@ -846,19 +858,15 @@ sig.efsz
 
 ## Conclusion
 
-The primary purpose, besides a general testing of methodologies for Species Distribution
-Modeling, was to identify which -- if any -- "ML" models might perform better in SDM problems
-than more commonly used models such as MaxEnt or IPP. Although it is impossible to confirm
-whether one choice of model is always -- or even frequently -- better performing than another,
-this experiment did show significant evidence that some models are more likely to perform
-better than others. Specifically, KNN, Logistic Regression, Random Forest, and XGBoost models
-all performed significantly better (in terms of accuracy) than that of the IPP models in
-this experiment.
-
-Again, this experiment was not exhaustive. Although an effort was made to include a variety
-of bird species found in different environments and locations, 8 species of a single animal
-in just 4 US states is most certainly not conclusive evidence of these results. However,
-it does show that the tendency for researchers or scientists to just go with what has always
-been done before (e.g., an IPP or MaxEnt model for SDM), might not always be the best option.
-
+This study primarily aimed to evaluate machine learning models in Species Distribution Modeling
+(SDM), comparing their performance to traditional models like MaxEnt and IPP. The findings 
+indicate that models such as KNN, Logistic Regression, Random Forest, and XGBoost generally 
+outperform IPP models in terms of accuracy. However, it is essential to note that these results, 
+drawn from analyzing eight bird species across four U.S. states, are not definitive. The limited 
+scope of the study suggests that the conventional approach of relying solely on models like IPP 
+or MaxEnt may not always yield the best outcomes in SDM. Future research, possibly extending to a 
+broader range of species and geographical locations, is necessary to validate and expand upon 
+these findings. This study underscores the potential advantages of integrating machine learning 
+techniques in SDM, encouraging a more nuanced approach in model selection for researchers in this 
+field.
 
