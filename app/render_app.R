@@ -74,16 +74,16 @@ plot.raster.gg <- function(r, fill=NULL, scale.c=T,
 }
 
 plt.width.height <- function(st) {
-  width <- case_when(st == "VT"~5.25*3/2,
-                     st == "NC"~16*3/2,
-                     st == "CO"~12*3/2,
-                     st == "OR"~8*3/2,
-                     T~8*3/2)
-  height <- case_when(st == "VT"~7*3/2,
-                      st == "NC"~7*3/2,
-                      st == "CO"~9*3/2,
-                      st == "OR"~8*3/2,
-                      T~8*3/2)
+  width <- case_when(st == "VT"~5.25*4/2,
+                     st == "NC"~16*4/2,
+                     st == "CO"~12*4/2,
+                     st == "OR"~8*4/2,
+                     T~8*4/2)
+  height <- case_when(st == "VT"~7,
+                      st == "NC"~7,
+                      st == "CO"~9,
+                      st == "OR"~8,
+                      T~8)
   list(
     w=width,
     h=height
