@@ -247,7 +247,17 @@ if (!file.exists("artifacts/summary_img.RData")) {
   
   save.image(file="artifacts/summary_img.RData")
 } else {
-  read.image(file="artifacts/summary_img.RData")
+  library(data.table)
+  library(dplyr)
+  library(purrr)
+  library(terra)
+  library(caret)
+  library(sf)
+  library(flextable)
+  library(officer)
+  library(spatstat)
+  
+  load(file="artifacts/summary_img.RData")
 }
 
 
