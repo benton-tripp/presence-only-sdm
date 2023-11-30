@@ -1,6 +1,13 @@
-read.image(file="artifacts/summary_img.RData")
-library(shiny)
 setwd("C:/Users/bento/gis630/app")
+load(file="../artifacts/summary_img.RData")
+library(data.table)
+library(dplyr)
+library(purrr)
+library(terra)
+library(caret)
+library(sf)
+library(spatstat)
+library(shiny)
 
 get.mtype.name <- function(m) case_when(
   m == "ipp_glm_mpl_2" ~ "ipp",
@@ -12,7 +19,7 @@ get.mtype.name <- function(m) case_when(
   m == "xgboost" ~ "xgboost",
   T ~ "")
 
-pred.rast.path <- "artifacts/prediction_rasters"
+pred.rast.path <- "../artifacts/prediction_rasters"
 pred.rasters <- c("ipp_glm_mpl_2", "maxent", 
                   "logreg", "knn", "tree", 
                   "randomforest", "xgboost") %>%
@@ -67,20 +74,31 @@ plot.raster.gg <- function(r, fill=NULL, scale.c=T,
 }
 
 plt.width.height <- function(st) {
-  width <- case_when(st == "VT"~5,
-                     st == "NC"~16,
-                     st == "CO"~12,
-                     st == "OR"~8,
-                     T~8)
-  height <- case_when(st == "VT"~7,
-                      st == "NC"~8,
-                      st == "CO"~9,
-                      st == "OR"~8,
-                      T~8)
+  width <- case_when(st == "VT"~5.25*3/2,
+                     st == "NC"~16*3/2,
+                     st == "CO"~12*3/2,
+                     st == "OR"~8*3/2,
+                     T~8*3/2)
+  height <- case_when(st == "VT"~7*3/2,
+                      st == "NC"~7*3/2,
+                      st == "CO"~9*3/2,
+                      st == "OR"~8*3/2,
+                      T~8*3/2)
   list(
     w=width,
     h=height
   )
+}
+
+get.model.type.formatted <- function(model.type) {
+  case_when(model.type == "ipp" ~ "IPP",
+            model.type == "maxent" ~ "MaxEnt",
+            model.type == "logistic regression" ~ "Logistic Regression",
+            model.type == "knn" ~ "KNN",
+            model.type == "classification tree" ~ "Classification Tree",
+            model.type == "random forest" ~ "Random Forest",
+            model.type == "xgboost" ~ "XGBoost",
+            T ~ "")
 }
 
 plot.to.svg <- function(p, st, encode=F, plt.dir="plots", plt.name="plt") {
@@ -102,34 +120,31 @@ plot.to.svg <- function(p, st, encode=F, plt.dir="plots", plt.name="plt") {
 
 # Create plots for each combination
 pred.plts.svg <- get.object(
-  purrr::map_df(1:nrow(spec.state.mods), function(i) {
-    st <- spec.state.mods[i,]$state
-    spec <- spec.state.mods[i,]$species
-    model.type <- spec.state.mods[i,]$model.type
-    cat(st, spec, model.type, "\n")
-    model.type.case <- case_when(model.type == "ipp" ~ "IPP",
-                                 model.type == "maxent" ~ "MaxEnt",
-                                 model.type == "logistic regression" ~ "Logistic Regression",
-                                 model.type == "knn" ~ "KNN",
-                                 model.type == "classification tree" ~ "Classification Tree",
-                                 model.type == "random forest" ~ "Random Forest",
-                                 model.type == "xgboost" ~ "XGBoost",
-                                 T ~ "")
-    r <- pred.rasters[[model.type]][[spec]][[st]]
-    p <- plot.raster.gg(
-      r=r,
-      fill=names(r),
-      scale.c=T,
-      legend.title=case_when(names(r) == "trend" ~ "trend",
-                             names(r) == "prob" ~ "probability",
-                             T ~ "prediction"),
-      title=glue::glue("{model.type.case} prediction for \n{spec}s in {st}")
-    )
-    p.svg <- plot.to.svg(p, st, plt.name=tolower(paste0(gsub(" ", "-", spec), "_", 
-                                                        st, "_", 
-                                                        gsub(" ", "-", model.type))))
-    data.table(species=spec, state=st, model.type=model.type,
-               formatted.model.type=model.type.case, plot.svg=p.svg)
+  purrr::map_df(1:nrow(spec.state), function(i) {
+    st <- spec.state[i,]$state
+    spec <- spec.state[i,]$species
+    model.types <- spec.state.mods[species == spec & state == st]$model.type
+    cat(st, spec, "\n")
+    r <- model.types %>% 
+      set_names() %>% 
+      purrr::map(~pred.rasters[[.x]][[spec]][[st]])
+    plots <- model.types %>%
+      set_names %>%
+      purrr::map(~{
+        mt.case <- get.model.type.formatted(.x)
+        plot.raster.gg(
+          r=r[[.x]],
+          fill=names(r[[.x]]),
+          scale.c=T,
+          legend.title=case_when(names(r[[.x]]) == "trend" ~ "trend",
+                                 names(r[[.x]]) == "prob" ~ "probability",
+                                 T ~ "prediction"),
+          title=glue::glue("{mt.case} prediction for \n{spec}s in {st}")
+        )
+      })
+    p <- ggpubr::ggarrange(plotlist=plots, ncol=3, nrow=3)
+    p.svg <- plot.to.svg(p, st, plt.name=tolower(paste0(gsub(" ", "-", spec), "_", st)))
+    data.table(species=spec, state=st, plot.svg=p.svg)
   }),
   file.name="pred_plots_svg.rds",
   obj.path=getwd()
@@ -142,32 +157,18 @@ pred.plt.selections <- htmltools::div(
         $("#pred_state_selector").change(function(){
           var selectedState = $(this).val();
           var selectedSpecies = $("#pred_species_selector").val();
-          var selectedModel = $("#pred_model_selector").val();
           // Hide all raster plots
           $("[id$=_pred_plots]").hide();
           // Show the selected raster plot
-          $("#" + selectedState + "_" + selectedSpecies + "_" + 
-            selectedModel + "_pred_plots").show();
+          $("#" + selectedState + "_" + selectedSpecies + _pred_plots").show();
         });
         $("#pred_species_selector").change(function(){
           var selectedState = $("#pred_state_selector").val();
           var selectedSpecies = $(this).val();
-          var selectedModel = $("#pred_model_selector").val();
           // Hide all raster plots
           $("[id$=_pred_plots]").hide();
           // Show the selected raster plot
-          $("#" + selectedState + "_" + selectedSpecies + "_" +  
-             selectedModel + "_pred_plots").show();
-        });
-        $("#pred_species_selector").change(function(){
-          var selectedState = $("#pred_state_selector").val();
-          var selectedSpecies = $("#pred_species_selector").val();
-          var selectedModel = $(this).val();
-          // Hide all raster plots
-          $("[id$=_pred_plots]").hide();
-          // Show the selected raster plot
-          $("#" + selectedState + "_" + selectedSpecies + "_" + 
-             selectedModel + "_pred_plots").show();
+          $("#" + selectedState + "_" + selectedSpecies + "_pred_plots").show();
         });
       });'
   ),
@@ -182,38 +183,32 @@ pred.plt.selections <- htmltools::div(
                              }))
     ),
     htmltools::tags$div(
+      style="margin-right:5px;",
       htmltools::tags$select(id='pred_species_selector',
                              style="font-size:17px;",
                              lapply(species, function(s) {
                                htmltools::tags$option(value=gsub(" ", "-", s), s)
                              }))
-    ),
-    htmltools::tags$div(
-      htmltools::tags$select(id='pred_model_selector',
-                             style="font-size:17px;",
-                             lapply(unique(pred.plts.svg$formatted.model.type), function(m) {
-                               htmltools::tags$option(value=tolower(gsub(" ", "-", m)), m)
-                             }))
     )
   ),
-  purrr::map(1:nrow(spec.state.mods), function(i) {
+  purrr::map(1:nrow(spec.state), function(i) {
     st <- spec.state.mods[i,]$state
     spec <- spec.state.mods[i,]$species
-    mtype <- spec.state.mods[i,]$model.type
-    d <- pred.plts.svg[state == st & species == spec & 
-                         model.type == mtype]
+    d <- pred.plts.svg[state == st & species == spec]
     p.svg <- d$plot.svg %>% basename()
-    img.src <- paste0("https://github.com/benton-tripp/presence-only-sdm/blob",
-                      "/9a85e087e1f39fc2b6412859833c98b6b245e831/app/plots/", p.svg)
+    img.src <- paste0("https://raw.githubusercontent.com/benton-tripp/",
+                      "presence-only-sdm/main/app/plots/", p.svg)
     htmltools::tags$div(
-      id=paste0(st, "_", gsub(" ", "-", spec), "_", 
-                gsub(" ", "-", mtype), "_pred_plots"),
+      id=paste0(st, "_", gsub(" ", "-", spec), "_pred_plots"),
       style=paste0("padding:5px; overflow:auto; width:100%;", 
                    "min-height:1400px; ", 
                    ifelse(i==1, "", "display:none;")),
       htmltools::tags$div(
         style="margin:5px;",
-        htmltools::tags$img(src=p.svg)
+        htmltools::tags$img(
+          src=img.src, 
+          style="max-height:700px; width=auto; height=auto;"
+        )
       )
     )
   })
