@@ -291,3 +291,254 @@ server <- function(input, output) {
 }
 
 shiny::shinyApp(ui=ui, server=server)
+
+ui.head <- htmltools::tagList(
+  tags$meta(
+    `http-equiv`="Content-Type",
+    content="text/html; charset=utf-8"
+  ),
+  tags$script(type="application/shiny-singletons"),
+  tags$script(
+    type="application/html-dependencies",
+    paste0(
+      "jquery[3.6.0];",
+      "shiny-css[1.7.4];",
+      "font-awesome[6.4.0];",
+      "bootstrap[3.4.1]"
+    )
+  ),
+  tags$script(src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"),
+  tags$script(
+    src="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/js/bootstrap.min.js",
+    rel="stylesheet",
+    integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd",
+    crossorigin="anonymous"
+  ),
+  tags$link(
+    href="shiny.min.css", 
+    rel="stylesheet"
+  ),
+  tags$link(
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
+            rel="stylesheet"
+  ),
+  tags$link(
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0//css/v4-shims.min.css", 
+    rel="stylesheet"
+  ),
+  tags$meta(name="viewport", content="width=device-width, initial-scale=1"),
+  tags$link(
+    rel="stylesheet", 
+    href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css",
+    integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu",
+    crossorigin="anonymous"
+  ),
+  tags$script(
+    rel="stylesheet",
+    href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap-theme.min.css",
+    integrity="sha384-6pzBo3FDv/PJ8r2KRkGHifhEocL+1X2rVCTTkUfGk7/0pbek5mMa1upzvWbrUbOZ",
+    crossorigin="anonymous"
+  ),
+  tags$title("SDM Benchmark Study Results"),
+  # tags$link(rel="stylesheet", type="text/css", href="bootstrap.css"),
+  tags$link(rel="stylesheet", type="text/css", href="styles.css"),
+  tags$script(src="scripts.js")
+  # tags$script(src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js")
+)
+
+ui.nav <- htmltools::tags$nav(
+  class="navbar navbar-default navbar-fixed-top",
+  role="navigation",
+  div(
+    class="container-fluid",
+    div(
+      class="navbar-header",
+      tags$span(
+        class="navbar-brand",
+        "SDM Benchmark Study Results"
+      )
+    ),
+    tags$ul(
+      class="nav navbar-nav shiny-tab-input",
+      id="mainPage",
+      `data-tabsetid`="1639",
+      tags$li(
+        class="dropdown",
+        tags$a(
+          id="dropDownMenu",
+          href="#",
+          type="button",
+          class="btn btn-default dropdown-toggle",
+          `data-toggle`="dropdown",
+          `data-value`="mainMenu",
+          `aria-haspopup`="true",
+          `aria-expanded`="false",
+          tags$i(
+            `aria-label`="bars icon",
+            class="fas fa-bars fa-fw",
+            role="presentation"
+          ),
+          "Menu",
+          tags$b(
+            class="caret"
+          )
+        ),
+        tags$ul(
+          class="dropdown-menu",
+          `aria-labelledby`="dropDownMenu",
+          `data-tabsetid`="5466",
+          tags$li(
+            class="active",
+            tags$a(
+              class="dropdown-item",
+              href="#tab-5466-1",
+              `data-toggle`="tab",
+              `data-bs-toggle`="tab",
+              `data-value`="Species Observations",
+              "Species Observations"
+            )
+          ),
+          tags$li(
+            tags$a(
+              class="dropdown-item",
+              href="#tab-5466-2",
+              `data-toggle`="tab",
+              `data-bs-toggle`="tab",
+              `data-value`="Model Covariates",
+              "Model Covariates"
+            )
+          ),
+          tags$li(
+            tags$a(
+              class="dropdown-item",
+              href="#tab-5466-3",
+              `data-toggle`="tab",
+              `data-bs-toggle`="tab",
+              `data-value`="Pseudo-Absence Selection",
+              "Pseudo-Absence Selection"
+            )
+          ),
+          tags$li(
+            tags$a(
+              href="#tab-5466-4",
+              `data-toggle`="tab",
+              `data-bs-toggle`="tab",
+              `data-value`="Species Predictions",
+              "Species Predictions"
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+ui.main <- div(
+  class = "container-fluid",
+  div(class = "row"),
+  div(
+    class = "tab-content", 
+    `data-tabsetid` = "1639",
+    div(
+      class = "tab-pane active", 
+      `data-value` = "Species Observations", 
+      id = "tab-5466-1",
+      div(
+        class = "main-area-container",
+        h1("Species Observations")
+      )
+    ),
+    div(
+      class = "tab-pane", 
+      `data-value` = "Model Covariates", 
+      id = "tab-5466-2",
+      div(
+        class = "main-area-container",
+        h1("Model Covariates"),
+        tags$i("*Prior to pre-processing and feature engineering")
+      )
+    ),
+    div(
+      class = "tab-pane", 
+      `data-value` = "Pseudo-Absence Selection", 
+      id = "tab-5466-3",
+      div(class = "main-area-container",
+          h1("Pseudo-Absence Selection"),
+          div(class = "tabbable",
+              tags$ul(
+                class = "nav nav-tabs shiny-tab-input", 
+                id = "paTabsetPanel", 
+                `data-tabsetid` = "5409",
+                tags$li(
+                  class = "active",
+                  tags$a(
+                    href = "#tab-5409-1", 
+                    `data-toggle` = "tab", 
+                    `data-bs-toggle` = "tab", 
+                    `data-value` = "BIOCLIM", "BIOCLIM")
+                ),
+                tags$li(
+                  tags$a(
+                    href = "#tab-5409-2", 
+                    `data-toggle` = "tab", 
+                    `data-bs-toggle` = "tab", 
+                    `data-value` = "Sample Regions", 
+                    "Sample Regions")
+                ),
+                tags$li(
+                  tags$a(
+                    href = "#tab-5409-3", 
+                    `data-toggle` = "tab", 
+                    `data-bs-toggle` = "tab",
+                    `data-value` = "Pseudo-Absence Points", 
+                    "Pseudo-Absence Points")
+                )
+              ),
+              div(
+                class = "tab-content", 
+                `data-tabsetid` = "5409",
+                div(
+                  class = "tab-pane active", 
+                  `data-value` = "BIOCLIM", 
+                  id = "tab-5409-1",
+                  div(
+                    h2("BIOCLIM Suitability")
+                  )
+                ),
+                div(
+                  class = "tab-pane", 
+                  `data-value` = "Sample Regions", 
+                  id = "tab-5409-2",
+                  h2("Final Sample Regions")
+                ),
+                div(
+                  class = "tab-pane", 
+                  `data-value` = "Pseudo-Absence Points", 
+                  id = "tab-5409-3",
+                  h2("Pseudo-Absence Points")
+                )
+              )
+          )
+      )
+    ),
+    div(
+      class = "tab-pane", 
+      `data-value` = "Species Predictions", 
+      id = "tab-5466-4",
+      div(
+        class = "main-area-container",
+        h1("Species Predictions"),
+        pred.plt.selections
+      )
+    )
+  )
+)
+
+html.output <- tags$html(
+  htmltools::HTML(glue::glue("<head>{ui.head}</head>")),
+  tags$body(
+    ui.nav,
+    ui.main
+  )
+)
+readr::write_file(glue::glue("{html.output}"), "SDM-Benchmark-Study-Results.html")
