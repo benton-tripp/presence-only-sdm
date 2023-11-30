@@ -240,8 +240,41 @@ ui <- navbarPage(
         h1("Species Observations")
       )
     ),
-    tabPanel("Covariates"),
-    tabPanel("Pseudo-Absence Selection"),
+    tabPanel(
+      "Model Covariates",
+      div(
+        class="main-area-container",
+        h1("Model Covariates"),
+        tags$i("*Prior to pre-processing and feature engineering")
+      )
+    ),
+    tabPanel(
+      "Pseudo-Absence Selection",
+      div(
+        class="main-area-container",
+        h1("Pseudo-Absence Selection"),
+        div(
+          class="main-area-container",
+          tabsetPanel(
+            id="paTabsetPanel",
+            tabPanel(
+              "BIOCLIM",
+              div(
+                h2("BIOCLIM Suitability")
+              )
+            ),
+            tabPanel(
+              "Sample Regions",
+              h2("Final Sample Regions")
+            ),
+            tabPanel(
+              "Pseudo-Absence Points",
+              h2("Pseudo-Absence Points")
+            )
+          )
+        )
+      )
+    ),
     tabPanel(
       "Species Predictions",
       div(
