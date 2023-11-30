@@ -142,7 +142,7 @@ pred.plts.svg <- get.object(
           title=glue::glue("{mt.case} prediction for \n{spec}s in {st}")
         )
       })
-    p <- ggpubr::ggarrange(plotlist=plots, ncol=3, nrow=3)
+    p <- ggpubr::ggarrange(plotlist=plots, ncol=4, nrow=2)
     p.svg <- plot.to.svg(p, st, plt.name=tolower(paste0(gsub(" ", "-", spec), "_", st)))
     data.table(species=spec, state=st, plot.svg=p.svg)
   }),
@@ -157,14 +157,16 @@ pred.plt.selections <- htmltools::div(
         $("#pred_state_selector").change(function(){
           var selectedState = $(this).val();
           var selectedSpecies = $("#pred_species_selector").val();
+          console.log(selectedState + " & " + selectedSpecies);
           // Hide all raster plots
           $("[id$=_pred_plots]").hide();
           // Show the selected raster plot
-          $("#" + selectedState + "_" + selectedSpecies + _pred_plots").show();
+          $("#" + selectedState + "_" + selectedSpecies + "_pred_plots").show();
         });
         $("#pred_species_selector").change(function(){
           var selectedState = $("#pred_state_selector").val();
           var selectedSpecies = $(this).val();
+          console.log(selectedState + " & " + selectedSpecies);
           // Hide all raster plots
           $("[id$=_pred_plots]").hide();
           // Show the selected raster plot
