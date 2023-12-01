@@ -16,8 +16,10 @@
   <body>
     <nav class="navbar navbar-default navbar-fixed-top" role="navigation">
       <div class="container-fluid">
-        <div class="navbar-header">
-          <span class="navbar-brand">SDM Benchmark Study Results</span>
+        <div class="navbar-header active shared-menu-item">
+          <a href="#tab-5466-1" data-toggle="tab" data-bs-toggle="tab" data-value="Home">
+            <span class="navbar-brand">SDM Benchmark Study Results</span>
+          </a>
         </div>
         <ul class="nav navbar-nav navbar-right" id="mainPage" data-tabsetid="1639">
           <li class="dropdown">
@@ -28,7 +30,9 @@
             </a>
             <ul class="dropdown-menu" aria-labelledby="dropDownMenu" data-tabsetid="5466">
               <li class="active shared-menu-item">
-                <a class="dropdown-item" href="#tab-5466-1" data-toggle="tab" data-bs-toggle="tab" data-value="Home">Home</a>
+                <a class="dropdown-item" href="#tab-5466-1" data-toggle="tab" data-bs-toggle="tab" data-value="Home">
+                  <b>Home</b>
+                </a>
               </li>
               <li class="shared-menu-item">
                 <a class="dropdown-item" href="#tab-5466-2" data-toggle="tab" data-bs-toggle="tab" data-value="Species Observations">Species Observations</a>
@@ -42,6 +46,12 @@
               <li class="shared-menu-item">
                 <a class="dropdown-item" href="#tab-5466-5" data-toggle="tab" data-bs-toggle="tab" data-value="Species Predictions">Species Predictions</a>
               </li>
+              <hr/>
+              <li>
+                <a class="dropdown-item" href="https://benton-tripp.github.io/">
+                  <span>Benton's Portfolio/Blog</span>
+                </a>
+              </li>
             </ul>
           </li>
         </ul>
@@ -54,33 +64,109 @@
           <div class="main-area-container">
             <h1>Species Distribution Benchmark Study Results</h1>
             <h4 style="color:#555555;">Benton Tripp</h4>
-            <div id="homePageContainer">
-              <ul class="nav nav-tabs" role="tablist" style="list-style-type:none; display:flex; flex-direction:column;">
-                <li class="shared-menu-item" style="margin:5px;">
-                  <a class="link-header-parent" href="#tab-5466-2" data-toggle="tab">
-                    <span class="link-header">Species Observations</span>
-                    <img style="width:250px; height:auto;" src="plots/obs_sample.svg"/>
-                  </a>
-                </li>
-                <li class="shared-menu-item" style="margin:5px;">
-                  <a class="link-header-parent" href="#tab-5466-3" data-toggle="tab">
-                    <span class="link-header">Model Covariates</span>
-                    <img style="width:250px; height:auto;" src="plots/covariate_sample.svg"/>
-                  </a>
-                </li>
-                <li class="shared-menu-item" style="margin:5px;">
-                  <a class="link-header-parent" href="#tab-5466-4" data-toggle="tab">
-                    <span class="link-header">Pseudo-Absence Selection</span>
-                    <img style="width:250px; height:auto;" src="plots/pa_sample.svg"/>
-                  </a>
-                </li>
-                <li class="shared-menu-item" style="margin:5px;">
-                  <a class="link-header-parent" href="#tab-5466-5" data-toggle="tab" data-value="Species Predictions">
-                    <span class="link-header">Species Predictions</span>
-                    <img src="plots/prediction_sample.svg" style="width:250px; height:auto;"/>
-                  </a>
-                </li>
-              </ul>
+            <div id="homePageMain">
+              <div id="homePageContainer">
+                <ul class="nav nav-tabs" role="tablist" style="list-style-type:none; display:flex; flex-direction:column;">
+                  <li class="shared-menu-item" style="margin:5px;">
+                    <a class="link-header-parent" href="#tab-5466-2" data-toggle="tab">
+                      <span class="link-header">Species Observations</span>
+                      <img style="width:250px; height:auto;" src="plots/obs_sample.svg"/>
+                    </a>
+                  </li>
+                  <li class="shared-menu-item" style="margin:5px;">
+                    <a class="link-header-parent" href="#tab-5466-3" data-toggle="tab">
+                      <span class="link-header">Model Covariates</span>
+                      <img style="width:250px; height:auto;" src="plots/covariate_sample.svg"/>
+                    </a>
+                  </li>
+                  <li class="shared-menu-item" style="margin:5px;">
+                    <a class="link-header-parent" href="#tab-5466-4" data-toggle="tab">
+                      <span class="link-header">Pseudo-Absence Selection</span>
+                      <img style="width:250px; height:auto;" src="plots/pa_sample.svg"/>
+                    </a>
+                  </li>
+                  <li class="shared-menu-item" style="margin:5px;">
+                    <a class="link-header-parent" href="#tab-5466-5" data-toggle="tab" data-value="Species Predictions">
+                      <span class="link-header">Species Predictions</span>
+                      <img src="plots/prediction_sample.svg" style="width:250px; height:auto;"/>
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <div id="mainReportContainer">
+                <h3>Project Overview and Results</h3>
+                <ul style="list-style-type:none; display:flex; flex-direction:column;">
+                  <li>
+                    <a href="https://raw.githubusercontent.com/benton-tripp/benton-tripp.github.io/main/_docs/lit_review.pdf" target="_blank">
+                      <i class="fa-solid fa-book" style="margin-right:3px;"></i>
+                      <span>Literature Review</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://raw.githubusercontent.com/benton-tripp/presence-only-sdm/main/docs/FinalSummary.pdf" target="_blank">
+                      <i class="fa-solid fa-file" style="margin-right:3px;"></i>
+                      <span>Final Results and Summary</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://github.com/benton-tripp/presence-only-sdm" target="_blank">
+                      <i class="fa-brands fa-github" style="margin-right:3px;"></i>
+                      <span>Github Repository</span>
+                    </a>
+                  </li>
+                  <li>
+                    <p>&lt;Overview here&gt;</p>
+                  </li>
+                </ul>
+                <h3>Project Walk-Through</h3>
+                <ol style="display:flex; flex-direction:column;">
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/sdm-benchmark-study-part-1-data-preparation.html" target="_blank">
+                      <span>Data Preparation</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html" target="_blank">
+                      <span>Exploratory Analysis</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html" target="_blank">
+                      <span>More Pre-Processing and EDA</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-10-05-sdm-benchmark-study-part-4-baseline-species-distribution-models.html" target="_blank">
+                      <span>Baseline Species Distribution Models</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-10-13-sdm-benchmark-study-part-5-fitting-and-testing-ipp-models.html" target="_blank">
+                      <span>Fitting and Testing Inhomogeneous Poisson Process Models </span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-10-18-sdm-benchmark-study-part-6-resampling-pseudoabsence-points.html" target="_blank">
+                      <span>Re-Sampling Pseudo-Absence Points Using Iterative Sampling and BIOCLIM </span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-10-26-sdm-benchmark-study-part-7-ipp-models-with-updated-data.html" target="_blank">
+                      <span>Fitting and Testing Inhomogeneous Poisson Process Models with Updated Data </span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-11-03-sdm-benchmark-study-part-8-fitting-and-testing-maxent-models.html" target="_blank">
+                      <span>Fitting and Testing MaxEnt Models </span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="https://benton-tripp.github.io/posts/2023-11-23-sdm-benchmark-study-part-9-fitting-and-testing-ml-models.html" target="_blank">
+                      <span>Fitting and Testing Common ML Models </span>
+                    </a>
+                  </li>
+                </ol>
+              </div>
             </div>
           </div>
         </div>

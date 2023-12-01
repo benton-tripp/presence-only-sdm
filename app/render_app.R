@@ -669,10 +669,16 @@ ui.nav <- htmltools::tags$nav(
   div(
     class="container-fluid",
     div(
-      class="navbar-header",
-      tags$span(
-        class="navbar-brand",
-        "SDM Benchmark Study Results"
+      class="navbar-header active shared-menu-item",
+      tags$a(
+        href="#tab-5466-1",
+        `data-toggle`="tab",
+        `data-bs-toggle`="tab",
+        `data-value`="Home",
+        tags$span(
+          class="navbar-brand",
+          "SDM Benchmark Study Results"
+        )
       )
     ),
     tags$ul(
@@ -712,7 +718,7 @@ ui.nav <- htmltools::tags$nav(
               `data-toggle`="tab",
               `data-bs-toggle`="tab",
               `data-value`="Home",
-              "Home"
+              tags$b("Home")
             )
           ),
           tags$li(
@@ -758,6 +764,14 @@ ui.nav <- htmltools::tags$nav(
               `data-value`="Species Predictions",
               "Species Predictions"
             )
+          ),
+          hr(),
+          tags$li(
+            tags$a(
+              class="dropdown-item",
+              href="https://benton-tripp.github.io/",
+              tags$span("Benton's Portfolio/Blog")
+            )
           )
         )
       )
@@ -780,77 +794,183 @@ ui.main <- div(
         h1("Species Distribution Benchmark Study Results"),
         h4("Benton Tripp", style="color:#555555;"),
         div(
-          id="homePageContainer",
-          tags$ul(
-            class = "nav nav-tabs",
-            role="tablist",
-            style="list-style-type:none; display:flex; flex-direction:column;",
-            tags$li(
-              class="shared-menu-item",
-              style="margin:5px;",
-              tags$a(
-                class="link-header-parent",
-                href = "#tab-5466-2",
-                `data-toggle`="tab",
-                tags$span(
-                  class="link-header",
-                  "Species Observations"
-                ),
-                tags$img(
-                  style="width:250px; height:auto;",
-                  src=sample.obs.img
+          id="homePageMain",
+          div(
+            id="homePageContainer",
+            tags$ul(
+              class = "nav nav-tabs",
+              role="tablist",
+              style="list-style-type:none; display:flex; flex-direction:column;",
+              tags$li(
+                class="shared-menu-item",
+                style="margin:5px;",
+                tags$a(
+                  class="link-header-parent",
+                  href = "#tab-5466-2",
+                  `data-toggle`="tab",
+                  tags$span(
+                    class="link-header",
+                    "Species Observations"
+                  ),
+                  tags$img(
+                    style="width:250px; height:auto;",
+                    src=sample.obs.img
+                  )
+                )
+              ),
+              tags$li(
+                class="shared-menu-item",
+                style="margin:5px;",
+                tags$a(
+                  class="link-header-parent",
+                  href = "#tab-5466-3",
+                  `data-toggle` = "tab",
+                  tags$span(
+                    class="link-header",
+                    "Model Covariates"
+                  ),
+                  tags$img(
+                    style="width:250px; height:auto;",
+                    src=sample.cov.img 
+                  )
+                )
+              ),
+              tags$li(
+                class="shared-menu-item",
+                style="margin:5px;",
+                tags$a(
+                  class="link-header-parent",
+                  href = "#tab-5466-4",
+                  `data-toggle` = "tab",
+                  tags$span(
+                    class="link-header",
+                    "Pseudo-Absence Selection"
+                  ),
+                  tags$img(
+                    style="width:250px; height:auto;",
+                    src=sample.pa.img 
+                  )
+                )
+              ),
+              tags$li(
+                class="shared-menu-item",
+                style="margin:5px;",
+                tags$a(
+                  class="link-header-parent",
+                  href="#tab-5466-5",
+                  `data-toggle`="tab",
+                  `data-value`="Species Predictions",
+                  tags$span(
+                    class="link-header",
+                    "Species Predictions"
+                  ),
+                  tags$img(
+                    src=sample.pred.img, 
+                    style="width:250px; height:auto;",
+                  )
+                )
+              )
+            )
+          ),
+          div(
+            id="mainReportContainer",
+            h3("Project Overview and Results"),
+            tags$ul(
+              style="list-style-type:none; display:flex; flex-direction:column;",
+              tags$li(
+                tags$a(
+                  href="https://raw.githubusercontent.com/benton-tripp/benton-tripp.github.io/main/_docs/lit_review.pdf",
+                  target="_blank",
+                  HTML('<i class="fa-solid fa-book" style="margin-right:3px;"></i>'),
+                  tags$span("Literature Review"),
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://raw.githubusercontent.com/benton-tripp/presence-only-sdm/main/docs/FinalSummary.pdf",
+                  target="_blank",
+                  HTML('<i class="fa-solid fa-file" style="margin-right:3px;"></i>'),
+                  tags$span("Final Results and Summary"),
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://github.com/benton-tripp/presence-only-sdm",
+                  target="_blank",
+                  HTML('<i class="fa-brands fa-github" style="margin-right:3px;"></i>'),
+                  tags$span("Github Repository")
+                )
+              ),
+              tags$li(
+                tags$p(
+                  "<Overview here>"
                 )
               )
             ),
-            tags$li(
-              class="shared-menu-item",
-              style="margin:5px;",
-              tags$a(
-                class="link-header-parent",
-                href = "#tab-5466-3",
-                `data-toggle` = "tab",
-                tags$span(
-                  class="link-header",
-                  "Model Covariates"
-                ),
-                tags$img(
-                  style="width:250px; height:auto;",
-                  src=sample.cov.img 
+            h3("Project Walk-Through"),
+            tags$ol(
+              style="display:flex; flex-direction:column;",
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/sdm-benchmark-study-part-1-data-preparation.html",
+                  target="_blank",
+                  tags$span("Data Preparation")
                 )
-              )
-            ),
-            tags$li(
-              class="shared-menu-item",
-              style="margin:5px;",
-              tags$a(
-                class="link-header-parent",
-                href = "#tab-5466-4",
-                `data-toggle` = "tab",
-                tags$span(
-                  class="link-header",
-                  "Pseudo-Absence Selection"
-                ),
-                tags$img(
-                  style="width:250px; height:auto;",
-                  src=sample.pa.img 
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html",
+                  target="_blank",
+                  tags$span("Exploratory Analysis")
                 )
-              )
-            ),
-            tags$li(
-              class="shared-menu-item",
-              style="margin:5px;",
-              tags$a(
-                class="link-header-parent",
-                href="#tab-5466-5",
-                `data-toggle`="tab",
-                `data-value`="Species Predictions",
-                tags$span(
-                  class="link-header",
-                  "Species Predictions"
-                ),
-                tags$img(
-                  src=sample.pred.img, 
-                  style="width:250px; height:auto;",
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-09-27-sdm-benchmark-study-part-3-more-preprocessing-and-eda.html",
+                  target="_blank",
+                  tags$span("More Pre-Processing and EDA")
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-10-05-sdm-benchmark-study-part-4-baseline-species-distribution-models.html",
+                  target="_blank",
+                  tags$span("Baseline Species Distribution Models")
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-10-13-sdm-benchmark-study-part-5-fitting-and-testing-ipp-models.html",
+                  target="_blank",
+                  tags$span("Fitting and Testing Inhomogeneous Poisson Process Models ")
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-10-18-sdm-benchmark-study-part-6-resampling-pseudoabsence-points.html",
+                  target="_blank",
+                  tags$span("Re-Sampling Pseudo-Absence Points Using Iterative Sampling and BIOCLIM ")
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-10-26-sdm-benchmark-study-part-7-ipp-models-with-updated-data.html",
+                  target="_blank",
+                  tags$span("Fitting and Testing Inhomogeneous Poisson Process Models with Updated Data ")
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-11-03-sdm-benchmark-study-part-8-fitting-and-testing-maxent-models.html",
+                  target="_blank",
+                  tags$span("Fitting and Testing MaxEnt Models ")
+                )
+              ),
+              tags$li(
+                tags$a(
+                  href="https://benton-tripp.github.io/posts/2023-11-23-sdm-benchmark-study-part-9-fitting-and-testing-ml-models.html",
+                  target="_blank",
+                  tags$span("Fitting and Testing Common ML Models ")
                 )
               )
             )
