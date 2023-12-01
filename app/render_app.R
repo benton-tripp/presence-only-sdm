@@ -274,7 +274,7 @@ obs.list <- purrr::map(1:nrow(spec.state), function(i) {
 })
 
 
-ob.plt.selections <- htmltools::div(
+obs.plt.selections <- htmltools::div(
   htmltools::tags$script(
     '$(document).ready(function(){
         $("#obs_state_selector").change(function(){
@@ -285,7 +285,7 @@ ob.plt.selections <- htmltools::div(
           // Show the selected raster plot
           $("#" + selectedState + "_" + selectedSpecies + "_obs_plots").show();
         });
-        $("#bioclim_species_selector").change(function(){
+        $("#obs_species_selector").change(function(){
           var selectedState = $("#obs_state_selector").val();
           var selectedSpecies = $(this).val();
           // Hide all raster plots
@@ -328,6 +328,25 @@ sample.obs.img <- (get.pres.abs.plt(data.sf, states.sf, "OR", "Wild Turkey",
 
 # MODEL COVARIATES --------------------------------------------------------
 
+# Load prepared explanatory rasters by state
+
+covariate.list <- states %>%
+  set_names %>%
+  purrr::map(~{
+    f <- paste0("../data/final_rasters/", .x, ".tif")
+    rast(f) %>%
+      project(., crs(pred.rasters[[1]][[1]][[1]]))
+  })
+
+covariate.list$OR$Summer_NDVI_OR
+
+sample.cov.img <- plot.raster.gg(covariate.list$OR$Summer_NDVI_OR, 
+                                "Summer_NDVI_OR", scale.c=T, 
+                                title="",
+                                legend.title="Summer NDVI") %>%
+  plot.to.svg(p=., "OR", 
+              plt.name="covariate_sample",
+              wh=list(h=4, w=5.5))
 
 # PSEUDO-ABSENCE PLOTS ----------------------------------------------------
 refresh.pa.plts <- F
@@ -793,6 +812,10 @@ ui.main <- div(
                 tags$span(
                   class="link-header",
                   "Model Covariates"
+                ),
+                tags$img(
+                  style="width:250px; height:auto;",
+                  src=sample.cov.img 
                 )
               )
             ),
@@ -841,7 +864,8 @@ ui.main <- div(
       id = "tab-5466-2",
       div(
         class = "main-area-container",
-        h1("Species Observations")
+        h1("Species Observations"),
+        obs.plt.selections
       )
     ),
     div(
