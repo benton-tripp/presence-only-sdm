@@ -1,5 +1,7 @@
-setwd("C:/Users/bento/gis630/app")
-load(file="../artifacts/summary_img.RData")
+# SETUP -------------------------------------------------------------------
+
+setwd("C:/Users/bento/gis630")
+load(file="artifacts/summary_img.RData")
 library(data.table)
 library(dplyr)
 library(purrr)
@@ -8,6 +10,11 @@ library(caret)
 library(sf)
 library(spatstat)
 library(shiny)
+library(ggspatial)
+source("R/load_preprocessed_data.R")
+source("R/load_bioclim_masks.R")
+setwd("C:/Users/bento/gis630/app")
+
 
 get.mtype.name <- function(m) case_when(
   m == "ipp_glm_mpl_2" ~ "ipp",
@@ -101,22 +108,375 @@ get.model.type.formatted <- function(model.type) {
             T ~ "")
 }
 
-plot.to.svg <- function(p, st, encode=F, plt.dir="plots", plt.name="plt") {
+plot.to.svg <- function(p, st, encode=F, plt.dir="plots", plt.name="plt", wh=NULL) {
   # Create a temporary file
   tmpfile <- tempfile(fileext = ".svg")
   # Save the ggplot to this file
-  wh <- plt.width.height(st)
+  if (is.null(wh)) {
+    wh <- plt.width.height(st)
+  }
   ggsave(filename = tmpfile, p, width=wh$w, height=wh$h)
   if (encode) {
     # Use img() function from htmltools to display it within a div
     img.src <- paste0("data:image/svg+xml;base64,", base64enc::base64encode(tmpfile))
   } else {
     img.src <- file.path(plt.dir, paste0(plt.name, ".svg"))
-    file.copy(tmpfile, img.src)
+    file.copy(tmpfile, img.src, overwrite = T)
   }
   file.remove(tmpfile)
   img.src
 }
+
+# Get data into normal data frame format (not `spatstat`)
+data <- states %>%
+  set_names() %>%
+  purrr::map(function(st) {
+    # Get raster by state
+    r <- rasters[[st]]
+    species %>% 
+      set_names() %>%
+      purrr::map(function(spec) {
+        # Load `spatstat` quad data
+        Q <- readRDS(file.path("../artifacts", "train_spatstat_Q_2",
+                               paste0(st, "_", spec, "_Q.rds")))
+        Q.test <- readRDS(file.path("../artifacts", "test_spatstat_Q_2",
+                                    paste0(st, "_", spec, "_Q.rds")))
+        # Load presence/absence data
+        pres.train <- data.table(
+          x=Q$data$x, 
+          y=Q$data$y,
+          presence=factor(T, levels=c(F,T), 
+                          labels=c("Absence", "Presence")))
+        abs.train <- data.table(
+          x=Q$dummy$x, 
+          y=Q$dummy$y, 
+          presence=factor(F, levels=c(F,T),
+                          labels=c("Absence", "Presence")))
+        pres.test <- data.table(
+          x=Q.test$data$x, 
+          y=Q.test$data$y,
+          presence=factor(T, levels=c(F,T),
+                          labels=c("Absence", "Presence")))
+        abs.test <- data.table(
+          x=Q.test$dummy$x, 
+          y=Q.test$dummy$y,
+          presence=factor(F, levels=c(F,T),
+                          labels=c("Absence", "Presence")))
+        purrr::walk(names(r), function(n) {
+          pres.train[, (n) := terra::extract(r[[n]], 
+                                             cbind(pres.train$x,
+                                                   pres.train$y))]
+          abs.train[, (n) := terra::extract(r[[n]], 
+                                            cbind(abs.train$x,
+                                                  abs.train$y))]
+          pres.test[, (n) := terra::extract(r[[n]], 
+                                            cbind(pres.test$x,
+                                                  pres.test$y))]
+          abs.test[, (n) := terra::extract(r[[n]], 
+                                           cbind(abs.test$x,
+                                                 abs.test$y))]
+        })
+        list(
+          train=data.table::rbindlist(l=list(pres.train, abs.train)) %>%
+            na.omit(),
+          test=data.table::rbindlist(l=list(pres.test, abs.test)) %>%
+            na.omit()
+        )
+      })
+  })
+
+
+data.sf <- purrr::map_df(1:nrow(spec.state), function(i) {
+  spec <- spec.state[i,]$species
+  st <- spec.state[i,]$state
+  d <- rbindlist(list(data[[st]][[spec]]$train[, .(x, y, presence)],
+                      data[[st]][[spec]]$test[, .(x, y, presence)]))
+  sf::st_as_sf(d, coords = c("x", "y"), 
+               crs=4326, sf_column_name = "geometry") %>%
+    mutate(species=spec, state=st)
+})
+
+states.sf <- states %>%
+  set_names() %>%
+  purrr::map(function(st) {
+    sf::read_sf(paste0("../data/US_State_Boundaries/", st, "_State_Boundaries.shp")) %>%
+      transmute(state=STATE_ABBR) %>%
+      sf::st_transform(crs = crs(data.sf))
+  })
+
+# OBSERVATION PLOTS -------------------------------------------------------
+
+get.pres.abs.plt <- function(data.sf, states.sf, st, spec, 
+                             pres="Presence", title=NULL) {
+  sdf <- data.sf %>% filter(species == spec & state == st)
+  if (pres != "both") {
+    sdf <- sdf %>% filter(presence == pres)
+  }
+  st.sdf <- states.sf[[st]]
+  extent <- sf::st_bbox(st.sdf)
+  p <- ggplot(data=st.sdf) +
+    geom_sf(fill="lightblue") + 
+    geom_sf(fill=NA, color="darkgray") +
+    coord_sf(xlim = c(extent[[1]] - .05, extent[[3]] + .05), 
+             ylim = c(extent[[2]] - .05, extent[[4]] + .05),
+             crs=crs(st.sdf))
+  if (pres == "both") {
+    p <- p + geom_sf(data=sdf, aes(color=presence, shape=presence)) + 
+      scale_shape_manual(values=c("Presence" = "+", "Absence" = "o")) + 
+      scale_color_manual(values=c("Presence" = "black", "Absence" = "darkred")) +
+      labs(color = "Observation Type", shape = "Observation Type")
+  } else if (pres == "Presence") {
+    p <- p + geom_sf(data=sdf, color="black", shape="+")
+  } else if (pres == "Absence") {
+    p <- p + geom_sf(data=sdf, color="darkred", shape="o")
+  }
+  if (!is.null(title)) {
+    p <- p + labs(title=title)
+  }
+  p
+}
+
+refresh.obs.plts <- T
+obs.list <- purrr::map(1:nrow(spec.state), function(i) {
+  st <- spec.state[i,]$state
+  spec <- spec.state[i,]$species
+  width <- case_when(st == "VT"~7.5,
+                     st == "NC"~14,
+                     st == "CO"~10.5,
+                     st == "OR"~10.6,
+                     T~8) / 1.35
+  height <- case_when(st == "VT"~7,
+                      st == "NC"~6.125,
+                      st == "CO"~7.45,
+                      st == "OR"~8,
+                      T~8) / 1.25
+  
+  p <- tolower(paste0(gsub(" ", "-", spec), "_", st, "_obs"))
+  
+  if (!file.exists(file.path("plots", paste0(p, ".svg"))) | refresh.obs.plts) {
+    p <- get.pres.abs.plt(data.sf, states.sf, st, spec, pres="Presence", 
+                           title=paste0(spec, " Observations in ", st)) %>%
+      plot.to.svg(p=., st, 
+                  plt.name=p, 
+                  wh=list(w=width, h=height)) 
+  } else {
+    p <- file.path("plots", paste0(p, ".svg"))
+  }
+  plt.container <- div(
+    id=tolower(paste0(st, "_", gsub(" ", "-", spec), "_obs_plots")),
+    style=ifelse(i==1, "", "display:none;"),
+    div(
+      style="margin:5px;",
+      tags$img(src=p)
+    )
+  )
+  
+})
+
+
+ob.plt.selections <- htmltools::div(
+  htmltools::tags$script(
+    '$(document).ready(function(){
+        $("#obs_state_selector").change(function(){
+          var selectedState = $(this).val();
+          var selectedSpecies = $("#obs_species_selector").val();
+          // Hide all raster plots
+          $("[id$=_obs_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedSpecies + "_obs_plots").show();
+        });
+        $("#bioclim_species_selector").change(function(){
+          var selectedState = $("#obs_state_selector").val();
+          var selectedSpecies = $(this).val();
+          // Hide all raster plots
+          $("[id$=_obs_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedSpecies + "_obs_plots").show();
+        });
+      });'
+  ),
+  htmltools::tags$div(
+    style="display:flex; flex-direction:row;",
+    htmltools::tags$div(
+      style="margin-right:5px;",
+      htmltools::tags$select(id='obs_state_selector',
+                             style="font-size:17px;",
+                             lapply(states, function(s) {
+                               htmltools::tags$option(value=tolower(s), s)
+                             }))
+    ),
+    htmltools::tags$div(
+      htmltools::tags$select(id='obs_species_selector',
+                             style="font-size:17px;",
+                             lapply(species, function(s) {
+                               htmltools::tags$option(value=tolower(gsub(" ", "-", s)), s)
+                             }))
+    )
+  ),
+  obs.list
+)
+
+sample.obs.img <- (get.pres.abs.plt(data.sf, states.sf, "OR", "Wild Turkey", 
+                                  pres="Presence", 
+                                  title=NULL) +
+  theme(plot.margin = margin(r=80, l=15, t=0, b=0, unit="pt"))) %>%
+  plot.to.svg(p=., "OR", 
+              plt.name="obs_sample",
+              wh=list(h=4, w=5.5))
+
+
+
+# MODEL COVARIATES --------------------------------------------------------
+
+
+# PSEUDO-ABSENCE PLOTS ----------------------------------------------------
+refresh.pa.plts <- F
+pa.list <- purrr::map(1:nrow(spec.state), function(i) {
+  st <- spec.state[i,]$state
+  spec <- spec.state[i,]$species
+  r <- bioclim.list[[i]]$bioclim %>%
+    project(., crs(pred.rasters[[1]][[1]][[1]]))
+  qnt.5 <- bioclim.list[[i]]$qnt.5
+  fpar <- bioclim.list[[i]]$final.pseudo.absence.region %>%
+    project(., crs(pred.rasters[[1]][[1]][[1]]))
+  width <- case_when(st == "VT"~7.5,
+                     st == "NC"~14,
+                     st == "CO"~10.5,
+                     st == "OR"~10.6,
+                     T~8) / 1.65
+  height <- case_when(st == "VT"~7,
+                      st == "NC"~6.125,
+                      st == "CO"~7.45,
+                      st == "OR"~8,
+                      T~8) / 1.65
+  p1 <- tolower(paste0(gsub(" ", "-", spec), "_", st, "_bioclim"))
+  p2 <- tolower(paste0(gsub(" ", "-", spec), "_", st, "_pa1"))
+  p3 <- tolower(paste0(gsub(" ", "-", spec), "_", st, "_pa2"))
+  p4 <- tolower(paste0(gsub(" ", "-", spec), "_", st, "_pa_points"))
+  
+  if (!file.exists(file.path("plots", paste0(p1, ".svg"))) | refresh.pa.plts) {
+    p1 <- plot.raster.gg(r, "sum", legend.title="BIOCLIM Sum", scale.c=T,
+                         title=paste0("BIOCLIM Suitability for\n", 
+                                      spec, " in ", st)) %>%
+      plot.to.svg(p=., st, 
+                  plt.name=p1, 
+                  wh=list(w=width, h=height)) 
+  } else {
+    p1 <- file.path("plots", paste0(p1, ".svg"))
+  }
+  if (!file.exists(file.path("plots", paste0(p2, ".svg"))) | refresh.pa.plts) {
+    p2 <- plot.raster.gg(r < qnt.5, "sum", scale.c=F,
+                         title = paste0("BIOCLIM Suitable sample regions\nfor", 
+                                        spec, " in ", st),
+                         legend.title="BIOCLIM Suitable\nPseudo-absence\nRegions") %>%
+      plot.to.svg(p=., st, 
+                  plt.name=p2, 
+                  wh=list(w=width, h=height)) 
+  } else {
+    p2 <- file.path("plots", paste0(p2, ".svg"))
+  }
+  if (!file.exists(file.path("plots", paste0(p3, ".svg"))) | refresh.pa.plts) {
+    p3 <- plot.raster.gg(fpar == 1, "sum", scale.c=F,
+                         title =paste0("Final Suitable sample regions\nfor", 
+                                       spec, " in ", st),
+                         legend.title="Suitable Sampling\nRegions") %>%
+      plot.to.svg(p=., st, 
+                  plt.name=p3, 
+                  wh=list(w=width, h=height)) 
+  } else {
+    p3 <- file.path("plots", paste0(p3, ".svg"))
+  }
+  
+  if (!file.exists(file.path("plots", paste0(p4, ".svg"))) | refresh.pa.plts) {
+    p4 <- get.pres.abs.plt(data.sf, states.sf, st, spec, pres="both", 
+                     title=paste0("Observations and Pseudo-Absence Points\n",
+                                  "for the ", spec, " in ", st)) %>%
+      plot.to.svg(p=., st, 
+                  plt.name=p4, 
+                  wh=list(w=width, h=height)) 
+  } else {
+    p4 <- file.path("plots", paste0(p4, ".svg"))
+  }
+  
+  plots <- div(
+    id=tolower(paste0(st, "_", gsub(" ", "-", spec), "_bioclim_plots")),
+    style=paste0(ifelse(i==1, "display:flex", "display:none;"), "flex-direction:column;"),
+    div(
+      style="display:flex; flex-direction:row;",
+      tags$div(
+        style="margin:5px;",
+        tags$img(src=p1)
+      ),
+      tags$div(
+        style="margin:5px;",
+        tags$img(src=p2)
+      )
+    ),
+    div(
+      style="display:flex; flex-direction:row;",
+      tags$div(
+        style="margin:5px;",
+        tags$img(src=p3)
+      ),
+      tags$div(
+        style="margin:5px;",
+        tags$img(src=p4)
+      )
+    )
+  )
+})
+
+pa.plt.selections <- htmltools::div(
+  htmltools::tags$script(
+    '$(document).ready(function(){
+        $("#bioclim_state_selector").change(function(){
+          var selectedState = $(this).val();
+          var selectedSpecies = $("#bioclim_species_selector").val();
+          // Hide all raster plots
+          $("[id$=_bioclim_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedSpecies + "_bioclim_plots").show();
+        });
+        $("#bioclim_species_selector").change(function(){
+          var selectedState = $("#bioclim_state_selector").val();
+          var selectedSpecies = $(this).val();
+          // Hide all raster plots
+          $("[id$=_bioclim_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedSpecies + "_bioclim_plots").show();
+        });
+      });'
+  ),
+  htmltools::tags$div(
+    style="display:flex; flex-direction:row;",
+    htmltools::tags$div(
+      style="margin-right:5px;",
+      htmltools::tags$select(id='bioclim_state_selector',
+                             style="font-size:17px;",
+                             lapply(states, function(s) {
+                               htmltools::tags$option(value=tolower(s), s)
+                             }))
+    ),
+    htmltools::tags$div(
+      htmltools::tags$select(id='bioclim_species_selector',
+                             style="font-size:17px;",
+                             lapply(species, function(s) {
+                               htmltools::tags$option(value=tolower(gsub(" ", "-", s)), s)
+                             }))
+    )
+  ),
+  pa.list
+)
+
+sample.pa.img <- bioclim.list[[24]]$final.pseudo.absence.region %>%
+  project(., crs(pred.rasters[[1]][[1]][[1]]))
+sample.pa.img <- plot.raster.gg(sample.pa.img == 1, "sum", scale.c=F, title="",
+                 legend.title="Suitable\nSampling\nRegions") %>%
+  plot.to.svg(p=., "OR", 
+              plt.name="pa_sample",
+              wh=list(h=4, w=5.5))
+
+# PREDICTION PLOTS --------------------------------------------------------
 
 # Create plots for each combination
 pred.plts.svg <- get.object(
@@ -157,7 +517,7 @@ pred.plt.selections <- htmltools::div(
         $("#pred_state_selector").change(function(){
           var selectedState = $(this).val();
           var selectedSpecies = $("#pred_species_selector").val();
-          console.log(selectedState + " & " + selectedSpecies);
+          // console.log(selectedState + " & " + selectedSpecies);
           // Hide all raster plots
           $("[id$=_pred_plots]").hide();
           // Show the selected raster plot
@@ -166,7 +526,7 @@ pred.plt.selections <- htmltools::div(
         $("#pred_species_selector").change(function(){
           var selectedState = $("#pred_state_selector").val();
           var selectedSpecies = $(this).val();
-          console.log(selectedState + " & " + selectedSpecies);
+          // console.log(selectedState + " & " + selectedSpecies);
           // Hide all raster plots
           $("[id$=_pred_plots]").hide();
           // Show the selected raster plot
@@ -198,8 +558,9 @@ pred.plt.selections <- htmltools::div(
     spec <- spec.state.mods[i,]$species
     d <- pred.plts.svg[state == st & species == spec]
     p.svg <- d$plot.svg %>% basename()
-    img.src <- paste0("https://raw.githubusercontent.com/benton-tripp/",
-                      "presence-only-sdm/main/app/plots/", p.svg)
+    # img.src <- paste0("https://raw.githubusercontent.com/benton-tripp/",
+    #                   "presence-only-sdm/main/app/plots/", p.svg)
+    img.src <- paste0("plots/", p.svg)
     htmltools::tags$div(
       id=paste0(st, "_", gsub(" ", "-", spec), "_pred_plots"),
       style=paste0("padding:5px; overflow:auto; width:100%;", 
@@ -216,81 +577,18 @@ pred.plt.selections <- htmltools::div(
   })
 )
 
-ui <- navbarPage(
-  title="SDM Benchmark Study Results",
-  id="mainPage",
-  position="fixed-top",
-  theme="boostrap.css",
-  header=htmltools::tags$head(
-    includeScript("scripts.js"),
-    includeCSS("styles.css"),
-    htmltools::tags$script(
-      src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"
-    )
-  ),
-  selected="Species Observations",
-  navbarMenu(
-    title="Menu",
-    menuName="mainMenu",
-    icon=icon("bars", verify_fa=F),
-    tabPanel(
-      "Species Observations",
-      div(
-        class="main-area-container",
-        h1("Species Observations")
-      )
-    ),
-    tabPanel(
-      "Model Covariates",
-      div(
-        class="main-area-container",
-        h1("Model Covariates"),
-        tags$i("*Prior to pre-processing and feature engineering")
-      )
-    ),
-    tabPanel(
-      "Pseudo-Absence Selection",
-      div(
-        class="main-area-container",
-        h1("Pseudo-Absence Selection"),
-        div(
-          class="main-area-container",
-          tabsetPanel(
-            id="paTabsetPanel",
-            tabPanel(
-              "BIOCLIM",
-              div(
-                h2("BIOCLIM Suitability")
-              )
-            ),
-            tabPanel(
-              "Sample Regions",
-              h2("Final Sample Regions")
-            ),
-            tabPanel(
-              "Pseudo-Absence Points",
-              h2("Pseudo-Absence Points")
-            )
-          )
-        )
-      )
-    ),
-    tabPanel(
-      "Species Predictions",
-      div(
-        class="main-area-container",
-        h1("Species Predictions"),
-        pred.plt.selections
-      )
-    )
-  )
-)
+sample.pred.img <- plot.raster.gg(
+  r=pred.rasters[["maxent"]][["Wild Turkey"]][["OR"]],
+  fill="prob",
+  scale.c=T,
+  legend.title="Probability",
+  title="") %>%
+  plot.to.svg(., "OR", plt.name="prediction_sample",
+              wh=list(h=4, w=5.5))
 
-server <- function(input, output) {
-  
-}
 
-shiny::shinyApp(ui=ui, server=server)
+# CREATE UI ---------------------------------------------------------------
+
 
 ui.head <- htmltools::tagList(
   tags$meta(
@@ -359,7 +657,7 @@ ui.nav <- htmltools::tags$nav(
       )
     ),
     tags$ul(
-      class="nav navbar-nav shiny-tab-input",
+      class="nav navbar-nav navbar-right",
       id="mainPage",
       `data-tabsetid`="1639",
       tags$li(
@@ -378,7 +676,7 @@ ui.nav <- htmltools::tags$nav(
             class="fas fa-bars fa-fw",
             role="presentation"
           ),
-          "Menu",
+          tags$span("Menu"),
           tags$b(
             class="caret"
           )
@@ -388,10 +686,21 @@ ui.nav <- htmltools::tags$nav(
           `aria-labelledby`="dropDownMenu",
           `data-tabsetid`="5466",
           tags$li(
-            class="active",
+            class="active shared-menu-item",
             tags$a(
               class="dropdown-item",
               href="#tab-5466-1",
+              `data-toggle`="tab",
+              `data-bs-toggle`="tab",
+              `data-value`="Home",
+              "Home"
+            )
+          ),
+          tags$li(
+            class="shared-menu-item",
+            tags$a(
+              class="dropdown-item",
+              href="#tab-5466-2",
               `data-toggle`="tab",
               `data-bs-toggle`="tab",
               `data-value`="Species Observations",
@@ -399,9 +708,10 @@ ui.nav <- htmltools::tags$nav(
             )
           ),
           tags$li(
+            class="shared-menu-item",
             tags$a(
               class="dropdown-item",
-              href="#tab-5466-2",
+              href="#tab-5466-3",
               `data-toggle`="tab",
               `data-bs-toggle`="tab",
               `data-value`="Model Covariates",
@@ -409,9 +719,10 @@ ui.nav <- htmltools::tags$nav(
             )
           ),
           tags$li(
+            class="shared-menu-item",
             tags$a(
               class="dropdown-item",
-              href="#tab-5466-3",
+              href="#tab-5466-4",
               `data-toggle`="tab",
               `data-bs-toggle`="tab",
               `data-value`="Pseudo-Absence Selection",
@@ -419,8 +730,10 @@ ui.nav <- htmltools::tags$nav(
             )
           ),
           tags$li(
+            class="shared-menu-item",
             tags$a(
-              href="#tab-5466-4",
+              class="dropdown-item",
+              href="#tab-5466-5",
               `data-toggle`="tab",
               `data-bs-toggle`="tab",
               `data-value`="Species Predictions",
@@ -441,8 +754,91 @@ ui.main <- div(
     `data-tabsetid` = "1639",
     div(
       class = "tab-pane active", 
-      `data-value` = "Species Observations", 
+      `data-value` = "Home", 
       id = "tab-5466-1",
+      div(
+        class = "main-area-container",
+        h1("Species Distribution Benchmark Study Results"),
+        h4("Benton Tripp", style="color:#555555;"),
+        div(
+          id="homePageContainer",
+          tags$ul(
+            class = "nav nav-tabs",
+            role="tablist",
+            style="list-style-type:none; display:flex; flex-direction:column;",
+            tags$li(
+              class="shared-menu-item",
+              style="margin:5px;",
+              tags$a(
+                class="link-header-parent",
+                href = "#tab-5466-2",
+                `data-toggle`="tab",
+                tags$span(
+                  class="link-header",
+                  "Species Observations"
+                ),
+                tags$img(
+                  style="width:250px; height:auto;",
+                  src=sample.obs.img
+                )
+              )
+            ),
+            tags$li(
+              class="shared-menu-item",
+              style="margin:5px;",
+              tags$a(
+                class="link-header-parent",
+                href = "#tab-5466-3",
+                `data-toggle` = "tab",
+                tags$span(
+                  class="link-header",
+                  "Model Covariates"
+                )
+              )
+            ),
+            tags$li(
+              class="shared-menu-item",
+              style="margin:5px;",
+              tags$a(
+                class="link-header-parent",
+                href = "#tab-5466-4",
+                `data-toggle` = "tab",
+                tags$span(
+                  class="link-header",
+                  "Pseudo-Absence Selection"
+                ),
+                tags$img(
+                  style="width:250px; height:auto;",
+                  src=sample.pa.img 
+                )
+              )
+            ),
+            tags$li(
+              class="shared-menu-item",
+              style="margin:5px;",
+              tags$a(
+                class="link-header-parent",
+                href="#tab-5466-5",
+                `data-toggle`="tab",
+                `data-value`="Species Predictions",
+                tags$span(
+                  class="link-header",
+                  "Species Predictions"
+                ),
+                tags$img(
+                  src=sample.pred.img, 
+                  style="width:250px; height:auto;",
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+    div(
+      class = "tab-pane", 
+      `data-value` = "Species Observations", 
+      id = "tab-5466-2",
       div(
         class = "main-area-container",
         h1("Species Observations")
@@ -451,7 +847,7 @@ ui.main <- div(
     div(
       class = "tab-pane", 
       `data-value` = "Model Covariates", 
-      id = "tab-5466-2",
+      id = "tab-5466-3",
       div(
         class = "main-area-container",
         h1("Model Covariates"),
@@ -461,70 +857,19 @@ ui.main <- div(
     div(
       class = "tab-pane", 
       `data-value` = "Pseudo-Absence Selection", 
-      id = "tab-5466-3",
-      div(class = "main-area-container",
-          h1("Pseudo-Absence Selection"),
-          div(class = "tabbable",
-              tags$ul(
-                class = "nav nav-tabs shiny-tab-input", 
-                id = "paTabsetPanel", 
-                `data-tabsetid` = "5409",
-                tags$li(
-                  class = "active",
-                  tags$a(
-                    href = "#tab-5409-1", 
-                    `data-toggle` = "tab", 
-                    `data-bs-toggle` = "tab", 
-                    `data-value` = "BIOCLIM", "BIOCLIM")
-                ),
-                tags$li(
-                  tags$a(
-                    href = "#tab-5409-2", 
-                    `data-toggle` = "tab", 
-                    `data-bs-toggle` = "tab", 
-                    `data-value` = "Sample Regions", 
-                    "Sample Regions")
-                ),
-                tags$li(
-                  tags$a(
-                    href = "#tab-5409-3", 
-                    `data-toggle` = "tab", 
-                    `data-bs-toggle` = "tab",
-                    `data-value` = "Pseudo-Absence Points", 
-                    "Pseudo-Absence Points")
-                )
-              ),
-              div(
-                class = "tab-content", 
-                `data-tabsetid` = "5409",
-                div(
-                  class = "tab-pane active", 
-                  `data-value` = "BIOCLIM", 
-                  id = "tab-5409-1",
-                  div(
-                    h2("BIOCLIM Suitability")
-                  )
-                ),
-                div(
-                  class = "tab-pane", 
-                  `data-value` = "Sample Regions", 
-                  id = "tab-5409-2",
-                  h2("Final Sample Regions")
-                ),
-                div(
-                  class = "tab-pane", 
-                  `data-value` = "Pseudo-Absence Points", 
-                  id = "tab-5409-3",
-                  h2("Pseudo-Absence Points")
-                )
-              )
-          )
+      id = "tab-5466-4",
+      div(
+        class = "main-area-container",
+        HTML(paste0("<h1 style='margin-bottom:10px;'>BIOCLIM Suitability, ",
+                    "Pseudo-Absence Sample Regions,",
+                    "<br>and Pseudo-Absence Selections")),
+        pa.plt.selections
       )
     ),
     div(
       class = "tab-pane", 
       `data-value` = "Species Predictions", 
-      id = "tab-5466-4",
+      id = "tab-5466-5",
       div(
         class = "main-area-container",
         h1("Species Predictions"),
@@ -533,6 +878,7 @@ ui.main <- div(
     )
   )
 )
+
 
 html.output <- tags$html(
   htmltools::HTML(glue::glue("<head>{ui.head}</head>")),
