@@ -887,7 +887,7 @@ ui.main <- div(
               ),
               tags$li(
                 tags$a(
-                  href="https://raw.githubusercontent.com/benton-tripp/presence-only-sdm/main/docs/FinalSummary.pdf",
+                  href="https://raw.githubusercontent.com/benton-tripp/benton-tripp.github.io/main/_docs/FinalSummary.pdf",
                   target="_blank",
                   HTML('<i class="fa-solid fa-file" style="margin-right:3px;"></i>'),
                   tags$span("Final Results and Summary"),
