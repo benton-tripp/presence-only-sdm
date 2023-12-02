@@ -64,17 +64,21 @@ spec.state.mods <- expand.grid(species=species,
 # Function to plot a raster with ggplot
 plot.raster.gg <- function(r, fill=NULL, scale.c=T, 
                            legend.title="probability",
-                           title=NULL) {
-  df <- terra::as.data.frame(r, xy = T)
+                           title=NULL, show.legend=T, df=NULL) {
+  if (is.null(df)) df <- terra::as.data.frame(r, xy = T)
   if (is.null(fill)) {
-    fill <- names(r)[[1]]
+    fill <- names(df)[[3]]
   } else {
     p <- ggplot(df, aes(x = x, y=y, fill=get(fill)))
   }
    p <- p + 
     geom_raster() +
-    coord_cartesian() +
-    labs(fill=legend.title)
+    coord_cartesian()
+   if (show.legend) {
+     p <- p + labs(fill=legend.title)
+   } else {
+     p <- p + theme(legend.position = "none")
+   }
   if (scale.c) p <- p + scale_fill_viridis_c()
   if (!is.null(title)) p <- p + labs(title=title)
   p
@@ -204,6 +208,22 @@ states.sf <- states %>%
       sf::st_transform(crs = crs(data.sf))
   })
 
+get.r.name <- function(r.name) {
+  case_when(r.name %like% "coastline_" ~ "Coastline",
+            r.name %like% "dem_" ~ "DEM",
+            r.name == "NLCD_Land" ~ "Land Cover",
+            r.name %like% "Fall_NDVI" ~ "Fall NDVI",
+            r.name %like% "Spring_NDVI" ~ "Spring NDVI",
+            r.name %like% "Summer_NDVI" ~ "Summer NDVI",
+            r.name %like% "Winter_NDVI" ~ "Winter NDVI",
+            r.name %like% "avg_prcp_" ~ "Average Prcp",
+            r.name %like% "tmax_" ~ "Max Temp",
+            r.name %like% "tmin_" ~ "Min Temp",
+            r.name %like% "urban_" ~ "Urban Imperviousness",
+            r.name %like% "waterbody" ~ "Waterbodies",
+            T ~ "")
+}
+
 # OBSERVATION PLOTS -------------------------------------------------------
 
 get.pres.abs.plt <- function(data.sf, states.sf, st, spec, 
@@ -273,7 +293,6 @@ obs.list <- purrr::map(1:nrow(spec.state), function(i) {
   
 })
 
-
 obs.plt.selections <- htmltools::div(
   htmltools::tags$script(
     '$(document).ready(function(){
@@ -330,6 +349,8 @@ sample.obs.img <- (get.pres.abs.plt(data.sf, states.sf, "OR", "Wild Turkey",
 
 # Load prepared explanatory rasters by state
 
+# Raster Attribute Table
+
 covariate.list <- states %>%
   set_names %>%
   purrr::map(~{
@@ -338,7 +359,6 @@ covariate.list <- states %>%
       project(., crs(pred.rasters[[1]][[1]][[1]]))
   })
 
-covariate.list$OR$Summer_NDVI_OR
 
 sample.cov.img <- plot.raster.gg(covariate.list$OR$Summer_NDVI_OR, 
                                 "Summer_NDVI_OR", scale.c=T, 
@@ -347,6 +367,208 @@ sample.cov.img <- plot.raster.gg(covariate.list$OR$Summer_NDVI_OR,
   plot.to.svg(p=., "OR", 
               plt.name="covariate_sample",
               wh=list(h=4, w=5.5))
+
+
+lc.lookup <- data.table(
+  id = c(11, 12, 21, 22, 23, 24, 31, 41, 42, 43, 51, 52, 71, 72, 73, 74, 81, 82, 90, 95),
+  type = c(
+    "Open Water", "Perennial Ice/Snow", 
+    "Developed, Open Space", "Developed, Low Intensity", 
+    "Developed, Medium Intensity", "Developed, High Intensity",
+    "Barren Land (Rock/Sand/Clay)", 
+    "Deciduous Forest", "Evergreen Forest", "Mixed Forest", 
+    "Dwarf Shrub", "Shrub/Scrub", 
+    "Grassland/Herbaceous", "Sedge/Herbaceous", "Lichens", "Moss", 
+    "Pasture/Hay", "Cultivated Crops", 
+    "Woody Wetlands", "Emergent Herbaceous Wetlands"
+  )
+)  
+lc.lookup <- rbindlist(
+  list(
+    lc.lookup,
+    data.table(id=NA, type="Other")
+  )
+) 
+lc.lookup[, color := case_when(
+    id == 11 ~ "lightblue",
+    id == 12 ~ "darkblue",
+    id == 21 ~ "lightyellow",
+    id == 22 ~ "yellow",
+    id == 23 ~ "gold",
+    id == 24 ~ "orange",
+    id == 31 ~ "darkgoldenrod",
+    id == 41 ~ "lightgreen",
+    id == 42 ~ "forestgreen",
+    id == 43 ~ "darkgreen",
+    id == 51 ~ "tan", 
+    id == 52 ~ "brown", 
+    id == 71 ~ "lightpink",
+    id == 72 ~ "hotpink",
+    id == 73 ~ "deeppink",
+    id == 74 ~ "red",
+    id == 81 ~ "lavender",
+    id == 82 ~ "purple",
+    id == 90 ~ "lightcyan",
+    id == 95 ~ "cyan",
+    T ~ "gray"  # Default color
+  )]
+
+refresh.cov.plts <- F
+cov.list <- states %>%
+  set_names() %>%
+  purrr::map(function(st) {
+    rasts <- covariate.list[[st]]
+    
+    width <- case_when(st == "VT"~6 * 1.3,
+                       st == "NC"~14,
+                       st == "CO"~10.5,
+                       st == "OR"~9.8,
+                       T~8) / (2.25*1.2) * 2
+    height <- case_when(st == "VT"~7 * 1.3,
+                        st == "NC"~6.125,
+                        st == "CO"~7.45,
+                        st == "OR"~8,
+                        T~8) / (2.25*1.25) * 2
+    
+    all.plots <- purrr::map_chr(names(rasts), function(r.name) {
+      r <- rasts[[r.name]]
+      title.name <- get.r.name(r.name)
+      p1 <- tolower(paste0(gsub(" ", "-", title.name), "_", st, "_cov"))
+      scale.c <- ifelse(title.name == "Land Cover", F, T)
+      show.legend <- ifelse(title.name == "Land Cover", F, T)
+      
+      if (!file.exists(file.path("plots", paste0(p1, ".svg"))) | refresh.cov.plts) {
+        if (title.name == "Land Cover") {
+          lc.df <- r %>% as.data.frame(xy=T) %>% 
+            as.data.table() %>%
+            .[, .(x, y, id=NLCD_Land)]
+          ints <- lc.lookup[!is.na(id)][lc.df[id == as.integer(id)], on=.(id)]
+          
+          non.ints <- lc.df[id != as.integer(id)][, .I := .I]
+          non.ints <- fuzzyjoin::difference_left_join(non.ints, 
+                                                      lc.lookup[!is.na(id)], 
+                                                      by = c("id" = "id"), 
+                                                      max_dist = 10) %>% setDT()
+          non.ints[, diff := id.x - id.y]
+          non.ints[, min.diff := min(abs(diff), na.rm=T), by=.I]
+          non.ints <- non.ints[abs(diff) == min.diff, .(id=id.y, type, color, x, y)]
+          lc.df <- rbindlist(list(ints, non.ints))
+          
+          lc.types <- lc.df[, .(id)] %>%
+            unique() %>%
+            lc.lookup[., on=.(id)] %>%
+            .[, .(land.cover=type, id, color)] %>%
+            .[is.na(land.cover), `:=` (land.cover="Other", color="gray")]
+          lc.types[, land.cover := factor(
+            land.cover, 
+            levels=lc.lookup$type[lc.lookup$type %in% lc.types$land.cover],
+            labels=lc.lookup$type[lc.lookup$type %in% lc.types$land.cover]
+          )]
+          lc.df <- lc.types[, .(id, land.cover)] %>%
+            .[lc.df, on=.(id)] %>%
+            .[, .(x, y, land.cover)]
+          
+          colors <- setNames(lc.types$color, lc.types$land.cover)
+          plt <- ggplot(lc.df, aes(x = x, y=y, fill=land.cover)) + 
+            geom_raster() + 
+            coord_cartesian() + 
+            labs(title=title.name) + 
+            scale_fill_manual(values = colors, 
+                              labels = setNames(lc.types$land.cover, 
+                                                lc.types$NLCD_Land),
+                              name = "") + 
+            guides(fill = guide_legend(ncol = ifelse(st=="VT", 3, 2)))
+          p1 <- plot.to.svg(p=plt, st, 
+                            plt.name=p1, 
+                            wh=list(w=width*case_when(st=="CO"~1.9*1.45,
+                                                      st=="NC"~2,
+                                                      st=="OR"~1.9*1.35,
+                                                      st=="VT"~3,
+                                                      T~1)/1.75,
+                                    h=height*case_when(st=="CO"~2,
+                                                       st=="NC"~1.4,
+                                                       st=="OR"~1.75,
+                                                       st=="VT"~1.5,
+                                                       T~1)/1.75)) 
+          
+        } else {
+          plt <- plot.raster.gg(r, r.name, legend.title="", scale.c=scale.c,
+                                title=title.name)
+          p1 <- plot.to.svg(p=plt, st, 
+                            plt.name=p1, 
+                            wh=list(w=width, 
+                                    h=height)) 
+        }
+        
+      } else {
+        p1 <- file.path("plots", paste0(p1, ".svg"))
+      }
+      p1
+    })
+    names(all.plots) <- covariate.list[[st]] %>% 
+      names() %>%
+      get.r.name()
+    div(
+      purrr::map(names(all.plots), function(rn) {
+        div(
+          id=tolower(paste0(st, "_", gsub(" ", "-", rn), "_cov_plots")),
+          style=ifelse(rn == names(all.plots)[[1]] & st == states[[1]], 
+                       "", "display:none;"),
+          div(
+            style="margin:5px;",
+            tags$img(src=all.plots[[rn]])
+          )
+        )
+      })
+    )
+  })
+
+r.names <- covariate.list[[1]] %>% 
+  names() %>%
+  get.r.name()
+
+cov.plt.selections <- div(
+  tags$script(
+    '$(document).ready(function(){
+        $("#cov_state_selector").change(function(){
+          var selectedState = $(this).val();
+          var selectedCov = $("#cov_cov_selector").val();
+          // Hide all raster plots
+          $("[id$=_cov_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedCov + "_cov_plots").show();
+        });
+        $("#cov_cov_selector").change(function(){
+          var selectedState = $("#cov_state_selector").val();
+          var selectedCov = $(this).val();
+          // Hide all raster plots
+          $("[id$=_cov_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedCov + "_cov_plots").show();
+        });
+      });'
+  ),
+  div(
+    style="display:flex; flex-direction:row;",
+    div(
+      style="margin-right:5px;",
+      tags$select(id='cov_state_selector',
+                  style="font-size:17px;",
+                  lapply(states, function(s) {
+                    tags$option(value=tolower(s), s)
+                  }))
+    ),
+    div(
+      style="margin-right:5px;",
+      tags$select(id='cov_cov_selector',
+                  style="font-size:17px;",
+                  lapply(r.names, function(rn) {
+                    tags$option(value=tolower(gsub(" ", "-", rn)), rn)
+                  }))
+    )
+  ),
+  cov.list
+)
 
 # PSEUDO-ABSENCE PLOTS ----------------------------------------------------
 refresh.pa.plts <- F
@@ -385,7 +607,7 @@ pa.list <- purrr::map(1:nrow(spec.state), function(i) {
   }
   if (!file.exists(file.path("plots", paste0(p2, ".svg"))) | refresh.pa.plts) {
     p2 <- plot.raster.gg(r < qnt.5, "sum", scale.c=F,
-                         title = paste0("BIOCLIM Suitable sample regions\nfor", 
+                         title = paste0("BIOCLIM Suitable sample regions\nfor ", 
                                         spec, " in ", st),
                          legend.title="BIOCLIM Suitable\nPseudo-absence\nRegions") %>%
       plot.to.svg(p=., st, 
@@ -396,7 +618,7 @@ pa.list <- purrr::map(1:nrow(spec.state), function(i) {
   }
   if (!file.exists(file.path("plots", paste0(p3, ".svg"))) | refresh.pa.plts) {
     p3 <- plot.raster.gg(fpar == 1, "sum", scale.c=F,
-                         title =paste0("Final Suitable sample regions\nfor", 
+                         title =paste0("Final Suitable sample regions\nfor ", 
                                        spec, " in ", st),
                          legend.title="Suitable Sampling\nRegions") %>%
       plot.to.svg(p=., st, 
@@ -770,7 +992,7 @@ ui.nav <- htmltools::tags$nav(
             tags$a(
               class="dropdown-item",
               href="https://benton-tripp.github.io/",
-              tags$span("Benton's Portfolio/Blog")
+              tags$span(style="margin-bottom:3px;", "Benton's Portfolio/Blog")
             )
           )
         )
@@ -903,7 +1125,14 @@ ui.main <- div(
               ),
               tags$li(
                 tags$p(
-                  "<Overview here>"
+                  style="max-width: 600px; margin:8px;",
+                  "The purpose of this project was to evaluate machine learning models in
+                  Species Distribution Modeling (SDM), comparing their performance to
+                  traditional models like Maximum Entropy and Inhomogeneous Poisson Process
+                  models. Testing was performed using the observation data of 8 distinct 
+                  bird species, across 4 different US states. Covariates used in model
+                  training were derived from bioclimatic variables for each of the sample
+                  regions."
                 )
               )
             ),
@@ -915,8 +1144,7 @@ ui.main <- div(
                   href="https://benton-tripp.github.io/posts/sdm-benchmark-study-part-1-data-preparation.html",
                   target="_blank",
                   tags$span("Data Preparation")
-                )
-              ),
+                )              ),
               tags$li(
                 tags$a(
                   href="https://benton-tripp.github.io/posts/2023-09-17-sdm-benchmark-study-part-2-exploratory-analysis.html",
@@ -995,7 +1223,8 @@ ui.main <- div(
       div(
         class = "main-area-container",
         h1("Model Covariates"),
-        tags$i("*Prior to pre-processing and feature engineering")
+        tags$i("*Prior to pre-processing and feature engineering"),
+        cov.plt.selections
       )
     ),
     div(

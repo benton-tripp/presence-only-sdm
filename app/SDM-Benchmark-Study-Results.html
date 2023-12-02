@@ -49,7 +49,7 @@
               <hr/>
               <li>
                 <a class="dropdown-item" href="https://benton-tripp.github.io/">
-                  <span>Benton's Portfolio/Blog</span>
+                  <span style="margin-bottom:3px;">Benton's Portfolio/Blog</span>
                 </a>
               </li>
             </ul>
@@ -115,7 +115,13 @@
                     </a>
                   </li>
                   <li>
-                    <p>&lt;Overview here&gt;</p>
+                    <p style="max-width: 600px; margin:8px;">The purpose of this project was to evaluate machine learning models in
+                  Species Distribution Modeling (SDM), comparing their performance to
+                  traditional models like Maximum Entropy and Inhomogeneous Poisson Process
+                  models. Testing was performed using the observation data of 8 distinct 
+                  bird species, across 4 different US states. Covariates used in model
+                  training were derived from bioclimatic variables for each of the sample
+                  regions.</p>
                   </li>
                 </ul>
                 <h3>Project Walk-Through</h3>
@@ -381,6 +387,300 @@
           <div class="main-area-container">
             <h1>Model Covariates</h1>
             <i>*Prior to pre-processing and feature engineering</i>
+            <div>
+              <script>$(document).ready(function(){
+        $("#cov_state_selector").change(function(){
+          var selectedState = $(this).val();
+          var selectedCov = $("#cov_cov_selector").val();
+          // Hide all raster plots
+          $("[id$=_cov_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedCov + "_cov_plots").show();
+        });
+        $("#cov_cov_selector").change(function(){
+          var selectedState = $("#cov_state_selector").val();
+          var selectedCov = $(this).val();
+          // Hide all raster plots
+          $("[id$=_cov_plots]").hide();
+          // Show the selected raster plot
+          $("#" + selectedState + "_" + selectedCov + "_cov_plots").show();
+        });
+      });</script>
+              <div style="display:flex; flex-direction:row;">
+                <div style="margin-right:5px;">
+                  <select id="cov_state_selector" style="font-size:17px;">
+                    <option value="co">CO</option>
+                    <option value="nc">NC</option>
+                    <option value="or">OR</option>
+                    <option value="vt">VT</option>
+                  </select>
+                </div>
+                <div style="margin-right:5px;">
+                  <select id="cov_cov_selector" style="font-size:17px;">
+                    <option value="coastline">Coastline</option>
+                    <option value="dem">DEM</option>
+                    <option value="land-cover">Land Cover</option>
+                    <option value="fall-ndvi">Fall NDVI</option>
+                    <option value="spring-ndvi">Spring NDVI</option>
+                    <option value="summer-ndvi">Summer NDVI</option>
+                    <option value="winter-ndvi">Winter NDVI</option>
+                    <option value="average-prcp">Average Prcp</option>
+                    <option value="max-temp">Max Temp</option>
+                    <option value="min-temp">Min Temp</option>
+                    <option value="urban-imperviousness">Urban Imperviousness</option>
+                    <option value="waterbodies">Waterbodies</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div id="co_coastline_cov_plots" style="">
+                  <div style="margin:5px;">
+                    <img src="plots/coastline_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_dem_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/dem_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_land-cover_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/land-cover_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_fall-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/fall-ndvi_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_spring-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/spring-ndvi_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_summer-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/summer-ndvi_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_winter-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/winter-ndvi_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_average-prcp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/average-prcp_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_max-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/max-temp_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_min-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/min-temp_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_urban-imperviousness_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/urban-imperviousness_co_cov.svg"/>
+                  </div>
+                </div>
+                <div id="co_waterbodies_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/waterbodies_co_cov.svg"/>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div id="nc_coastline_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/coastline_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_dem_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/dem_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_land-cover_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/land-cover_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_fall-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/fall-ndvi_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_spring-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/spring-ndvi_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_summer-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/summer-ndvi_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_winter-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/winter-ndvi_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_average-prcp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/average-prcp_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_max-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/max-temp_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_min-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/min-temp_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_urban-imperviousness_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/urban-imperviousness_nc_cov.svg"/>
+                  </div>
+                </div>
+                <div id="nc_waterbodies_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/waterbodies_nc_cov.svg"/>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div id="or_coastline_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/coastline_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_dem_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/dem_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_land-cover_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/land-cover_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_fall-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/fall-ndvi_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_spring-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/spring-ndvi_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_summer-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/summer-ndvi_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_winter-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/winter-ndvi_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_average-prcp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/average-prcp_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_max-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/max-temp_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_min-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/min-temp_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_urban-imperviousness_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/urban-imperviousness_or_cov.svg"/>
+                  </div>
+                </div>
+                <div id="or_waterbodies_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/waterbodies_or_cov.svg"/>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div id="vt_coastline_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/coastline_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_dem_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/dem_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_land-cover_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/land-cover_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_fall-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/fall-ndvi_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_spring-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/spring-ndvi_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_summer-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/summer-ndvi_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_winter-ndvi_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/winter-ndvi_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_average-prcp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/average-prcp_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_max-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/max-temp_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_min-temp_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/min-temp_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_urban-imperviousness_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/urban-imperviousness_vt_cov.svg"/>
+                  </div>
+                </div>
+                <div id="vt_waterbodies_cov_plots" style="display:none;">
+                  <div style="margin:5px;">
+                    <img src="plots/waterbodies_vt_cov.svg"/>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="tab-pane" data-value="Pseudo-Absence Selection" id="tab-5466-4">
